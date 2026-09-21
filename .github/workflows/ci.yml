@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+
+jobs:
+  api:
+    name: apps/api build & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+      - run: npm ci
+        working-directory: apps/api
+      - run: npm run build
+        working-directory: apps/api
+      - run: npm test
+        working-directory: apps/api
+      - run: npm run test:integration
+        working-directory: apps/api
+      - run: npm run test:orders
+        working-directory: apps/api
+
+  web:
+    name: apps/web build & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: npm ci
+        working-directory: apps/web
+      - run: npm test
+        working-directory: apps/web
+      - name: build
+        working-directory: apps/web
+        # Placeholder Supabase values so `vite build` and the Supabase client module can
+        # initialize; no network calls happen during a production build.
+        env:
+          VITE_SUPABASE_URL: https://placeholder.supabase.co
+          VITE_SUPABASE_PUBLISHABLE_KEY: placeholder
+          VITE_API_URL: /api
+        run: npm run build
