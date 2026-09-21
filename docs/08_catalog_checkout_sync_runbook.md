@@ -1,0 +1,14 @@
+# Catalog, checkout and order sync: local runbook
+
+This branch adds `supabase/migrations/202609150001_catalog_checkout_sync.sql`. Apply it to the target Supabase project before testing the register. The existing auth/store migration must already be applied. No terminal or employee schema from the draft prototype is required for this MVP.
+
+1. Copy `apps/api/.env.example` to `apps/api/.env.local` and set the Postgres URL, Supabase project URL and publishable key. Copy `apps/web/.env.example` to `apps/web/.env.local` and set the project URL, publishable key and `VITE_API_URL`. Both local env files are Git-ignored. Prefer the Supabase **Session Pooler** URL on IPv4-only machines; the direct database hostname may resolve only to IPv6. Use the Session Pooler host on port 5432 and the `postgres.<project-ref>` user. Keep `SUPABASE_DB_CA_CERT_PATH=certs/supabase-prod-ca-2021.crt` to verify the pooler certificate. Restart the API after changing `.env.local`.
+2. In one PowerShell terminal, run `cd apps/api`, `npm install`, then `npm run dev`. The API serves `http://localhost:3001/health` and the authenticated `/catalog/snapshot` and `/orders/push` endpoints.
+3. In another terminal, run `cd apps/web`, `npm install`, then `npm run dev`. Open the URL Vite prints, currently `http://127.0.0.1:5173/`. Sign in with an account that has an active `store_memberships` row, then open **Sell**.
+4. To review the flow, search by name, SKU or demo barcode (`2000000000001` through `2000000000008`), add items, adjust quantity, choose cash or deliberately confirm an external card payment, and complete the sale. The local receipt appears under **Orders** immediately. Disconnect before checkout to verify that saving does not wait for the API; reconnect and select **Sync pending orders**.
+
+Run `npm run build` in `apps/web` and `apps/api`, and `npm test` in `apps/web`, `apps/api`, and `packages/domain` before review.
+
+If Sell reports a catalog 503 while `/health` works, check that the API was restarted after changing its database URL, that the pooler host/user are selected, and that the catalog migration is present. A healthy `/health` response confirms only that Express is listening; catalog loading also needs a database connection and an active store membership.
+
+This branch uses the existing owner Supabase session to authorize the API because terminal provisioning and device credentials are being developed separately. The browser must have a signed-in owner/staff session and an initial catalog download. Production offline authorization, employee PINs, terminal identity, stock pull after arbitrary catalog changes, and receipt printer certification remain integration work. An accepted order is retained locally with its stock adjustment until a snapshot at or beyond its accepted checkpoint replaces the authoritative stock base.

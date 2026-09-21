@@ -1,0 +1,532 @@
+openapi: 3.0.3
+info:
+  title: Counterline Terminal Access API
+  version: 1.0.0
+  description: |
+    Terminal access only. Owner email authentication remains with Supabase.
+    Serve through a same-origin /api proxy. Mutations require the exact configured
+    Origin. Responses are no-store. Credentials are opaque HttpOnly, SameSite=Strict
+    cookies (Secure in production), never JSON or browser storage tokens.
+    Device access lasts 15 minutes. Device refresh sessions last 30 days and retain
+    a 60-second single-use retry window after rotation for lost-response recovery.
+    Refresh revalidates an unexpired cashier session; changed/inactive employees lock.
+    Provision and refresh return only the active employee credential projection.
+    Offline access is limited to seven days; manager approvals to 72 hours.
+    Cashier catalog bootstrap and checkout use the terminal access plus cashier-session
+    cookies. They are scoped to the terminal's store; a caller cannot choose another store.
+servers:
+  - url: /api
+security: []
+paths:
+  /devices/provision:
+    post:
+      operationId: provisionTerminal
+      summary: Owner or manager provisions this browser with a fresh identity and receipt prefix
+      security: [{ ownerBearer: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [store_id, name]
+              properties:
+                store_id: { type: string, format: uuid }
+                name: { type: string, minLength: 1, maxLength: 80 }
+      responses:
+        '201':
+          description: Fresh installation; sets terminal_access and terminal_refresh cookies and clears cashier cookie. A valid refresh credential revokes this browser's previous installation even when moving between managed stores.
+          headers:
+            Set-Cookie: { schema: { type: string }, description: HttpOnly terminal credentials, Path=/api }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Projection' }
+        default: { $ref: '#/components/responses/Error' }
+  /auth/login:
+    post:
+      operationId: loginCashier
+      summary: Select employee and verify PIN within the authenticated device's store
+      description: Five failed attempts lock the device and employee for 60 seconds. Unknown/cross-store employees count toward the device limit. A successful login replaces the device's previous cashier session.
+      security: [{ deviceAccess: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [employee_id, pin]
+              properties:
+                employee_id: { type: string, format: uuid }
+                pin: { type: string, pattern: '^[0-9]{4,8}$', writeOnly: true }
+      responses:
+        '200':
+          description: Verified cashier session; sets terminal_cashier cookie for 15 minutes
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/Projection' }
+                  - type: object
+                    required: [session]
+        '429':
+          description: PIN access locked; no offline downgrade permitted
+          headers:
+            Retry-After: { schema: { type: integer }, description: Seconds until retry; 60 }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        default: { $ref: '#/components/responses/Error' }
+  /auth/refresh:
+    post:
+      operationId: refreshTerminal
+      summary: Rotate terminal cookies and replace the cached employee projection
+      description: Serializes rotation into a new device-session record. The previous access token is immediately invalid; its refresh token may retry for 60 seconds to replace an unreachable child after a lost response. Concurrent browser calls must use the terminal Web Lock. Does not reset lockout counters.
+      security: [{ deviceRefresh: [] }]
+      responses:
+        '200':
+          description: Updated projection. Session appears only if its existing cashier cookie is unexpired and current permissions match. Sets new terminal cookies and rotates or clears the cashier cookie.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Projection' }
+        default: { $ref: '#/components/responses/Error' }
+  /auth/logout:
+    post:
+      operationId: logoutCashier
+      summary: Expire the current device's cashier sessions and clear the cashier cookie
+      security: [{ deviceAccess: [] }]
+      responses:
+        '204': { description: Cashier locked; device refresh session retained }
+        default: { $ref: '#/components/responses/Error' }
+  /terminal-auth/manage/{storeId}:
+    get:
+      operationId: getTerminalManagement
+      summary: List employee metadata and terminals without credentials
+      security: [{ ownerBearer: [] }]
+      parameters:
+        - { name: storeId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Only the manager's selected store
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [employees, devices]
+                properties:
+                  employees: { type: array, items: { $ref: '#/components/schemas/ManagedEmployee' } }
+                  devices: { type: array, items: { $ref: '#/components/schemas/ManagedDevice' } }
+        default: { $ref: '#/components/responses/Error' }
+  /terminal-auth/employees:
+    post:
+      operationId: saveTerminalEmployee
+      summary: Manager creates or updates separate employee PIN access
+      security: [{ ownerBearer: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [store_id, name, role, active]
+              properties:
+                id: { type: string, format: uuid, description: Omit to create }
+                store_id: { type: string, format: uuid }
+                name: { type: string, minLength: 1, maxLength: 80 }
+                role: { type: string, enum: [cashier, manager] }
+                active: { type: boolean }
+                pin: { type: string, pattern: '^([0-9]{4,8})?$', writeOnly: true, description: Required on create; omit or empty on update to preserve PIN }
+      responses:
+        '200':
+          description: Updated employee with incremented permission version; previous cashier sessions expired
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ManagedEmployee' }
+        '201':
+          description: Created employee
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ManagedEmployee' }
+        default: { $ref: '#/components/responses/Error' }
+  /terminal-auth/devices/{id}/revoke:
+    post:
+      operationId: revokeTerminal
+      summary: Revoke device access and refresh credentials
+      description: Idempotent. Offline devices cannot learn revocation until connectivity returns; their existing authorization window still applies.
+      security: [{ ownerBearer: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [store_id]
+              properties:
+                store_id: { type: string, format: uuid }
+      responses:
+        '204': { description: Terminal revoked }
+        default: { $ref: '#/components/responses/Error' }
+  /terminal-auth/devices/{id}/reactivate:
+    post:
+      operationId: reactivateTerminal
+      summary: Restore a revoked device's active status
+      description: Fails with 404 if the device is not found or is already active. Fails with 409 if another active terminal in the store already uses this device's name. The browser previously using this device must sign in again; its old sessions stay revoked.
+      security: [{ ownerBearer: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [store_id]
+              properties:
+                store_id: { type: string, format: uuid }
+      responses:
+        '204': { description: Terminal reactivated }
+        default: { $ref: '#/components/responses/Error' }
+  /catalog/snapshot:
+    get:
+      operationId: getCatalogSnapshot
+      summary: Load the active store catalog and stock snapshot
+      security: [{ ownerBearer: [] }]
+      parameters:
+        - { name: store_id, in: query, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Store-scoped catalog snapshot
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [store, catalog_version, checkpoint, categories, tax_rates, products, stock]
+        default: { $ref: '#/components/responses/Error' }
+  /orders/push:
+    post:
+      operationId: pushOrder
+      summary: Save one immutable order, payment, and stock movement idempotently
+      security: [{ ownerBearer: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [operation_id, order, items, payment]
+      responses:
+        '200':
+          description: Accepted order or identical replay
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, operation_id, accepted_checkpoint]
+        '409': { description: Operation ID reused with another payload }
+        '422': { description: Rejected validation, totals, or store reference }
+        default: { $ref: '#/components/responses/Error' }
+  /pos/catalog/snapshot:
+    get:
+      operationId: getTerminalCatalogSnapshot
+      summary: Load the provisioned terminal's store catalog and stock snapshot
+      security: [{ deviceAccess: [] }, { cashierSession: [] }]
+      parameters:
+        - { name: store_id, in: query, required: true, schema: { type: string, format: uuid }, description: Must equal the authenticated terminal store. }
+      responses:
+        '200': { description: Store-scoped catalog snapshot for the unlocked cashier terminal }
+        default: { $ref: '#/components/responses/Error' }
+  /pos/orders/push:
+    post:
+      operationId: pushTerminalOrder
+      summary: Save one cashier-terminal order idempotently
+      security: [{ deviceAccess: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [operation_id, order, items, payment]
+      responses:
+        '200': { description: Accepted order or identical replay }
+        '401': { description: Device session is missing, expired, or revoked; queued sales remain local }
+        '403': { description: Payload store does not match the terminal store }
+        default: { $ref: '#/components/responses/Error' }
+  /customers:
+    get:
+      operationId: searchManagementCustomers
+      summary: Search customers in an active owner/manager store membership
+      security: [{ ownerBearer: [] }]
+      parameters:
+        - { name: store_id, in: query, required: true, schema: { type: string, format: uuid } }
+        - { name: phone, in: query, required: true, schema: { type: string, pattern: '^\+[1-9][0-9]{3,14}$' } }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+      responses:
+        '200': { description: Store-scoped customer matches and next cursor, content: { application/json: { schema: { $ref: '#/components/schemas/CustomerSearch' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+        default: { $ref: '#/components/responses/Error' }
+  /pos/customers:
+    get:
+      operationId: searchCashierCustomers
+      summary: Phone search only; never returns an unfiltered directory
+      security: [{ deviceAccess: [], cashierSession: [] }]
+      parameters:
+        - { name: phone, in: query, required: true, schema: { type: string, pattern: '^\+[1-9][0-9]{3,14}$' } }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+      responses:
+        '200': { description: Bounded store-scoped customer matches, content: { application/json: { schema: { $ref: '#/components/schemas/CustomerSearch' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+        default: { $ref: '#/components/responses/Error' }
+  /customers/push:
+    post:
+      operationId: pushManagementCustomer
+      summary: Idempotently create one store customer
+      security: [{ ownerBearer: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CustomerCreateOperation' } } } }
+      responses:
+        '200': { description: Accepted or replayed durable result, content: { application/json: { schema: { $ref: '#/components/schemas/CustomerPushResult' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+        default: { $ref: '#/components/responses/Error' }
+  /pos/customers/push:
+    post:
+      operationId: pushTerminalCustomer
+      summary: Upload a queued customer with device authorization even if its cashier logged out
+      security: [{ deviceAccess: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CustomerCreateOperation' } } } }
+      responses:
+        '200': { description: Accepted or replayed durable result, content: { application/json: { schema: { $ref: '#/components/schemas/CustomerPushResult' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+        default: { $ref: '#/components/responses/Error' }
+  /reports/daily-summary:
+    get:
+      operationId: getDailySummary
+      summary: Aggregate a store's sales for one calendar day, computed in the store's own timezone
+      security: [{ ownerBearer: [] }]
+      parameters:
+        - { name: store_id, in: query, required: true, schema: { type: string, format: uuid } }
+        - { name: date, in: query, required: true, schema: { type: string, format: date }, description: Calendar date (YYYY-MM-DD) in the store's own timezone. }
+      responses:
+        '200': { description: Store-wide totals across every device, content: { application/json: { schema: { $ref: '#/components/schemas/DailySummary' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        default: { $ref: '#/components/responses/Error' }
+  /reports/orders:
+    get:
+      operationId: getReportOrders
+      summary: Cross-device drill-down of a store's orders for one calendar day
+      security: [{ ownerBearer: [] }]
+      parameters:
+        - { name: store_id, in: query, required: true, schema: { type: string, format: uuid } }
+        - { name: date, in: query, required: true, schema: { type: string, format: date } }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        '200': { description: Store-scoped order page and next cursor, content: { application/json: { schema: { $ref: '#/components/schemas/ReportOrdersPage' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        default: { $ref: '#/components/responses/Error' }
+  /reports/oversold:
+    get:
+      operationId: getOversold
+      summary: List products with negative server-truth stock for a store
+      security: [{ ownerBearer: [] }]
+      parameters:
+        - { name: store_id, in: query, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Products whose pos_stock.current_stock is below zero, most oversold first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [products]
+                properties:
+                  products: { type: array, items: { $ref: '#/components/schemas/OversoldProduct' } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        default: { $ref: '#/components/responses/Error' }
+components:
+  securitySchemes:
+    ownerBearer: { type: http, scheme: bearer, bearerFormat: Supabase JWT }
+    deviceAccess: { type: apiKey, in: cookie, name: terminal_access }
+    deviceRefresh: { type: apiKey, in: cookie, name: terminal_refresh }
+    cashierSession: { type: apiKey, in: cookie, name: terminal_cashier }
+  responses:
+    Error:
+      description: '400 invalid request; 401 invalid credentials/PIN; 403 origin or manager access denied; 404 entity missing in store; 429 lockout; 500 unavailable. HTTP authentication failures must not fall back to cached login.'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    Customer:
+      type: object
+      required: [id, store_id, name, phone_normalized]
+      properties:
+        id: { type: string, format: uuid }
+        store_id: { type: string, format: uuid }
+        name: { type: string, minLength: 1, maxLength: 30 }
+        phone_normalized: { type: string, nullable: true, pattern: '^[1-9][0-9]{3,14}$' }
+    CustomerSearch:
+      type: object
+      required: [customers, next_cursor]
+      properties:
+        customers: { type: array, items: { $ref: '#/components/schemas/Customer' } }
+        next_cursor: { type: string, nullable: true, description: Opaque pagination cursor; null means no further page. }
+    CustomerCreateOperation:
+      type: object
+      required: [operation_id, entity_type, schema_version, customer]
+      properties:
+        operation_id: { type: string, format: uuid, description: Stable across all retries. }
+        entity_type: { type: string, enum: [customer] }
+        schema_version: { type: integer, enum: [1] }
+        customer:
+          type: object
+          required: [id, store_id, name, phone_normalized, client_generated_at]
+          properties:
+            id: { type: string, format: uuid, description: Stable client-generated customer UUID. }
+            store_id: { type: string, format: uuid, description: Must equal authenticated store; never grants authorization. }
+            name: { type: string, minLength: 1, maxLength: 30 }
+            phone_normalized: { type: string, nullable: true, pattern: '^[1-9][0-9]{3,14}$' }
+            client_generated_at: { type: string, format: date-time }
+    DailySummary:
+      type: object
+      required: [grossSalesCents, discountCents, netSalesCents, taxCents, cashTakingsCents, cardTakingsCents, recordedTotalCents, completedOrderCount, averageSaleCents, itemsSold, refundedCount, refundedAmountCents]
+      description: Field names match LocalSalesReport in apps/web/src/lib/reporting.ts so the frontend can consume either shape uniformly.
+      properties:
+        grossSalesCents: { type: integer }
+        discountCents: { type: integer }
+        netSalesCents: { type: integer }
+        taxCents: { type: integer }
+        cashTakingsCents: { type: integer }
+        cardTakingsCents: { type: integer }
+        recordedTotalCents: { type: integer }
+        completedOrderCount: { type: integer }
+        averageSaleCents: { type: integer }
+        itemsSold: { type: integer }
+        refundedCount: { type: integer }
+        refundedAmountCents: { type: integer }
+    ReportOrderSummary:
+      type: object
+      required: [id, receiptNumber, time, totalCents, paymentMethod, itemCount, syncStatus, employeeId, cashierName, refunded]
+      properties:
+        id: { type: string, format: uuid }
+        receiptNumber: { type: string }
+        time: { type: string, format: date-time }
+        totalCents: { type: integer }
+        paymentMethod: { type: string, enum: [cash, card, unknown] }
+        itemCount: { type: integer }
+        syncStatus: { type: string, enum: [synced] }
+        employeeId: { type: string, format: uuid, nullable: true }
+        cashierName: { type: string, nullable: true }
+        refunded: { type: boolean }
+    ReportOrdersPage:
+      type: object
+      required: [orders, next_cursor]
+      properties:
+        orders: { type: array, items: { $ref: '#/components/schemas/ReportOrderSummary' } }
+        next_cursor: { type: string, nullable: true, description: Opaque pagination cursor; null means no further page. }
+    OversoldProduct:
+      type: object
+      required: [id, name, sku, current_stock]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        sku: { type: string }
+        current_stock: { type: integer, description: Negative when oversold. }
+    CustomerPushResult:
+      type: object
+      required: [status, operation_id, customer_id, accepted_checkpoint]
+      properties:
+        status: { type: string, enum: [accepted, replayed] }
+        operation_id: { type: string, format: uuid }
+        customer_id: { type: string, format: uuid }
+        accepted_checkpoint: { type: string, pattern: '^[0-9]+$' }
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string, enum: [validation_failed, authentication_required, origin_rejected, manager_required, employee_not_found, device_not_found, pin_locked, pin_invalid, server_unavailable] }
+        message: { type: string }
+    Device:
+      type: object
+      required: [id, store_id, name, receipt_prefix]
+      properties:
+        id: { type: string, format: uuid }
+        store_id: { type: string, format: uuid }
+        name: { type: string }
+        receipt_prefix: { type: string, description: Globally unique installation UUID followed by a hyphen; never reused. Checkout appends a six-digit-minimum sequence in its own transaction. }
+    ManagedDevice:
+      type: object
+      required: [id, name, receipt_prefix, created_at, revoked_at]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        receipt_prefix: { type: string }
+        created_at: { type: string, format: date-time }
+        revoked_at: { type: string, format: date-time, nullable: true }
+    ManagedEmployee:
+      type: object
+      required: [id, name, role, active, permission_version]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        role: { type: string, enum: [cashier, manager] }
+        active: { type: boolean }
+        permission_version: { type: integer, minimum: 1 }
+    CachedEmployee:
+      type: object
+      required: [id, name, role, permission_version, locked_until, verifier]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        role: { type: string, enum: [cashier, manager] }
+        permission_version: { type: integer, minimum: 1 }
+        locked_until: { type: string, format: date-time, nullable: true }
+        verifier:
+          type: object
+          required: [version, algorithm, iterations, salt, hash]
+          properties:
+            version: { type: integer, enum: [1] }
+            algorithm: { type: string, enum: [PBKDF2-SHA256] }
+            iterations: { type: integer, enum: [600000] }
+            salt: { type: string, pattern: '^[0-9a-f]{32}$' }
+            hash: { type: string, pattern: '^[0-9a-f]{64}$' }
+    Session:
+      type: object
+      required: [employee_id, permission_version, logged_in_at, last_server_validated_at]
+      properties:
+        employee_id: { type: string, format: uuid }
+        permission_version: { type: integer, minimum: 1 }
+        logged_in_at: { type: string, format: date-time }
+        last_server_validated_at: { type: string, format: date-time }
+    Projection:
+      type: object
+      required: [device, validated_at, locked_until, employees]
+      properties:
+        device: { $ref: '#/components/schemas/Device' }
+        validated_at: { type: string, format: date-time }
+        locked_until: { type: string, format: date-time, nullable: true }
+        employees: { type: array, items: { $ref: '#/components/schemas/CachedEmployee' } }
+        session: { $ref: '#/components/schemas/Session' }

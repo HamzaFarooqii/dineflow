@@ -1,0 +1,20 @@
+.settings-overview .setup-card > div:last-child {
+  flex: 1;
+}
+
+.settings-overview .setup-card {
+  position: relative;
+  padding-bottom: 112px;
+}
+
+.settings-overview .setup-card .cta {
+  box-sizing: border-box;
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  width: 124px;
+  min-width: 0;
+  margin: 0;
+  transform: translateX(-50%);
+  justify-content: space-between;
+}

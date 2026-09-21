@@ -1,0 +1,29 @@
+{
+  "name": "counterline-api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file=.env --import tsx --watch src/server.ts",
+    "build": "tsc",
+    "test": "tsx --test src/terminal-auth/*.test.ts",
+    "test:integration": "tsx --test test/*.test.ts",
+    "test:browser": "tsx test/browser-check.ts",
+    "test:orders": "node --test --import tsx src/routes/*.test.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.1",
+    "dotenv": "^16.4.5",
+    "express": "^5.1.0",
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "@playwright/test": "^1.63.0",
+    "@types/express": "^5.0.3",
+    "@types/node": "^22.18.0",
+    "@types/pg": "^8.15.5",
+    "tsx": "^4.20.5",
+    "typescript": "~5.7.2",
+    "yaml": "^2.9.1"
+  }
+}

@@ -1,0 +1,24 @@
+.crm-page { padding: clamp(24px, 3vw, 48px); max-width: 1200px; margin: auto; }
+.crm-page h1, .crm-dialog h2 { font-family: Georgia, serif; color: #203d31; }
+.crm-finder { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; margin-top: 24px; }
+.crm-panel { min-width: 0; background: #fffdfa; border: 1px solid #e5dfd1; padding: 24px; }
+.crm-panel h2 { font-family: Georgia, serif; margin: 0 0 8px; }
+.crm-panel p { line-height: 1.5; }
+.crm-panel label { display: block; margin: 18px 0 12px; font-weight: 600; }
+.crm-panel input { display: block; width: 100%; box-sizing: border-box; margin-top: 7px; padding: 12px; border: 1px solid #c9c5b9; background: #fff; color: #203d31; }
+.crm-panel input:focus-visible, .crm-panel button:focus-visible, .crm-dialog button:focus-visible { outline: 3px solid #cfa848; outline-offset: 2px; }
+.customer-name-count { margin: -6px 0 12px; color: #5c675f; font-size: 0.875rem; }
+.crm-results ul { list-style: none; padding: 0; margin: 14px 0; }
+.crm-results li { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #e5dfd1; }
+.crm-results li span { min-width: 0; overflow-wrap: anywhere; }
+.crm-results small { display: block; margin-top: 4px; }
+.crm-empty { color: #6c736c; }
+.crm-overlay { position: fixed; inset: 0; z-index: 40; background: #142a22aa; display: grid; place-items: center; padding: 12px; }
+.crm-dialog { background: #f8f3e7; width: min(100%, 940px); max-height: min(94vh, 900px); overflow: auto; padding: clamp(16px, 3vw, 32px); box-sizing: border-box; }
+.crm-dialog-head { display: flex; justify-content: space-between; align-items: start; gap: 16px; }
+.crm-cart-customer { margin: 14px 0; padding: 12px; border: 1px solid #e5dfd1; background: #f8f3e7; }
+.crm-cart-customer small { display: block; }
+.crm-cart-customer-actions { display: flex; gap: 12px; margin-top: 8px; }
+.crm-sync-note { padding: 10px 12px; border: 1px solid #e9bb75; background: #fff3dd; color: #684715; font-size: 12px; line-height: 1.45; }
+@media (max-width: 768px) { .crm-finder { grid-template-columns: 1fr; } .crm-page { padding: 20px; } .crm-panel { padding: 18px; } .crm-results li { align-items: start; flex-direction: column; } }
+@media (max-width: 700px) { .mobile-nav-with-customers { grid-template-columns: repeat(6, minmax(0, 1fr)); } }

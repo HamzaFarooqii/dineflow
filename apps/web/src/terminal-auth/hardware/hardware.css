@@ -1,0 +1,50 @@
+.terminal-hardware-settings { margin: 0 0 24px; }
+.hardware-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; margin-top: 22px; }
+.hardware-panel { min-width: 0; }
+.hardware-title { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.hardware-title .kicker { margin: 0 0 8px; }
+.hardware-status { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 18px; }
+.hardware-status .terminal-state { white-space: normal; }
+.hardware-details { display: grid; gap: 16px; margin: 20px 0; }
+.identity-details { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.hardware-details dt { color: var(--muted, #667085); font-size: 13px; margin-bottom: 5px; }
+.hardware-details dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+.hardware-help { color: var(--muted, #667085); font-size: 13px; line-height: 1.55; }
+.hardware-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.hardware-panel .secondary-cta, .hardware-panel .text-button { min-height: 44px; }
+.hardware-panel button:disabled { opacity: .6; cursor: not-allowed; }
+.hardware-panel :focus-visible { outline: 3px solid #996c24; outline-offset: 3px; }
+.hardware-panel input { width: 100%; min-height: 44px; }
+.hardware-panel progress { width: 100%; accent-color: var(--pine, #254f41); }
+.hardware-panel form { display: flex; flex-wrap: wrap; gap: 10px; }
+.hardware-panel form label { flex-basis: 100%; margin-bottom: 0; }
+.scanner-value { white-space: pre-wrap; }
+.hardware-recovery { padding-left: 20px; line-height: 1.6; }
+.hardware-recovery li { margin: 12px 0; }
+.hardware-panel details { margin-top: 12px; }
+.hardware-panel summary { cursor: pointer; min-height: 44px; padding: 12px 0; font-weight: 600; }
+.hardware-test-receipt { width: 72mm; max-width: 100%; padding: 4mm; margin: 12px auto; background: white; color: black; font: 12px/1.35 monospace; overflow-wrap: anywhere; border: 1px dashed #777; }
+.hardware-test-receipt h3 { font: bold 18px/1.3 monospace; text-align: center; margin: 0 0 10px; }
+.hardware-test-receipt p { margin: 8px 0; text-align: center; }
+.receipt-test-label { font-weight: bold; border-block: 2px solid black; padding-block: 8px; }
+.receipt-identity { font-size: 10px; }
+.receipt-identity dd { margin: 0 0 6px; }
+.hardware-test-receipt table { width: 100%; border-collapse: collapse; font: inherit; }
+.hardware-test-receipt caption { text-align: left; font-weight: bold; margin: 8px 0; }
+.hardware-test-receipt th, .hardware-test-receipt td { padding: 4px 0; text-align: left; vertical-align: top; }
+.hardware-test-receipt th:last-child, .hardware-test-receipt td:last-child { text-align: right; white-space: nowrap; }
+.hardware-test-receipt small { display: block; }
+.receipt-totals { border-block: 1px dashed black; padding-block: 8px; }
+.receipt-totals div { display: flex; justify-content: space-between; gap: 8px; margin: 4px 0; }
+.receipt-totals dd { margin: 0; }
+.receipt-total { font-weight: bold; font-size: 14px; }
+.terminal-test-print { display: none; }
+@media (max-width: 900px) { .hardware-grid { grid-template-columns: 1fr; } }
+@media (max-width: 480px) { .identity-details { grid-template-columns: 1fr; } .hardware-panel { padding: 18px; } .hardware-actions > * { width: 100%; } }
+@page terminalHardwareTest { size: 80mm 200mm; margin: 4mm; }
+@media print {
+  body:has(> .terminal-test-print) { margin: 0 !important; padding: 0 !important; background: white !important; }
+  body:has(> .terminal-test-print) > :not(.terminal-test-print) { display: none !important; }
+  .terminal-test-print { display: block; page: terminalHardwareTest; width: 72mm; margin: 0; }
+  .terminal-test-print .hardware-test-receipt { width: 72mm; max-width: none; margin: 0; padding: 0; border: 0; break-inside: avoid; }
+}

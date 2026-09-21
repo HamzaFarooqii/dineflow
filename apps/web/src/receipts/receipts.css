@@ -1,0 +1,22 @@
+.receipt-page{max-width:960px;padding:28px 20px;min-width:0;overflow-wrap:anywhere;align-self:start}
+.receipt-page h1{font:400 48px 'DM Serif Display',serif;margin:0 0 20px;color:var(--ink)}
+.receipt-actions{display:flex;flex-wrap:wrap;gap:16px;align-items:center;margin:16px 0}
+.receipt-actions a,.receipt-detail-link{display:inline-flex;align-items:center;min-height:44px;padding:10px 14px;border:1px solid var(--line);background:#f9f5eb;color:var(--pine);text-decoration:none}
+.receipt-feedback{font-size:13px;max-width:620px}
+.sale-receipt{width:100%;max-width:440px;margin:20px 0;background:#fffdf8;border:1px solid var(--line);padding:24px;font:13px/1.5 'DM Sans',sans-serif;color:#111;overflow-wrap:anywhere}
+.sale-receipt header{text-align:center}.sale-receipt h2{font:400 26px/1.2 'DM Serif Display',serif;margin:0 0 12px}.sale-receipt p{margin:8px 0}.receipt-kind{font-weight:800;letter-spacing:.04em}
+.receipt-line{padding:12px 0;border-top:1px dashed #aaa;break-inside:avoid}.receipt-line>strong,.receipt-line>small{display:block}.receipt-line>small{margin:3px 0 8px}.receipt-line>div,.receipt-totals>div{display:flex;justify-content:space-between;gap:12px}.receipt-line>div>*{min-width:0}.receipt-line b{flex-shrink:0}.receipt-line-discount span,.receipt-discount dd{color:#bb4c16}
+.receipt-totals{border-top:1px dashed #aaa;margin:0;padding-top:12px;break-inside:avoid}.receipt-totals>div{margin:6px 0}.receipt-totals dd{margin:0;text-align:right;max-width:65%}.receipt-total{font-size:17px;font-weight:800;border-bottom:1px solid #aaa;padding-bottom:10px}.sale-receipt footer{text-align:center;margin-top:20px}
+.sale-print-root{display:none}.receipt-history{min-width:0;align-self:start}.receipt-history .history-list article>div{min-width:0;overflow-wrap:anywhere}.receipt-history .history-tools label{min-width:0;max-width:100%}.receipt-history .history-tools input{width:100%;min-width:0;max-width:100%}.receipt-history .history-list article{overflow-wrap:anywhere}
+@media(max-width:800px){.cashier-pos-shell>.cashier-pos-sidebar{display:block;padding:8px 9px}.cashier-pos-sidebar>.cashier-pos-brand,.cashier-pos-sidebar>footer,.cashier-pos-sidebar .cashier-nav-muted{display:none}.cashier-pos-shell>.cashier-pos-sidebar>nav{display:flex;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}.cashier-pos-shell>.cashier-pos-sidebar>nav::-webkit-scrollbar{display:none}.cashier-pos-sidebar>nav a{min-height:44px;padding:8px 16px;white-space:nowrap;flex-shrink:0}.receipt-page{padding:20px 8px}.sale-receipt{padding:18px}.receipt-history .history-list article>div{flex-basis:100%}}
+@page saleReceipt{size:80mm 200mm;margin:4mm}
+@media print{
+  body:has(>.sale-print-root){margin:0!important;padding:0!important;background:white!important}
+  body:has(>.sale-print-root)>:not(.sale-print-root){display:none!important}
+  body>.sale-print-root{display:block!important;width:72mm;page:saleReceipt;margin:0;padding:0}
+  .sale-print-root .sale-receipt{width:72mm;max-width:72mm;border:0;padding:0;margin:0;background:white;color:black;font:10pt/1.35 Arial,sans-serif}
+  .sale-print-root h2{font:700 15pt/1.2 Arial,sans-serif}.sale-print-root .receipt-total{font-size:12pt}
+  .sale-print-root .receipt-line{break-inside:avoid;page-break-inside:avoid}.sale-print-root header{break-inside:avoid}.sale-print-root .receipt-totals{break-inside:avoid}
+}
+.refund-action { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
+@media print { .refund-action { display: none; } }
