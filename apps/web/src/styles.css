@@ -209,9 +209,14 @@ html{font-family:'Archivo',sans-serif;color:var(--mise-ink);background:var(--mis
 .catalog-card small{max-width:100%;white-space:normal;width:max-content;border-radius:var(--mise-r1);background:var(--mise-surface-sunken);color:var(--mise-ink-muted);padding:3px 7px;font:500 10px 'IBM Plex Mono',monospace}
 .catalog-card small.low{background:var(--mise-warning-fill);color:var(--mise-warning)}
 .product-art-img{height:118px;width:100%;object-fit:cover;border-radius:var(--mise-r2);background:var(--mise-surface-sunken)}
+.menu-item-station{background:var(--mise-info-fill)!important;color:var(--mise-info)!important}
+.dish-availability-badge{display:inline-flex;padding:3px 7px;border-radius:var(--mise-r1);background:var(--mise-danger-fill);color:var(--mise-danger);font:600 10px 'Archivo',sans-serif}
 .sale-cart{display:flex;flex-direction:column;min-width:0;padding:18px;border:1px solid var(--mise-border-hairline);border-radius:var(--mise-r3);background:var(--mise-surface);position:sticky;top:72px;max-height:calc(100vh - 92px);overflow:auto}
 .cart-title{display:flex;align-items:center;gap:16px;border-bottom:1px solid var(--mise-border-hairline);padding-bottom:14px}
 .cart-title h2{flex:1;margin:0;font:600 17px 'Archivo',sans-serif;letter-spacing:-.01em;color:var(--mise-ink)}
+.order-type-selector{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:14px 0;padding:3px;border-radius:var(--mise-r2);background:var(--mise-surface-sunken)}
+.order-type-selector button{min-height:40px;border:0;border-radius:var(--mise-r1);background:transparent;color:var(--mise-ink-secondary);font:600 12px 'Archivo',sans-serif;transition:background .15s ease,color .15s ease}
+.order-type-selector button.active{background:var(--mise-ink);color:var(--mise-ink-inverse)}
 .cart-line{display:flex;align-items:center;gap:10px;padding:12px 0;font-size:13px}
 .cart-line span{display:grid;gap:3px;flex:1;min-width:0}
 .cart-line span strong{font-size:13px;font-weight:600;color:var(--mise-ink)}

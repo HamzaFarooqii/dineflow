@@ -38,6 +38,8 @@ export interface LocalTaxRate {
   active: boolean
 }
 
+export type MenuCourse = 'appetizer' | 'main' | 'dessert' | 'side' | 'beverage'
+
 export interface LocalProduct {
   id: string
   store_id: string
@@ -50,6 +52,16 @@ export interface LocalProduct {
   active: boolean
   revision: number
   image_url?: string | null  // optional; absent on older records means no image — show a placeholder
+  // Restaurant POS Transformation Blueprint (docs/09) — from supabase/migrations/202609210001.
+  // All optional/nullable: absent on older cached records means "no restaurant data yet", not
+  // "unavailable" — is_available specifically defaults to true server-side for that reason.
+  station_id?: string | null
+  prep_time_seconds?: number | null
+  course?: MenuCourse | null
+  kitchen_name?: string | null
+  is_available?: boolean
+  unavailable_until?: string | null // ISO 8601
+  sells_directly?: boolean
 }
 
 export interface LocalStock {

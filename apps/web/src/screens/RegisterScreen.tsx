@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { calculateDiscountedLine, discountNeedsManagerApproval, formatCents, parseCents } from '../../../../packages/domain/src/money'
+import { ORDER_TYPES, ORDER_TYPE_LABELS } from '../../../../packages/domain/src/order-type'
 import { activeStoreId, loadCatalog } from '../lib/catalog'
 import { posDb, type LocalCategory, type LocalProduct, type LocalStock } from '../lib/db'
 import { pushPendingOrders } from '../lib/order-sync'
@@ -9,6 +10,10 @@ import { currentAccess, type TerminalCache } from '../terminal-auth/cache'
 import { ManagerApprovalModal } from '../terminal-auth/ManagerApprovalModal'
 import { requireSupabase } from '../lib/supabase'
 import { CustomerSelector } from './CustomerScreen'
+import { MenuCategoryTabs } from './menu/MenuCategoryTabs'
+import { MenuItemCard } from './menu/MenuItemCard'
+import { MenuSearch } from './menu/MenuSearch'
+import { RestaurantOrderItem } from './menu/RestaurantOrderItem'
 import { liveQuery } from 'dexie'
 
 export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
@@ -49,6 +54,8 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
   const setManagerApproval = usePosStore(state => state.setManagerApproval)
   const selectedCustomer = usePosStore(state => state.selectedCustomer)
   const selectCustomer = usePosStore(state => state.selectCustomer)
+  const orderType = usePosStore(state => state.orderType)
+  const setOrderType = usePosStore(state => state.setOrderType)
   const setStoreContext = usePosStore(state => state.setStoreContext)
   const setCatalogStatus = usePosStore(state => state.setCatalogStatus)
   const totals = usePosStore(state => state.totals)
@@ -223,11 +230,8 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
 
   return <section className="register-page" aria-label="Register">
     <div className="catalog">
-      <div className="catalog-tools"><label className="search" htmlFor="catalog-search"><span aria-hidden="true">⌕</span>
-        <input id="catalog-search" ref={searchRef} type="search" placeholder="Search the menu by name, SKU or barcode — scan and press Enter" value={query}
-          onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); handleScan() } }} /></label>
-      </div><div className="catalog-filter-bar" aria-label="Menu categories"><strong>Menu</strong><div className="categories"><button type="button" className={categoryId === 'all' ? 'active' : ''} onClick={() => setCategoryId('all')}>All menu items</button>
-        {categories.map(category => <button type="button" key={category.id} className={categoryId === category.id ? 'active' : ''} onClick={() => setCategoryId(category.id)}>{category.name}</button>)}</div></div>
+      <div className="catalog-tools"><MenuSearch value={query} onChange={setQuery} onSubmit={handleScan} inputRef={searchRef} />
+      </div><div className="catalog-filter-bar" aria-label="Menu categories"><strong>Menu</strong><MenuCategoryTabs categories={categories} selectedId={categoryId} onSelect={setCategoryId} /></div>
       {loading && <p className="screen-note" role="status">Loading saved menu…</p>}
       {error && <p className="form-notice error" role="alert">{error}</p>}
       {notice && <p className="screen-note" role="status">{notice}</p>}
@@ -238,49 +242,28 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
           <button type="button" className="secondary-cta" onClick={() => pickScanChoice(product)}>Add</button></li>)}</ul>
       </div>}
       {!loading && !error && !visible.length && <p className="screen-note">{products.length ? 'No menu items match your search.' : 'No menu saved. Connect to load this restaurant’s menu.'}</p>}
-      <div className="catalog-grid">{visible.map(product => <button type="button" className="catalog-card" key={product.id}
+      <div className="catalog-grid">{visible.map(product => <MenuItemCard key={product.id} product={product} stock={stock[product.id] ?? 0} currency={currency}
         disabled={Boolean(product.tax_rate_id && taxRates[product.tax_rate_id] === undefined)}
-        onClick={() => addProductToCart(product)}>
-        {product.image_url ? <img className="product-art-img" src={product.image_url} alt="" aria-hidden="true" /> : <div className="product-art" aria-hidden="true" />}<strong>{product.name}</strong>
-        <span>{formatCents(product.unit_price_cents, currency)}</span><small>{stock[product.id] ?? 0} in stock · {product.sku}</small>
-      </button>)}</div>
+        onSelect={() => addProductToCart(product)} />)}</div>
     </div>
     <aside className="sale-cart"><div className="cart-title"><h2>Open check</h2><button className="text-action" type="button" onClick={() => { if (window.confirm('Void this check and clear it? This cannot be undone.')) clear() }} disabled={!cart.length}>Void check</button></div>
+      <div className="order-type-selector" role="radiogroup" aria-label="Order type">
+        {ORDER_TYPES.map(type => <button key={type} type="button" role="radio" aria-checked={orderType === type}
+          className={orderType === type ? 'active' : ''} onClick={() => setOrderType(type)}>{ORDER_TYPE_LABELS[type]}</button>)}
+      </div>
       <div className="crm-cart-customer">{selectedCustomer && customerAuthorized ? <><strong>{selectedCustomer.name}</strong><small>{selectedCustomer.phone_normalized ? `+${selectedCustomer.phone_normalized}` : 'No phone'} · {selectedCustomer.sync_status === 'synced' ? 'Saved' : 'Pending sync'}</small><div className="crm-cart-customer-actions"><button type="button" className="text-action" onClick={() => setCustomerOpen(true)}>Change customer</button><button type="button" className="text-action" onClick={() => selectCustomer(null)}>Remove</button></div></> : <><button type="button" className="text-action" disabled={!storeId || !customerAuthorized} onClick={() => setCustomerOpen(true)}>Add customer</button>{storeId && !customerAuthorized && <small>Customer access requires validated management membership.</small>}</>}</div>
       {customerSyncWarning && <p className="crm-sync-note" role="status">{customerSyncWarning}</p>}
       {!cart.length && <p className="empty-cart">Add a dish to start this check.</p>}
-      {cart.map(item => {
-        const line = calculateDiscountedLine(item.unitPriceCents, item.quantity, item.taxRateBps, item.discount)
-        const lineFlagged = approvalNeededIds.includes(item.productId)
-        return <div className="cart-line-wrap" key={item.productId}>
-          <div className="cart-line"><span><strong>{item.name}</strong><small>{formatCents(item.unitPriceCents, currency)} each</small></span>
-            <div className="quantity"><button type="button" aria-label={`Remove one ${item.name}`} onClick={() => decrement(item.productId)}>−</button><b>{item.quantity}</b>
-              <button type="button" aria-label={`Add one ${item.name}`} onClick={() => increment(item.productId)}>+</button></div>
-            <button type="button" aria-label={`Remove ${item.name}`} onClick={() => remove(item.productId)}>×</button></div>
-          <div className="cart-line-discount-row">
-            <button type="button" className={`discount-button ${item.discount ? 'active' : ''}`} onClick={() => openDiscountEditor(item)}>{item.discount ? 'Edit discount' : '% Discount'}</button>
-            {item.discount ? <div className="cart-line-money">
-              <span className="cart-line-original">{formatCents(line.subtotalCents, currency)}</span>
-              <span className="cart-line-discount-amount">−{formatCents(line.discountAppliedCents, currency)}</span>
-              <b className="cart-line-net">{formatCents(line.totalCents, currency)}</b>
-            </div> : <b className="cart-line-net">{formatCents(line.totalCents, currency)}</b>}
-          </div>
-          {lineFlagged && <p className={`cart-line-approval-flag ${approvalValid ? 'approved' : ''}`} role="status">{approvalValid ? 'Manager-approved discount' : 'Needs manager approval'}</p>}
-          {discountEditorFor === item.productId && <div className="discount-popover" role="dialog" aria-label={`Discount for ${item.name}`}>
-            <div className="discount-toggle"><button type="button" className={discountKind === 'percent' ? 'active' : ''} onClick={() => { setDiscountKind('percent'); setDiscountInput(''); setDiscountError('') }}>%</button>
-              <button type="button" className={discountKind === 'fixed' ? 'active' : ''} onClick={() => { setDiscountKind('fixed'); setDiscountInput(''); setDiscountError('') }}>$</button></div>
-            <label>{discountKind === 'percent' ? 'Percent off' : 'Amount off'}
-              <input type="text" inputMode="decimal" autoFocus value={discountInput} onChange={event => setDiscountInput(event.target.value)}
-                placeholder={discountKind === 'percent' ? '0–100' : '0.00'} /></label>
-            {discountError && <p className="form-notice error" role="alert">{discountError}</p>}
-            <div className="discount-actions">
-              {item.discount && <button type="button" className="text-action" onClick={() => { setLineDiscount(item.productId, null); setDiscountEditorFor(null) }}>Remove</button>}
-              <button type="button" className="secondary-cta" onClick={() => setDiscountEditorFor(null)}>Cancel</button>
-              <button type="button" className="cta" onClick={() => applyDiscount(item)}>Apply</button>
-            </div>
-          </div>}
-        </div>
-      })}
+      {cart.map(item => <RestaurantOrderItem key={item.productId} item={item} currency={currency}
+        flagged={approvalNeededIds.includes(item.productId)} approvalValid={approvalValid}
+        discountEditorOpen={discountEditorFor === item.productId} discountKind={discountKind} discountInput={discountInput} discountError={discountError}
+        onIncrement={() => increment(item.productId)} onDecrement={() => decrement(item.productId)} onRemove={() => remove(item.productId)}
+        onOpenDiscountEditor={() => openDiscountEditor(item)}
+        onSetDiscountKind={kind => { setDiscountKind(kind); setDiscountInput(''); setDiscountError('') }}
+        onSetDiscountInput={setDiscountInput}
+        onRemoveDiscount={() => { setLineDiscount(item.productId, null); setDiscountEditorFor(null) }}
+        onCancelDiscountEditor={() => setDiscountEditorFor(null)}
+        onApplyDiscount={() => applyDiscount(item)} />)}
       {needsApproval && <div className="manager-approval-banner" role="alert">
         <span>A discount above 20% needs manager approval before checkout.</span>
         <button type="button" className="secondary-cta" onClick={openApprovalModal}>Get manager approval</button>
