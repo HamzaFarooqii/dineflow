@@ -7,6 +7,7 @@
  */
 import { create } from 'zustand'
 import { calculateDiscountedLine, discountNeedsManagerApproval, sumDiscountedLines, type LineDiscount } from '../../../../packages/domain/src/money'
+import type { OrderType } from '../../../../packages/domain/src/order-type'
 import type { LocalCustomer } from './db'
 
 // ---------------------------------------------------------------------------
@@ -85,6 +86,11 @@ export interface PosStore {
   selectedCustomer: LocalCustomer | null
   selectCustomer: (customer: LocalCustomer | null) => void
 
+  // Dine-In / Takeaway / Delivery (Restaurant POS Transformation Blueprint, docs/09, Section 2).
+  // Local/UI state only today — no orders column exists yet to persist it against (Day 2 work).
+  orderType: OrderType
+  setOrderType: (orderType: OrderType) => void
+
   // Line discounts (FEAT-CART-02) and the manager evidence that authorizes them (FEAT-AUTH-02).
   // Any cart mutation above clears managerApproval; setLineDiscount does too, since it changes the signature.
   setLineDiscount: (productId: string, discount: LineDiscount) => void
@@ -118,6 +124,9 @@ export const usePosStore = create<PosStore>((set, get) => ({
   items: [],
   selectedCustomer: null,
   selectCustomer: customer => set({ selectedCustomer: customer }),
+
+  orderType: 'dine_in',
+  setOrderType: orderType => set({ orderType }),
 
   addItem: (product) =>
     set((state) => {
@@ -161,7 +170,7 @@ export const usePosStore = create<PosStore>((set, get) => ({
       }
     }),
 
-  clearCart: () => set({ items: [], selectedCustomer: null, managerApproval: null }),
+  clearCart: () => set({ items: [], selectedCustomer: null, managerApproval: null, orderType: 'dine_in' }),
 
   setLineDiscount: (productId, discount) =>
     set((state) => ({
