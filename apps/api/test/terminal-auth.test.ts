@@ -5,9 +5,15 @@ import { createServer } from 'node:http'
 import { randomUUID } from 'node:crypto'
 import { PGlite } from '@electric-sql/pglite'
 import type { Pool } from 'pg'
-import { createApp } from '../src/app.js'
 
 test('focused migration and terminal HTTP lifecycle on embedded PostgreSQL', async t => {
+  // Set before importing app.js: it transitively imports db.js, whose module-level DATABASE_URL
+  // check runs at import time — this file never actually uses that real Pool (it substitutes the
+  // fake `pool` below), but the import must still succeed. Dynamic + fixture-first, matching every
+  // other test file in this directory, so this file no longer depends on an ambient env var that
+  // happens to be set on some machines and not on a clean CI runner.
+  process.env.DATABASE_URL ??= 'postgresql://fixture@127.0.0.1:5432/fixture'
+  const { createApp } = await import('../src/app.js')
   const db = new PGlite()
   // Supabase platform prerequisites; application tables use the committed migrations.
   await db.exec(`create role anon; create role authenticated; create role service_role bypassrls;
