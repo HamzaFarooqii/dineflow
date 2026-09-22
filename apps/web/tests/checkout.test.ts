@@ -104,7 +104,7 @@ test('rejected push preserves the paid sale for review but rolls back its stock 
 
 test('an existing browser database upgrades queued orders with their store scope', async () => {
   await posDb.delete()
-  const oldDb = new Dexie('counterline-pos')
+  const oldDb = new Dexie('dineflow')
   oldDb.version(2).stores({
     orders: 'id, &receipt_number, client_generated_at, sync_status',
     outbox: '++id, &operation_id, status, next_attempt_at',

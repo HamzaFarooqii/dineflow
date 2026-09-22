@@ -176,7 +176,7 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
     const barcodeMatches = products.filter(product => product.barcode && product.barcode.toLowerCase() === code.toLowerCase())
     if (barcodeMatches.length === 1) { addProductToCart(barcodeMatches[0]); setQuery(''); setScanNotice(`Added ${barcodeMatches[0].name} from scan.`); searchRef.current?.focus(); return }
     if (barcodeMatches.length > 1) { setScanChoices(barcodeMatches); return }
-    setError(`Product not found for barcode: ${code}`)
+    setError(`No menu item found for barcode: ${code}`)
   }
 
   function pickScanChoice(product: LocalProduct) {
@@ -224,20 +224,20 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
   return <section className="register-page" aria-label="Register">
     <div className="catalog">
       <div className="catalog-tools"><label className="search" htmlFor="catalog-search"><span aria-hidden="true">⌕</span>
-        <input id="catalog-search" ref={searchRef} type="search" placeholder="Search name, SKU or barcode — scan and press Enter" value={query}
+        <input id="catalog-search" ref={searchRef} type="search" placeholder="Search the menu by name, SKU or barcode — scan and press Enter" value={query}
           onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); handleScan() } }} /></label>
-      </div><div className="catalog-filter-bar" aria-label="Product categories"><strong>Browse</strong><div className="categories"><button type="button" className={categoryId === 'all' ? 'active' : ''} onClick={() => setCategoryId('all')}>All products</button>
+      </div><div className="catalog-filter-bar" aria-label="Menu categories"><strong>Menu</strong><div className="categories"><button type="button" className={categoryId === 'all' ? 'active' : ''} onClick={() => setCategoryId('all')}>All menu items</button>
         {categories.map(category => <button type="button" key={category.id} className={categoryId === category.id ? 'active' : ''} onClick={() => setCategoryId(category.id)}>{category.name}</button>)}</div></div>
-      {loading && <p className="screen-note" role="status">Loading saved catalog…</p>}
+      {loading && <p className="screen-note" role="status">Loading saved menu…</p>}
       {error && <p className="form-notice error" role="alert">{error}</p>}
       {notice && <p className="screen-note" role="status">{notice}</p>}
       {scanNotice && <p className="screen-note scan-toast" role="status">{scanNotice}</p>}
       {scanChoices && <div className="scan-picker" role="dialog" aria-label="Choose a product for this barcode">
-        <div className="scan-picker-head"><strong>Multiple products share this barcode</strong><button type="button" className="text-action" onClick={() => setScanChoices(null)}>Cancel</button></div>
+        <div className="scan-picker-head"><strong>Multiple menu items share this barcode</strong><button type="button" className="text-action" onClick={() => setScanChoices(null)}>Cancel</button></div>
         <ul>{scanChoices.map(product => <li key={product.id}><span>{product.name} <small>{product.sku}</small></span>
           <button type="button" className="secondary-cta" onClick={() => pickScanChoice(product)}>Add</button></li>)}</ul>
       </div>}
-      {!loading && !error && !visible.length && <p className="screen-note">{products.length ? 'No products match your search.' : 'No catalog saved. Connect to load this store’s products.'}</p>}
+      {!loading && !error && !visible.length && <p className="screen-note">{products.length ? 'No menu items match your search.' : 'No menu saved. Connect to load this restaurant’s menu.'}</p>}
       <div className="catalog-grid">{visible.map(product => <button type="button" className="catalog-card" key={product.id}
         disabled={Boolean(product.tax_rate_id && taxRates[product.tax_rate_id] === undefined)}
         onClick={() => addProductToCart(product)}>
@@ -245,10 +245,10 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
         <span>{formatCents(product.unit_price_cents, currency)}</span><small>{stock[product.id] ?? 0} in stock · {product.sku}</small>
       </button>)}</div>
     </div>
-    <aside className="sale-cart"><div className="cart-title"><h2>Current Sale</h2><button className="text-action" type="button" onClick={() => { if (window.confirm('Void this sale and clear the cart? This cannot be undone.')) clear() }} disabled={!cart.length}>Clear cart</button></div>
+    <aside className="sale-cart"><div className="cart-title"><h2>Open check</h2><button className="text-action" type="button" onClick={() => { if (window.confirm('Void this check and clear it? This cannot be undone.')) clear() }} disabled={!cart.length}>Void check</button></div>
       <div className="crm-cart-customer">{selectedCustomer && customerAuthorized ? <><strong>{selectedCustomer.name}</strong><small>{selectedCustomer.phone_normalized ? `+${selectedCustomer.phone_normalized}` : 'No phone'} · {selectedCustomer.sync_status === 'synced' ? 'Saved' : 'Pending sync'}</small><div className="crm-cart-customer-actions"><button type="button" className="text-action" onClick={() => setCustomerOpen(true)}>Change customer</button><button type="button" className="text-action" onClick={() => selectCustomer(null)}>Remove</button></div></> : <><button type="button" className="text-action" disabled={!storeId || !customerAuthorized} onClick={() => setCustomerOpen(true)}>Add customer</button>{storeId && !customerAuthorized && <small>Customer access requires validated management membership.</small>}</>}</div>
       {customerSyncWarning && <p className="crm-sync-note" role="status">{customerSyncWarning}</p>}
-      {!cart.length && <p className="empty-cart">Add a product to start a sale.</p>}
+      {!cart.length && <p className="empty-cart">Add a dish to start this check.</p>}
       {cart.map(item => {
         const line = calculateDiscountedLine(item.unitPriceCents, item.quantity, item.taxRateBps, item.discount)
         const lineFlagged = approvalNeededIds.includes(item.productId)

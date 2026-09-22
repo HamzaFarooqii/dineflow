@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react'
 import { resolveFinancialAccess } from '../lib/management-access'
 import { fetchAuditLog, type ServerAuditEntry } from '../lib/server-audit'
-import './reporting.css'
+import './activity.css'
 
 function AccessMessage({ message }: { message: string }) {
   return (
-    <section className="reporting-page report-access" role="alert">
-      <h2>Activity log unavailable</h2>
-      <p>{message}</p>
+    <section className="mise-log-page mise-log-alert" role="alert">
+      <div>
+        <h2>Activity log unavailable</h2>
+        <p>{message}</p>
+      </div>
     </section>
   )
 }
@@ -15,12 +17,24 @@ function AccessMessage({ message }: { message: string }) {
 const actionLabels: Record<string, string> = {
   'terminal.revoked': 'Terminal revoked',
   'terminal.reactivated': 'Terminal reactivated',
-  'employee.created': 'Employee created',
-  'employee.updated': 'Employee updated',
+  'employee.created': 'Staff member added',
+  'employee.updated': 'Staff member updated',
+}
+
+// Presentation only: the same semantic vocabulary the closed-check list and sync
+// queue use — danger where access was taken away, success where it was restored,
+// info for a routine record change.
+const actionTones: Record<string, string> = {
+  'terminal.revoked': 'danger',
+  'terminal.reactivated': 'success',
 }
 
 function describeAction(action: string): string {
   return actionLabels[action] ?? action
+}
+
+function toneFor(action: string): string {
+  return actionTones[action] ?? 'info'
 }
 
 export function ActivityScreen() {
@@ -36,26 +50,25 @@ export function ActivityScreen() {
   }, [])
   if (error) return <AccessMessage message={error} />
   return (
-    <section className="reporting-page activity-page">
-      <header className="reporting-heading">
-        <div>
-          <p className="kicker">STORE ADMINISTRATION</p>
-          <h1>Store activity.</h1>
-          <p>A record of sensitive management actions taken in this store, newest first.</p>
-        </div>
+    <section className="mise-log-page">
+      <header className="mise-log-head">
+        <p className="kicker">RESTAURANT ADMINISTRATION</p>
+        <h1>Activity log.</h1>
+        <p>A record of sensitive management actions taken in this restaurant, newest first.</p>
       </header>
       {!entries && <p role="status">Loading activity…</p>}
-      {entries && entries.length === 0 && <p className="team-empty">No activity has been recorded for this store yet.</p>}
+      {entries && entries.length === 0 && <p className="mise-log-empty">No activity has been recorded for this restaurant yet.</p>}
       {entries && entries.length > 0 && (
-        <ul className="activity-list">
+        <ul className="mise-log-list">
           {entries.map(entry => (
             <li key={entry.id}>
-              <div className="activity-line">
-                <strong>{describeAction(entry.action)}</strong>
-                <span>{entry.target}</span>
+              <span className={`mise-log-tag ${toneFor(entry.action)}`}>{describeAction(entry.action)}</span>
+              <div className="mise-log-row">
+                <strong>{entry.target}</strong>
               </div>
               <small>
-                {entry.actorName ?? 'A team member'} · {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(entry.createdAt))}
+                {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(entry.createdAt))}
+                <span className="mise-log-actor">{entry.actorName ?? 'A team member'}</span>
               </small>
             </li>
           ))}

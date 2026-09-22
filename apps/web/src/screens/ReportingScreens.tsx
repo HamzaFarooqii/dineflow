@@ -171,14 +171,14 @@ function useOversoldProducts(storeId: string | undefined) {
     if (!storeId) return
     void (async () => {
       if (!(await isApiReachable())) {
-        if (active) setError('Connect to the internet to load server-wide oversold products.')
+        if (active) setError('Connect to the internet to load restaurant-wide oversold items.')
         return
       }
       try {
         const result = await fetchOversold(storeId)
         if (active) setProducts(result)
       } catch (reason) {
-        if (active) setError(reason instanceof Error ? reason.message : 'Unable to load oversold products.')
+        if (active) setError(reason instanceof Error ? reason.message : 'Unable to load oversold items.')
       }
     })()
     return () => {
@@ -226,8 +226,9 @@ function usePreviousDayTotal(storeId: string | undefined, day: string | undefine
 
 export interface CashierBreakdownRow { employeeId: string | null; name: string; orderCount: number; totalCents: number; refundedCount: number; refundedCents: number }
 
-// Sales-by-cashier: pages through the same cross-device /reports/orders drill-down used for remote
-// history restoration, grouping by cashierName/employeeId. Server-only (like the oversold panel) —
+// Sales by staff: pages through the same cross-device /reports/orders drill-down used for remote
+// history restoration, grouping by cashierName/employeeId (the API field names are unchanged; only
+// the user-facing label reads "staff" now). Server-only (like the oversold panel) —
 // employee attribution across every device isn't available from a single browser's local Dexie data.
 function useCashierBreakdown(storeId: string | undefined, day: string | undefined) {
   const [rows, setRows] = useState<CashierBreakdownRow[]>()
@@ -239,7 +240,7 @@ function useCashierBreakdown(storeId: string | undefined, day: string | undefine
     if (!storeId || !day) return
     void (async () => {
       if (!(await isApiReachable())) {
-        if (active) setError('Connect to the internet to load the cashier breakdown.')
+        if (active) setError('Connect to the internet to load the staff breakdown.')
         return
       }
       try {
@@ -269,7 +270,7 @@ function useCashierBreakdown(storeId: string | undefined, day: string | undefine
         } while (cursor && active)
         if (active) setRows(Array.from(totals.values()).sort((a, b) => b.totalCents - a.totalCents))
       } catch (reason) {
-        if (active) setError(reason instanceof Error ? reason.message : 'Unable to load the cashier breakdown.')
+        if (active) setError(reason instanceof Error ? reason.message : 'Unable to load the staff breakdown.')
       }
     })()
     return () => {
@@ -287,7 +288,7 @@ const Money = ({ cents, currency }: { cents: number; currency: string }) => <>{f
 function exportDailyReportCsv(state: ReportState) {
   const { report, config, day } = state
   const rows: (string | number)[][] = [
-    ['Counterline POS — daily sales report'],
+    ['Dineflow — daily sales report'],
     ['Store', config.name],
     ['Report date', day],
     ['Timezone', config.timezone],
@@ -302,14 +303,14 @@ function exportDailyReportCsv(state: ReportState) {
     ['Card takings', formatCents(report.cardTakingsCents, config.currency)],
     ['Recorded total', formatCents(report.recordedTotalCents, config.currency)],
     ['Completed orders', report.completedOrderCount],
-    ['Average sale', formatCents(report.averageSaleCents, config.currency)],
+    ['Average ticket', formatCents(report.averageSaleCents, config.currency)],
     ['Items sold', report.itemsSold],
     ['Pending sync — count', report.pendingCount],
     ['Pending sync — amount', formatCents(report.pendingAmountCents, config.currency)],
     ['Rejected — count', report.rejectedCount],
     ['Rejected — amount', formatCents(report.rejectedAmountCents, config.currency)],
   ]
-  downloadCsv(`counterline-daily-report-${day}.csv`, buildCsv(rows))
+  downloadCsv(`dineflow-daily-report-${day}.csv`, buildCsv(rows))
 }
 
 export function OwnerDashboardScreen() {
@@ -328,7 +329,7 @@ export function OwnerDashboardScreen() {
     <section className="reporting-page owner-dashboard">
       <header className="reporting-heading">
         <div>
-          <p className="kicker">STORE WORKSPACE · {config.name}</p>
+          <p className="kicker">RESTAURANT OVERVIEW · {config.name}</p>
           <h1>Today at a glance.</h1>
           <p>Recorded sales for today in {config.timezone}. Offline and pending sales remain included.</p>
         </div>
@@ -347,9 +348,9 @@ export function OwnerDashboardScreen() {
           featured
           delta={previousDayTotal === undefined ? undefined : <DeltaBadge current={report.recordedTotalCents} previous={previousDayTotal} />}
         />
-        <ReportCard label="Completed orders" value={report.completedOrderCount} detail="Saved in this store browser" />
-        <ReportCard label="Average sale" value={<Money cents={report.averageSaleCents} currency={config.currency} />} detail="Original sale total ÷ orders" />
-        <ReportCard label="Items sold" value={report.itemsSold} detail="Total units rung up today" />
+        <ReportCard label="Completed orders" value={report.completedOrderCount} detail="Recorded in this browser" />
+        <ReportCard label="Average ticket" value={<Money cents={report.averageSaleCents} currency={config.currency} />} detail="Original sale total ÷ orders" />
+        <ReportCard label="Items sold" value={report.itemsSold} detail="Total items rung in today" />
       </div>
 
       {/* Tender Breakdown & Sync Status */}
@@ -396,8 +397,8 @@ export function OwnerDashboardScreen() {
       <div className="dashboard-columns">
         <section className="dashboard-panel">
           <div className="panel-header">
-            <h2>Top products today</h2>
-            <small>Best sellers by quantity</small>
+            <h2>Top menu items</h2>
+            <small>Best sellers today by quantity</small>
           </div>
           {topProducts.length ? (
             <ol className="ranked-list">
@@ -406,14 +407,14 @@ export function OwnerDashboardScreen() {
                   <span className="rank-badge">{idx + 1}</span>
                   <div className="ranked-details">
                     <strong>{p.name}</strong>
-                    <small>{p.quantity} {p.quantity === 1 ? 'unit' : 'units'} sold</small>
+                    <small>{p.quantity} {p.quantity === 1 ? 'item' : 'items'} sold</small>
                   </div>
                   <b><Money cents={p.totalCents} currency={config.currency} /></b>
                 </li>
               ))}
             </ol>
           ) : (
-            <p className="empty-panel-copy">No product sales recorded yet today.</p>
+            <p className="empty-panel-copy">No menu item sales recorded yet today.</p>
           )}
         </section>
 
@@ -437,14 +438,14 @@ export function OwnerDashboardScreen() {
               ))}
             </ul>
           ) : (
-            <p className="empty-panel-copy healthy">✓ All product inventory levels are healthy.</p>
+            <p className="empty-panel-copy healthy">✓ All inventory levels are healthy.</p>
           )}
         </section>
 
         <section className="dashboard-panel">
           <div className="panel-header">
-            <h2>Oversold products</h2>
-            <small>Server-wide stock gone negative, across every device</small>
+            <h2>Oversold items</h2>
+            <small>Restaurant-wide stock gone negative, across every device</small>
           </div>
           {oversoldError ? (
             <p className="empty-panel-copy">{oversoldError}</p>
@@ -463,7 +464,7 @@ export function OwnerDashboardScreen() {
               ))}
             </ul>
           ) : (
-            <p className="empty-panel-copy healthy">✓ No products are oversold across the store.</p>
+            <p className="empty-panel-copy healthy">✓ No items are oversold across the restaurant.</p>
           )}
         </section>
       </div>
@@ -473,7 +474,7 @@ export function OwnerDashboardScreen() {
         <div className="panel-header">
           <div>
             <h2>Recent orders</h2>
-            <small>Latest transactions across this store</small>
+            <small>Latest checks across the restaurant</small>
           </div>
           <Link className="panel-link" to="/orders">View all orders <span aria-hidden="true">→</span></Link>
         </div>
@@ -570,13 +571,13 @@ export function ReportsScreen() {
 
           <section className="dashboard-panel">
             <div className="panel-header">
-              <h2>Sales by cashier</h2>
+              <h2>Sales by staff</h2>
               <small>Gross sales and refunds across devices for {day}</small>
             </div>
             {cashierError ? (
               <p className="empty-panel-copy">{cashierError}</p>
             ) : cashierRows === undefined ? (
-              <p className="empty-panel-copy" role="status">Loading cashier breakdown…</p>
+              <p className="empty-panel-copy" role="status">Loading staff breakdown…</p>
             ) : cashierRows.length ? (
               <ul className="ranked-list">
                 {cashierRows.map(row => (
@@ -702,9 +703,9 @@ export function CashierDashboardScreen() {
     <section className="reporting-page cashier-dashboard">
       <header className="reporting-heading">
         <div>
-          <p className="kicker">CASHIER WORKSPACE · {state.terminal}</p>
+          <p className="kicker">SERVICE TERMINAL · {state.terminal}</p>
           <h1>Hello, {state.cashier}.</h1>
-          <p>Terminal ready for checkout. Shift sales and recent transactions are saved locally.</p>
+          <p>Terminal ready for service. Shift sales and recent checks are saved locally.</p>
         </div>
         <Link className="report-primary" to="/pos/register">Open register <span aria-hidden="true">→</span></Link>
       </header>
@@ -712,7 +713,7 @@ export function CashierDashboardScreen() {
       {/* Shift Register Metrics */}
       <div className="report-card-grid">
         <ReportCard label="Today’s shift sales" value={<Money cents={state.shift.salesCents} currency={state.currency} />} detail="Total recorded on this terminal" />
-        <ReportCard label="Shift transactions" value={state.shift.orderCount} detail="Completed checkouts today" />
+        <ReportCard label="Checks closed" value={state.shift.orderCount} detail="Completed checkouts today" />
         <ReportCard label="Cash in drawer" value={<Money cents={cashInDrawer} currency={state.currency} />} detail="Net cash collected (less change)" />
         <ReportCard label="Card takings" value={<Money cents={state.shift.cardCents} currency={state.currency} />} detail="External card approvals" />
       </div>
@@ -722,8 +723,8 @@ export function CashierDashboardScreen() {
         <Link className="cashier-action-btn primary" to="/pos/register">
           <span aria-hidden="true">⌁</span>
           <div>
-            <strong>New sale</strong>
-            <small>Open counter register</small>
+            <strong>New check</strong>
+            <small>Open the register</small>
           </div>
         </Link>
         <Link className="cashier-action-btn" to="/pos/orders">
@@ -736,7 +737,7 @@ export function CashierDashboardScreen() {
         <Link className="cashier-action-btn" to="/pos/customers">
           <span aria-hidden="true">♧</span>
           <div>
-            <strong>Customers</strong>
+            <strong>Guests</strong>
             <small>Directory & lookup</small>
           </div>
         </Link>
@@ -768,7 +769,7 @@ export function CashierDashboardScreen() {
               ))}
             </ul>
           ) : (
-            <p className="empty-panel-copy">No sales completed on this terminal yet.</p>
+            <p className="empty-panel-copy">No checks closed on this terminal yet.</p>
           )}
         </section>
 
@@ -870,25 +871,26 @@ function DeltaBadge({ current, previous }: { current: number; previous: number }
   )
 }
 
-// Cash vs. card split as an SVG donut instead of the old flat two-segment bar — still pure CSS/SVG,
-// no charting library, matching the visual system's palette (green for cash, coral/orange for card).
+// Cash vs. card split as an SVG donut — still pure CSS/SVG, no charting library. Strokes are set
+// from MISE tokens in reporting.css (track = sunken surface, cash = info blue, card = saffron),
+// following the design system's fixed categorical series order rather than hard-coded hexes.
 function TenderDonut({ cashPct, cardPct }: { cashPct: number; cardPct: number }) {
   const radius = 40
   const circumference = 2 * Math.PI * radius
   const cashLength = (cashPct / 100) * circumference
   return (
     <svg viewBox="0 0 100 100" className="tender-donut" role="img" aria-label={`Cash ${cashPct} percent, card ${cardPct} percent`}>
-      <circle cx="50" cy="50" r={radius} fill="none" stroke="#eae2d3" strokeWidth="14" />
+      <circle className="donut-track" cx="50" cy="50" r={radius} fill="none" strokeWidth="14" />
       {cashPct > 0 && (
         <circle
-          cx="50" cy="50" r={radius} fill="none" stroke="#238b55" strokeWidth="14"
+          className="donut-cash" cx="50" cy="50" r={radius} fill="none" strokeWidth="14"
           strokeDasharray={`${cashLength} ${circumference - cashLength}`}
           transform="rotate(-90 50 50)"
         />
       )}
       {cardPct > 0 && (
         <circle
-          cx="50" cy="50" r={radius} fill="none" stroke="#e2712a" strokeWidth="14"
+          className="donut-card" cx="50" cy="50" r={radius} fill="none" strokeWidth="14"
           strokeDasharray={`${circumference - cashLength} ${cashLength}`}
           strokeDashoffset={-cashLength}
           transform="rotate(-90 50 50)"

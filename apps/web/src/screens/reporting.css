@@ -1,273 +1,336 @@
+/* ── Reporting surfaces (owner dashboard, daily report, service terminal) — MISE ──
+   Every colour, radius and space here is a --mise-* token from :root in styles.css.
+   Rules of the system applied below:
+     · Flat by default — a 1px hairline is the separator; no card shadows.
+     · Elevation and position never change on hover; only colour does.
+     · Archivo for all text, IBM Plex Mono for every amount, count and percentage.
+     · Full-round (r4) only for dots and count bubbles — pills and buttons use r1/r2/r3.
+     · Chart series palette, in order: info blue → saffron → success green → violet. */
+
 .reporting-page {
-  padding: clamp(24px, 4vw, 54px);
+  padding: clamp(20px, 3vw, 32px);
   max-width: 1280px;
   margin: 0 auto;
+  font-family: 'Archivo', sans-serif;
+  color: var(--mise-ink);
 }
 
+/* ── Page heading ───────────────────────────────────────────────────────── */
 .reporting-heading {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 20px;
-  margin-bottom: 24px;
+  gap: var(--mise-space-24);
+  margin-bottom: var(--mise-space-24);
+  padding-bottom: var(--mise-space-16);
+  border-bottom: 1px solid var(--mise-border-hairline);
+}
+
+.reporting-heading .kicker {
+  font: 500 10px 'IBM Plex Mono', monospace;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--mise-ink-muted);
+  margin: 0 0 var(--mise-space-8);
 }
 
 .reporting-heading h1 {
-  font: 400 clamp(36px, 4.5vw, 56px) / 1 'DM Serif Display', Georgia, serif;
-  letter-spacing: -0.04em;
-  margin: 6px 0 10px;
-  color: #17201f;
+  font-family: 'Archivo', sans-serif;
+  font-weight: 600;
+  font-size: clamp(26px, 3vw, 34px);
+  line-height: 1.1;
+  letter-spacing: -0.025em;
+  margin: 0 0 var(--mise-space-8);
+  color: var(--mise-ink);
 }
 
 .reporting-heading p {
-  color: var(--muted, #5f5b51);
+  color: var(--mise-ink-secondary);
   font-size: 13px;
-  max-width: 650px;
+  line-height: 1.5;
+  max-width: 68ch;
   margin: 0;
 }
 
 .heading-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--mise-space-8);
   flex-shrink: 0;
 }
 
+/* ── Buttons ────────────────────────────────────────────────────────────── */
 .report-primary {
   display: inline-flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 18px;
-  border-radius: 6px;
-  background: var(--coral, #ec6b24);
-  color: #fff;
+  justify-content: center;
+  gap: var(--mise-space-8);
+  min-height: 44px;
+  padding: 0 var(--mise-space-24);
+  border: 1px solid var(--mise-action);
+  border-radius: var(--mise-r3);
+  background: var(--mise-action);
+  color: var(--mise-ink-inverse);
   text-decoration: none;
-  font-weight: 700;
+  font-weight: 600;
   font-size: 13px;
-  transition: opacity 0.15s ease;
+  transition: background-color 0.12s ease;
 }
 
 .report-primary:hover {
-  opacity: 0.92;
+  background: var(--mise-action-hover);
+  border-color: var(--mise-action-hover);
 }
 
 .report-secondary {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 12px 16px;
-  border-radius: 6px;
-  background: #ede6d8;
-  color: #24352b;
+  justify-content: center;
+  gap: var(--mise-space-8);
+  min-height: 44px;
+  padding: 0 var(--mise-space-16);
+  border: 1px solid var(--mise-border-strong);
+  border-radius: var(--mise-r3);
+  background: var(--mise-surface);
+  color: var(--mise-ink);
   text-decoration: none;
-  font-weight: 700;
+  font-weight: 600;
   font-size: 13px;
-  border: 1px solid #dcd4c3;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
 }
 
 .report-secondary:hover {
-  background: #e5ddcd;
+  background: var(--mise-surface-sunken);
+  border-color: var(--mise-ink-muted);
 }
 
-/* KPI Card Grid */
+.reporting-page a:focus-visible,
+.reporting-page button:focus-visible,
+.reporting-page input:focus-visible {
+  outline: 2px solid var(--mise-ink);
+  outline-offset: 2px;
+}
+
+/* ── KPI cards ──────────────────────────────────────────────────────────── */
 .report-card-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 20px;
+  gap: var(--mise-space-12);
+  margin-bottom: var(--mise-space-16);
 }
 
 .report-card {
   min-width: 0;
-  background: #fffdf9;
-  border: 1px solid #ded6c6;
-  border-radius: 8px;
-  padding: 18px 20px;
+  background: var(--mise-surface);
+  border: 1px solid var(--mise-border-hairline);
+  border-radius: var(--mise-r3);
+  padding: var(--mise-space-16);
   display: grid;
-  gap: 8px;
-  box-shadow: 0 2px 6px rgba(44, 35, 24, 0.03);
+  gap: var(--mise-space-8);
+  align-content: start;
 }
 
 .report-card small {
   font-size: 11px;
-  color: #5f5b51;
+  color: var(--mise-ink-muted);
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.07em;
 }
 
 .report-card strong {
-  font-size: clamp(22px, 2.4vw, 32px);
-  color: #17201f;
-  font-weight: 800;
-  line-height: 1.1;
+  font-family: 'IBM Plex Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(21px, 2.2vw, 28px);
+  font-weight: 500;
+  color: var(--mise-ink);
+  line-height: 1.15;
+  letter-spacing: -0.01em;
   overflow-wrap: anywhere;
-}
-
-.report-card span {
-  font-size: 11px;
-  color: #3b7448;
 }
 
 .report-card-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--mise-space-8);
   flex-wrap: wrap;
 }
 
-/* Visual hierarchy: the headline KPI gets an accent border and slightly larger figure so the eye
-   lands there first, instead of every card reading as identically weighted. */
+.report-card-footer span {
+  font-size: 11px;
+  color: var(--mise-ink-muted);
+  line-height: 1.35;
+}
+
+/* The headline figure earns a heavier ink rule and a larger number — hierarchy
+   through weight and scale, never through colour or shadow. */
 .report-card.featured {
-  background: #f3ede0;
-  border-color: #c7bda3;
-  border-left: 4px solid #238b55;
+  border-left: 3px solid var(--mise-action);
 }
 
 .report-card.featured strong {
-  font-size: clamp(26px, 3vw, 38px);
-  color: #14291f;
+  font-size: clamp(24px, 2.8vw, 34px);
+  font-weight: 600;
 }
 
 .delta-badge {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--mise-space-4);
+  font-family: 'IBM Plex Mono', monospace;
+  font-variant-numeric: tabular-nums;
   font-size: 10px;
-  font-weight: 700;
-  padding: 2px 7px;
-  border-radius: 999px;
+  font-weight: 500;
+  padding: 2px var(--mise-space-8);
+  border-radius: var(--mise-r1);
   white-space: nowrap;
 }
 
-.delta-badge.up { background: #e2f5e7; color: #1d7b4b; }
-.delta-badge.down { background: #fee4e2; color: #b42318; }
-.delta-badge.flat { background: #ede6d8; color: #5f5b51; }
+.delta-badge.up { background: var(--mise-success-fill); color: var(--mise-success); }
+.delta-badge.down { background: var(--mise-danger-fill); color: var(--mise-danger); }
+.delta-badge.flat { background: var(--mise-surface-sunken); color: var(--mise-ink-muted); }
 
-/* Subgrid for Tender Split + Sync */
+/* ── Panels ─────────────────────────────────────────────────────────────── */
 .dashboard-subgrid {
   display: grid;
   grid-template-columns: minmax(0, 1.8fr) minmax(0, 1.2fr);
-  gap: 16px;
-  margin-bottom: 20px;
+  gap: var(--mise-space-16);
+  margin-bottom: var(--mise-space-16);
 }
 
 .dashboard-panel {
-  background: #fffdf9;
-  border: 1px solid #ded6c6;
-  border-radius: 8px;
-  padding: 20px;
-  box-shadow: 0 2px 6px rgba(44, 35, 24, 0.03);
+  background: var(--mise-surface);
+  border: 1px solid var(--mise-border-hairline);
+  border-radius: var(--mise-r3);
+  padding: var(--mise-space-16) var(--mise-space-24);
 }
 
 .panel-header {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  gap: 12px;
-  margin-bottom: 16px;
-  border-bottom: 1px solid #eee7d9;
-  padding-bottom: 10px;
+  gap: var(--mise-space-12);
+  margin-bottom: var(--mise-space-16);
+  border-bottom: 1px solid var(--mise-border-hairline);
+  padding-bottom: var(--mise-space-12);
 }
 
 .panel-header h2 {
-  font: 400 20px 'DM Serif Display', Georgia, serif;
+  font-family: 'Archivo', sans-serif;
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: -0.01em;
   margin: 0;
-  color: #1a2720;
+  color: var(--mise-ink);
 }
 
 .panel-header small {
-  color: #6a665d;
+  color: var(--mise-ink-muted);
   font-size: 11px;
 }
 
 .panel-link {
-  color: #c95716;
+  color: var(--mise-ink);
   text-decoration: none;
-  font-weight: 700;
+  font-weight: 600;
   font-size: 12px;
+  white-space: nowrap;
 }
 
 .panel-link:hover {
   text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
-/* Tender Donut Chart */
+/* ── Tender split donut (chart palette: cash = info blue, card = saffron) ── */
 .tender-distribution {
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: var(--mise-space-24);
   flex-wrap: wrap;
 }
 
 .tender-donut {
-  width: 110px;
-  height: 110px;
+  width: 112px;
+  height: 112px;
   flex-shrink: 0;
 }
 
-.tender-donut circle {
-  transition: stroke-dasharray 0.3s ease;
-}
+.donut-track { stroke: var(--mise-surface-sunken); }
+.donut-cash { stroke: var(--mise-info); }
+.donut-card { stroke: var(--mise-saffron); }
 
 .donut-pct {
-  font: 800 16px 'DM Serif Display', Georgia, serif;
-  fill: #17201f;
+  font: 500 15px 'IBM Plex Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  fill: var(--mise-ink);
 }
 
 .donut-label {
-  font: 700 8px system-ui, sans-serif;
-  fill: #726e64;
+  font: 600 7px 'Archivo', sans-serif;
+  fill: var(--mise-ink-muted);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.1em;
 }
 
 .tender-legend {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--mise-space-12);
   flex: 1;
-  min-width: 160px;
+  min-width: 170px;
 }
 
 .legend-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--mise-space-8);
   font-size: 12px;
-  color: #43403a;
+  color: var(--mise-ink-secondary);
 }
 
 .legend-item strong {
-  color: #17201f;
-  margin-left: 2px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  color: var(--mise-ink);
+  margin-left: auto;
 }
 
 .legend-item small {
-  color: #726e64;
+  font-family: 'IBM Plex Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--mise-ink-muted);
 }
 
+/* Dots are one of the few full-round shapes the system allows. */
 .dot {
   width: 9px;
   height: 9px;
-  border-radius: 50%;
+  border-radius: var(--mise-r4);
   display: inline-block;
+  flex-shrink: 0;
 }
 
-.dot-cash { background: #238b55; }
-.dot-card { background: #e2712a; }
+.dot-cash { background: var(--mise-info); }
+.dot-card { background: var(--mise-saffron); }
 
-/* Unresolved Sync Panel */
+/* ── Unresolved / status amounts ────────────────────────────────────────── */
 .unresolved-panel {
-  padding: 18px 20px;
-  background: #f4eee2;
-  border: 1px solid #d8cebd;
-  border-radius: 8px;
+  padding: var(--mise-space-16) var(--mise-space-24);
+  background: var(--mise-surface-sunken);
+  border: 1px solid var(--mise-border-hairline);
+  border-radius: var(--mise-r3);
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--mise-space-12);
   align-items: stretch;
+  margin-bottom: var(--mise-space-16);
+}
+
+.dashboard-subgrid .unresolved-panel {
+  margin-bottom: 0;
 }
 
 .unresolved-panel > div:first-child {
@@ -275,57 +338,66 @@
 }
 
 .unresolved-panel h2 {
-  font: 400 20px 'DM Serif Display', Georgia, serif;
-  margin: 0 0 4px;
-  color: #17201f;
+  font-family: 'Archivo', sans-serif;
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+  margin: 0 0 var(--mise-space-4);
+  color: var(--mise-ink);
 }
 
 .unresolved-panel p {
   font-size: 11px;
-  color: #5f5b51;
+  color: var(--mise-ink-secondary);
   margin: 0;
-  line-height: 1.4;
+  line-height: 1.45;
 }
 
 .status-amount {
-  background: #fffdf9;
-  border: 1px solid #e2d9c8;
-  border-radius: 6px;
-  padding: 12px 14px;
+  background: var(--mise-surface);
+  border: 1px solid var(--mise-border-hairline);
+  border-radius: var(--mise-r2);
+  padding: var(--mise-space-12);
   display: grid;
-  gap: 4px;
+  gap: var(--mise-space-4);
 }
 
 .status-amount small {
   font-size: 10px;
   text-transform: uppercase;
-  color: #5f5b51;
-  font-weight: 700;
+  letter-spacing: 0.07em;
+  color: var(--mise-ink-muted);
+  font-weight: 600;
 }
 
 .status-amount strong {
+  font-family: 'IBM Plex Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
   font-size: 22px;
-  color: #17201f;
+  color: var(--mise-ink);
+  line-height: 1.1;
 }
 
 .status-amount span {
+  font-family: 'IBM Plex Mono', monospace;
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
-  color: #5f5b51;
+  color: var(--mise-ink-secondary);
 }
 
 .status-amount.rejected {
-  border-left: 3px solid #b34330;
+  border-left: 3px solid var(--mise-danger);
 }
 
-/* Two-column layout */
+/* ── Two-column analytics ───────────────────────────────────────────────── */
 .dashboard-columns {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-  margin-bottom: 20px;
+  gap: var(--mise-space-16);
+  margin-bottom: var(--mise-space-16);
 }
 
-/* Ranked products list */
 .ranked-list, .alert-list {
   list-style: none;
   padding: 0;
@@ -336,38 +408,52 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
-  padding: 12px 0;
-  border-bottom: 1px solid #f0ece3;
+  gap: var(--mise-space-16);
+  padding: var(--mise-space-12) 0;
+  border-bottom: 1px solid var(--mise-border-hairline);
 }
 
 .ranked-row:last-child, .alert-row:last-child {
   border-bottom: 0;
+  padding-bottom: 0;
 }
 
+.ranked-row b, .alert-row b {
+  font-family: 'IBM Plex Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  font-size: 13px;
+  color: var(--mise-ink);
+  white-space: nowrap;
+}
+
+/* Count bubble — full round is correct here. */
 .rank-badge {
   width: 24px;
   height: 24px;
   display: grid;
   place-items: center;
-  border-radius: 50%;
-  background: #ede6d8;
-  color: #3b3731;
+  border-radius: var(--mise-r4);
+  background: var(--mise-surface-sunken);
+  color: var(--mise-ink-secondary);
+  font-family: 'IBM Plex Mono', monospace;
+  font-variant-numeric: tabular-nums;
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 500;
   flex-shrink: 0;
 }
 
 .ranked-details {
   display: grid;
-  gap: 2px;
+  gap: var(--mise-space-2);
   flex: 1;
   min-width: 0;
 }
 
 .ranked-details strong, .alert-row strong {
   font-size: 13px;
-  color: #17201f;
+  font-weight: 600;
+  color: var(--mise-ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -375,41 +461,45 @@
 
 .ranked-details small, .alert-row small {
   font-size: 11px;
-  color: #726e64;
+  color: var(--mise-ink-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .stock-pill {
-  padding: 4px 10px;
-  border-radius: 999px;
+  padding: var(--mise-space-4) var(--mise-space-8);
+  border-radius: var(--mise-r2);
+  font-family: 'IBM Plex Mono', monospace;
+  font-variant-numeric: tabular-nums;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 500;
   white-space: nowrap;
 }
 
 .stock-pill.low {
-  background: #fff2d6;
-  color: #8c5b0d;
+  background: var(--mise-warning-fill);
+  color: var(--mise-warning);
 }
 
 .stock-pill.out {
-  background: #fee4e2;
-  color: #b42318;
+  background: var(--mise-danger-fill);
+  color: var(--mise-danger);
 }
 
 .empty-panel-copy {
-  margin: 12px 0;
-  color: #726e64;
+  margin: var(--mise-space-12) 0;
+  color: var(--mise-ink-muted);
   font-size: 12px;
+  line-height: 1.5;
 }
 
 .empty-panel-copy.healthy {
-  color: #238b55;
+  color: var(--mise-success);
   font-weight: 600;
 }
 
-/* Recent Orders Table */
+/* ── Recent orders table ────────────────────────────────────────────────── */
 .recent-orders-panel {
-  margin-top: 10px;
+  margin-top: var(--mise-space-8);
 }
 
 .table-wrapper {
@@ -424,123 +514,159 @@
 }
 
 .dashboard-table th {
-  padding: 10px 12px;
-  border-bottom: 2px solid #e5decfe0;
-  color: #5f5b51;
-  font-size: 11px;
-  font-weight: 700;
+  padding: var(--mise-space-8) var(--mise-space-12);
+  border-bottom: 1px solid var(--mise-border-strong);
+  color: var(--mise-ink-muted);
+  font-size: 10px;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.07em;
+  white-space: nowrap;
 }
 
 .dashboard-table td {
-  padding: 12px;
-  border-bottom: 1px solid #f2ede4;
-  color: #17201f;
+  padding: var(--mise-space-12);
+  border-bottom: 1px solid var(--mise-border-hairline);
+  color: var(--mise-ink);
+}
+
+.dashboard-table tr:last-child td {
+  border-bottom: 0;
 }
 
 .dashboard-table tr:hover td {
-  background: #fbf8f0;
+  background: var(--mise-canvas);
+}
+
+/* Time, item count and totals are numeric columns — set them in mono. */
+.dashboard-table td:nth-child(2),
+.dashboard-table td:nth-child(3),
+.dashboard-table .num {
+  font-family: 'IBM Plex Mono', monospace;
+  font-variant-numeric: tabular-nums;
 }
 
 .dashboard-table .num {
   text-align: right;
+  white-space: nowrap;
+}
+
+.dashboard-table .num strong {
+  font-weight: 500;
 }
 
 .receipt-link {
-  color: #c95716;
-  font-weight: 700;
-  text-decoration: none;
+  font-family: 'IBM Plex Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--mise-ink);
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--mise-border-strong);
 }
 
 .receipt-link:hover {
-  text-decoration: underline;
+  text-decoration-color: var(--mise-ink);
 }
 
 .method-badge {
-  padding: 3px 8px;
-  border-radius: 4px;
+  display: inline-block;
+  padding: 3px var(--mise-space-8);
+  border-radius: var(--mise-r1);
+  font-family: 'Archivo', sans-serif;
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 600;
+  letter-spacing: 0.05em;
 }
 
-.method-badge.cash { background: #e2f5e7; color: #1d7b4b; }
-.method-badge.card { background: #fff0e2; color: #b85317; }
-.method-badge.unknown { background: #eee; color: #666; }
+.method-badge.cash { background: var(--mise-info-fill); color: var(--mise-info); }
+.method-badge.card { background: var(--mise-saffron-fill); color: var(--mise-saffron-deep); }
+.method-badge.unknown { background: var(--mise-surface-sunken); color: var(--mise-ink-muted); }
 
 .sync-pill {
-  padding: 3px 8px;
-  border-radius: 999px;
+  display: inline-block;
+  padding: 3px var(--mise-space-8);
+  border-radius: var(--mise-r1);
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 600;
   text-transform: capitalize;
+  letter-spacing: 0.02em;
 }
 
-.sync-pill.synced { background: #e2f5e7; color: #1d7b4b; }
-.sync-pill.pending { background: #fff0d6; color: #8e5c10; }
-.sync-pill.failed { background: #fee4e2; color: #b42318; }
-.sync-pill.refunded { background: #ece7f5; color: #5b3fa8; }
+.sync-pill.synced { background: var(--mise-success-fill); color: var(--mise-success); }
+.sync-pill.pending { background: var(--mise-warning-fill); color: var(--mise-warning); }
+.sync-pill.failed { background: var(--mise-danger-fill); color: var(--mise-danger); }
+.sync-pill.refunded { background: var(--mise-surface-sunken); color: var(--mise-accent-violet); }
 
-/* Cashier Actions Bar */
+/* ── Service terminal: quick actions ────────────────────────────────────── */
 .cashier-actions-bar {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 20px;
+  gap: var(--mise-space-12);
+  margin-bottom: var(--mise-space-16);
 }
 
+/* Terminal targets: tall, generous, and static on hover (no lift, no shadow). */
 .cashier-action-btn {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 16px;
-  background: #fffdf9;
-  border: 1px solid #ded6c6;
-  border-radius: 8px;
+  gap: var(--mise-space-16);
+  min-height: 72px;
+  padding: var(--mise-space-16);
+  background: var(--mise-surface);
+  border: 1px solid var(--mise-border-hairline);
+  border-radius: var(--mise-r3);
   text-decoration: none;
-  color: #17201f;
-  transition: transform 0.1s ease, box-shadow 0.1s ease;
-  box-shadow: 0 2px 6px rgba(44, 35, 24, 0.03);
+  color: var(--mise-ink);
+  transition: background-color 0.12s ease, border-color 0.12s ease;
 }
 
 .cashier-action-btn:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(44, 35, 24, 0.06);
+  background: var(--mise-surface-sunken);
+  border-color: var(--mise-border-strong);
 }
 
 .cashier-action-btn.primary {
-  background: #14291f;
-  color: #fff;
-  border-color: #14291f;
+  background: var(--mise-action);
+  color: var(--mise-ink-inverse);
+  border-color: var(--mise-action);
 }
 
-.cashier-action-btn span {
+.cashier-action-btn.primary:hover {
+  background: var(--mise-action-hover);
+  border-color: var(--mise-action-hover);
+}
+
+.cashier-action-btn > span {
   font-size: 22px;
+  color: var(--mise-ink-muted);
+  line-height: 1;
 }
 
-.cashier-action-btn.primary span {
-  color: #f59b58;
+.cashier-action-btn.primary > span {
+  color: var(--mise-ink-inverse);
 }
 
 .cashier-action-btn div {
   display: grid;
-  gap: 2px;
+  gap: var(--mise-space-2);
 }
 
 .cashier-action-btn strong {
-  font-size: 14px;
+  font-size: 15px;
+  font-weight: 600;
 }
 
 .cashier-action-btn small {
   font-size: 11px;
-  color: #6a665d;
+  color: var(--mise-ink-muted);
 }
 
 .cashier-action-btn.primary small {
-  color: #a4b8ab;
+  color: var(--mise-service-ink-muted);
 }
 
-/* Cashier Recent List */
+/* ── Service terminal: recent receipts ──────────────────────────────────── */
 .cashier-recent-list {
   list-style: none;
   padding: 0;
@@ -551,8 +677,9 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 0;
-  border-bottom: 1px solid #f0ece3;
+  gap: var(--mise-space-12);
+  padding: var(--mise-space-12) 0;
+  border-bottom: 1px solid var(--mise-border-hairline);
 }
 
 .cashier-recent-row:last-child {
@@ -561,109 +688,130 @@
 
 .receipt-meta {
   display: grid;
-  gap: 3px;
+  gap: var(--mise-space-4);
+  min-width: 0;
 }
 
 .receipt-meta strong {
+  font-family: 'IBM Plex Mono', monospace;
+  font-variant-numeric: tabular-nums;
   font-size: 13px;
-  color: #17201f;
+  font-weight: 500;
+  color: var(--mise-ink);
 }
 
 .receipt-meta small {
   font-size: 11px;
-  color: #726e64;
+  color: var(--mise-ink-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .receipt-end {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: var(--mise-space-16);
 }
 
 .receipt-end b {
+  font-family: 'IBM Plex Mono', monospace;
+  font-variant-numeric: tabular-nums;
   font-size: 15px;
-  color: #17201f;
+  font-weight: 500;
+  color: var(--mise-ink);
+  white-space: nowrap;
 }
 
 .reprint-btn {
-  padding: 6px 12px;
-  border-radius: 5px;
-  background: #ede6d8;
-  color: #24352b;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 var(--mise-space-16);
+  border: 1px solid var(--mise-border-strong);
+  border-radius: var(--mise-r3);
+  background: var(--mise-surface);
+  color: var(--mise-ink);
   text-decoration: none;
-  font-size: 11px;
-  font-weight: 700;
-  border: 1px solid #dcd4c3;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
 }
 
 .reprint-btn:hover {
-  background: #e2dac9;
+  background: var(--mise-surface-sunken);
+  border-color: var(--mise-ink-muted);
 }
 
-/* Terminal Status DL */
+/* ── Terminal status ────────────────────────────────────────────────────── */
 .terminal-status-list {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 14px 20px;
+  gap: var(--mise-space-16) var(--mise-space-24);
   margin: 0;
   font-size: 12px;
 }
 
 .terminal-status-list dt {
-  color: #6a665d;
-  font-size: 11px;
+  color: var(--mise-ink-muted);
+  font-size: 10px;
   font-weight: 600;
-  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin-bottom: var(--mise-space-4);
 }
 
 .terminal-status-list dd {
   margin: 0;
-  font-weight: 700;
-  color: #17201f;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--mise-ink);
 }
 
 .terminal-status-list code {
-  background: #efe9dc;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 11px;
+  font-family: 'IBM Plex Mono', monospace;
+  background: var(--mise-surface-sunken);
+  padding: 2px var(--mise-space-8);
+  border-radius: var(--mise-r2);
+  font-size: 12px;
 }
 
 .status-badge {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 3px 8px;
-  border-radius: 999px;
+  gap: var(--mise-space-4);
+  padding: 3px var(--mise-space-8);
+  border-radius: var(--mise-r1);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .status-badge.active {
-  background: #e2f5e7;
-  color: #1d7b4b;
+  background: var(--mise-success-fill);
+  color: var(--mise-success);
 }
 
 .status-badge.offline {
-  background: #fff0d6;
-  color: #8e5c10;
+  background: var(--mise-warning-fill);
+  color: var(--mise-warning);
 }
 
-/* Daily Report Lines */
+/* ── Daily report lines ─────────────────────────────────────────────────── */
 .report-metrics {
-  border: 1px solid #ded6c6;
-  background: #f9f5eb;
-  border-radius: 8px;
+  border: 1px solid var(--mise-border-hairline);
+  background: var(--mise-surface);
+  border-radius: var(--mise-r3);
   overflow: hidden;
+  margin-bottom: var(--mise-space-16);
 }
 
 .report-line {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 18px;
-  padding: 16px 20px;
-  border-bottom: 1px solid #e4dccd;
+  gap: var(--mise-space-24);
+  padding: var(--mise-space-16) var(--mise-space-24);
+  border-bottom: 1px solid var(--mise-border-hairline);
 }
 
 .report-line:last-child {
@@ -672,153 +820,167 @@
 
 .report-line div {
   display: grid;
-  gap: 4px;
+  gap: var(--mise-space-4);
 }
 
 .report-line strong {
   font-size: 13px;
+  font-weight: 600;
+  color: inherit;
 }
 
 .report-line small {
-  font-size: 10px;
-  color: var(--muted, #5f5b51);
+  font-size: 11px;
+  color: var(--mise-ink-muted);
+  line-height: 1.4;
 }
 
 .report-line b {
-  font-size: 16px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 15px;
+  font-weight: 500;
   white-space: nowrap;
 }
 
+/* The recorded total is the one figure the whole page resolves to. */
 .report-line.emphasized {
-  background: #183428;
-  color: #fff;
+  background: var(--mise-action);
+  color: var(--mise-ink-inverse);
 }
 
 .report-line.emphasized small {
-  color: #ccd4cc;
+  color: var(--mise-service-ink-muted);
 }
 
+.report-line.emphasized b {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+/* ── Access / warning states ────────────────────────────────────────────── */
 .report-access {
-  background: #f9f5eb;
-  border: 1px solid #ded6c6;
-  border-radius: 8px;
+  background: var(--mise-surface);
+  border: 1px solid var(--mise-border-hairline);
+  border-left: 3px solid var(--mise-danger);
+  border-radius: var(--mise-r3);
 }
 
 .report-access.embedded {
-  padding: 22px;
+  padding: var(--mise-space-24);
+  margin-top: var(--mise-space-16);
 }
 
 .report-access h2 {
-  font: 400 26px 'DM Serif Display', Georgia, serif;
-  margin: 0 0 8px;
+  font-family: 'Archivo', sans-serif;
+  font-weight: 600;
+  font-size: 18px;
+  letter-spacing: -0.01em;
+  margin: 0 0 var(--mise-space-8);
+  color: var(--mise-ink);
 }
 
 .report-access p {
   margin: 0;
-  color: var(--muted, #5f5b51);
+  color: var(--mise-ink-secondary);
   font-size: 13px;
+  line-height: 1.5;
 }
 
 .operation-warning {
-  margin-top: 14px;
-  border-left: 3px solid #b34330;
-  background: #fbeae7;
-  color: #702b1e;
-  padding: 12px;
+  margin-top: var(--mise-space-16);
+  border: 1px solid var(--mise-border-hairline);
+  border-left: 3px solid var(--mise-danger);
+  background: var(--mise-danger-fill);
+  color: var(--mise-danger);
+  padding: var(--mise-space-12);
   font-size: 12px;
-  border-radius: 0 6px 6px 0;
+  line-height: 1.45;
+  border-radius: var(--mise-r2);
 }
 
-/* FEAT-STAT-02: distinct pending/in-flight/blocked/rejected sync-state chips. */
-.sync-breakdown { display: flex; flex-wrap: wrap; gap: 6px; }
-.sync-chip { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 999px; font-size: 10px; font-weight: 700; white-space: nowrap; }
-.sync-chip.pending { background: #f5d9a6; color: #7a5416; }
-.sync-chip.in_flight { background: #d6e6f5; color: #1d4e80; }
-.sync-chip.blocked { background: #eadcf5; color: #5c3487; }
-.sync-chip.rejected { background: #f8d5cc; color: #9c3022; }
-.sync-center-link { display: inline-block; margin-top: 14px; }
+/* Sync-state chips: pending = warning, in flight = info, blocked = violet,
+   rejected = danger. Same order as the chart palette so states read alike. */
+.sync-breakdown { display: flex; flex-wrap: wrap; gap: var(--mise-space-4); }
 
-/* Activity log */
-.activity-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  border: 1px solid #ded6c6;
-  background: #fffdf9;
-  border-radius: 8px;
-  overflow: hidden;
+.sync-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px var(--mise-space-8);
+  border-radius: var(--mise-r1);
+  font-family: 'IBM Plex Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
 }
 
-.activity-list li {
-  padding: 14px 20px;
-  border-bottom: 1px solid #f0ece3;
-  display: grid;
-  gap: 4px;
-}
+.sync-chip.pending { background: var(--mise-warning-fill); color: var(--mise-warning); }
+.sync-chip.in_flight { background: var(--mise-info-fill); color: var(--mise-info); }
+.sync-chip.blocked { background: var(--mise-surface-sunken); color: var(--mise-accent-violet); }
+.sync-chip.rejected { background: var(--mise-danger-fill); color: var(--mise-danger); }
 
-.activity-list li:last-child {
-  border-bottom: 0;
-}
+.sync-center-link { display: inline-flex; margin-top: var(--mise-space-16); }
 
-.activity-line {
+/* Activity log styling moved to screens/activity.css (ActivityScreen now owns its own
+   stylesheet with mise-log-* classes) — this file no longer has any activity-log consumer. */
+
+/* ── Report date control ────────────────────────────────────────────────── */
+.reports-heading-controls {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.activity-line strong {
-  color: #17201f;
-  font-size: 13px;
-}
-
-.activity-line span {
-  color: #5f5b51;
-  font-size: 12px;
-}
-
-.activity-list small {
-  color: #726e64;
-  font-size: 11px;
+  align-items: flex-end;
+  gap: var(--mise-space-8);
 }
 
 .day-picker {
   display: grid;
-  gap: 6px;
-  font-size: 11px;
-  font-weight: 700;
+  gap: var(--mise-space-4);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--mise-ink-muted);
 }
 
 .day-picker input {
-  min-width: 170px;
-  border: 1px solid var(--line, #ded6c6);
-  background: #fffaf0;
-  padding: 10px 12px;
-  border-radius: 6px;
-  font: inherit;
+  min-width: 176px;
+  min-height: 44px;
+  border: 1px solid var(--mise-border-strong);
+  border-radius: var(--mise-r3);
+  background: var(--mise-surface);
+  color: var(--mise-ink);
+  padding: 0 var(--mise-space-12);
+  font: 400 13px 'IBM Plex Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  text-transform: none;
+  letter-spacing: 0;
 }
 
-/* Skeleton loading states — CSS-only shimmer, no new dependency. */
-@keyframes skeleton-shimmer {
-  0% { background-position: -200px 0; }
-  100% { background-position: calc(200px + 100%) 0; }
+.day-picker input:hover {
+  border-color: var(--mise-ink-muted);
 }
 
+.export-csv-btn {
+  cursor: pointer;
+  font-family: 'Archivo', sans-serif;
+}
+
+/* ── Loading placeholders ───────────────────────────────────────────────────
+   Static sunken blocks rather than a shimmer: the system is flat and calm, and
+   motion here would be decoration. The live regions still announce loading. */
 .skeleton {
-  border-radius: 8px;
-  background: linear-gradient(90deg, #ede6d8 0%, #f6f1e5 40%, #ede6d8 80%);
-  background-size: 400px 100%;
-  animation: skeleton-shimmer 1.4s ease-in-out infinite;
-  border: 1px solid #ded6c6;
+  border-radius: var(--mise-r3);
+  background: var(--mise-surface-sunken);
+  border: 1px solid var(--mise-border-hairline);
 }
 
 .skeleton-heading {
   height: 64px;
-  margin-bottom: 24px;
+  margin-bottom: var(--mise-space-24);
 }
 
 .skeleton-card {
-  height: 92px;
+  height: 96px;
 }
 
 .skeleton-panel {
@@ -833,31 +995,15 @@
   height: 58px;
   border-radius: 0;
   border: 0;
-  border-bottom: 1px solid #e4dccd;
+  border-bottom: 1px solid var(--mise-border-hairline);
+  background: var(--mise-surface-sunken);
 }
 
 .skeleton-line-row:last-child {
   border-bottom: 0;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .skeleton {
-    animation: none;
-  }
-}
-
-.reports-heading-controls {
-  display: flex;
-  align-items: flex-end;
-  gap: 10px;
-}
-
-.export-csv-btn {
-  cursor: pointer;
-  font: inherit;
-}
-
-/* Responsive Breakpoints */
+/* ── Responsive ─────────────────────────────────────────────────────────── */
 @media (max-width: 960px) {
   .report-card-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -872,7 +1018,7 @@
 
 @media (max-width: 700px) {
   .reporting-page {
-    padding: 20px 12px;
+    padding: var(--mise-space-16) var(--mise-space-12);
   }
   .reporting-heading {
     align-items: stretch;
@@ -885,6 +1031,9 @@
     flex: 1;
     justify-content: center;
   }
+  .dashboard-panel {
+    padding: var(--mise-space-16);
+  }
   .terminal-status-list {
     grid-template-columns: 1fr;
   }
@@ -892,6 +1041,10 @@
     width: 100%;
     flex-direction: column;
     align-items: stretch;
+  }
+  .day-picker input {
+    width: 100%;
+    min-width: 0;
   }
   .export-csv-btn {
     justify-content: center;
@@ -902,15 +1055,8 @@
   .report-card-grid {
     grid-template-columns: 1fr;
   }
-  .reporting-heading h1 {
-    font-size: 32px;
-  }
   .unresolved-panel {
-    padding: 14px;
-  }
-  .day-picker input {
-    width: 100%;
-    min-width: 0;
+    padding: var(--mise-space-16);
   }
   .tender-distribution {
     flex-direction: column;
@@ -919,5 +1065,8 @@
   .tender-legend {
     width: 100%;
     min-width: 0;
+  }
+  .report-line {
+    padding: var(--mise-space-16);
   }
 }

@@ -16,9 +16,9 @@ import '../receipts/receipts.css'
 function entryLabel(entry: OutboxEntry): string {
   try {
     const payload = JSON.parse(entry.payload) as { order?: { receipt_number?: string }; customer?: { name?: string } }
-    if (entry.entity_type === 'customer') return payload.customer?.name ? `Customer: ${payload.customer.name}` : 'Customer record'
-    return payload.order?.receipt_number ? `Sale ${payload.order.receipt_number}` : 'Sale'
-  } catch { return entry.entity_type === 'customer' ? 'Customer record' : 'Sale' }
+    if (entry.entity_type === 'customer') return payload.customer?.name ? `Guest: ${payload.customer.name}` : 'Guest record'
+    return payload.order?.receipt_number ? `Check ${payload.order.receipt_number}` : 'Check'
+  } catch { return entry.entity_type === 'customer' ? 'Guest record' : 'Check' }
 }
 
 export function SyncCenterScreen({ terminal = false }: { terminal?: boolean }) {
@@ -46,7 +46,7 @@ export function SyncCenterScreen({ terminal = false }: { terminal?: boolean }) {
     setBusyId(entry.id ?? -1); setNotice(''); setError('')
     try {
       if (!navigator.onLine) { setNotice('You are offline. This entry stays queued and will retry automatically once reconnected.'); return }
-      if (await receiptStore(terminal) !== scope.storeId) throw new Error('Store access changed. Reload before retrying.')
+      if (await receiptStore(terminal) !== scope.storeId) throw new Error('Restaurant access changed. Reload before retrying.')
       await retryOrder(entry.operation_id, scope.storeId, terminal)
       setNotice(`Retry attempted for ${entryLabel(entry)}.`)
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not retry this entry.') }
@@ -69,8 +69,8 @@ export function SyncCenterScreen({ terminal = false }: { terminal?: boolean }) {
   const visible = (entries ?? []).filter(entry => filter === 'all' || classifySyncState(entry) === filter)
   const byOperationId = new Map((entries ?? []).map(entry => [entry.operation_id, entry]))
 
-  return <section className="order-history receipt-history"><p className="kicker">SYNC DIAGNOSTICS</p><h1>Sync Center.</h1>
-    <p className="screen-note">Every queued operation for this store in this browser, exactly as the sync engine sees it. Nothing here can be dismissed or deleted while unsynced.</p>
+  return <section className="order-history receipt-history"><p className="kicker">SYNC DIAGNOSTICS</p><h1>Sync center.</h1>
+    <p className="screen-note">Every queued operation for this restaurant in this browser, exactly as the sync engine sees it. Nothing here can be dismissed or deleted while unsynced.</p>
     <div className="receipt-actions"><Link to={terminal ? '/pos/dashboard' : '/dashboard'}>← Back to dashboard</Link>
       <button type="button" onClick={exportDiagnostics} disabled={!entries?.length}>Export diagnostics (JSON)</button></div>
 
@@ -85,7 +85,7 @@ export function SyncCenterScreen({ terminal = false }: { terminal?: boolean }) {
     {notice && <p role="status">{notice}</p>}
     {error && <p className="form-notice error" role="alert">{error}</p>}
     {!scope.error && !loadError && entries === undefined && <p role="status">Loading the sync queue…</p>}
-    {entries?.length === 0 && <p>The sync queue is empty for this store in this browser.</p>}
+    {entries?.length === 0 && <p>The sync queue is empty for this restaurant in this browser.</p>}
     {Boolean(entries?.length) && !visible.length && <p>No queue entries match this filter.</p>}
 
     <div className="history-list">{visible.map(entry => {
@@ -98,7 +98,7 @@ export function SyncCenterScreen({ terminal = false }: { terminal?: boolean }) {
       return <article key={entry.id}>
         <div><strong>{entryLabel(entry)}</strong><small>{new Date(entry.created_at).toLocaleString()} · attempt {entry.attempt_count} · {entry.entity_type ?? 'order'}</small></div>
         <span className={`order-state ${state}`}>{SYNC_STATE_LABELS[state]}</span>
-        {entry.entity_type !== 'customer' && <Link className="receipt-detail-link" to={`${terminal ? '/pos/orders' : '/orders'}/${encodeURIComponent(entry.order_id)}`}>View receipt</Link>}
+        {entry.entity_type !== 'customer' && <Link className="receipt-detail-link" to={`${terminal ? '/pos/orders' : '/orders'}/${encodeURIComponent(entry.order_id)}`}>View check</Link>}
         {canRetry && <button type="button" disabled={busyId !== null} onClick={() => void retry(entry)}>{busyId === (entry.id ?? -1) ? 'Retrying…' : 'Retry now'}</button>}
         {entry.failure_reason && <p className="history-reason">{entry.failure_reason}{entry.reason_code ? ` (${entry.reason_code})` : ''}</p>}
         {entry.failure_kind === 'authentication' && <p className="history-reason">Sign in again on this terminal, then retry — this entry is not permanently rejected.</p>}

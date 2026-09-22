@@ -20,7 +20,7 @@ export function CustomerFinder({ storeId, terminal, onSelect }: { storeId: strin
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const normalizedName = name.trim().replace(/\s+/g, ' ')
-  const nameError = normalizedName.length > 30 ? 'Customer name must be 30 characters or fewer.' : ''
+  const nameError = normalizedName.length > 30 ? 'Guest name must be 30 characters or fewer.' : ''
   useEffect(() => {
     let active = true
     setServer([]); setNextCursor(null); setError('')
@@ -36,7 +36,7 @@ export function CustomerFinder({ storeId, terminal, onSelect }: { storeId: strin
       setNextCursor(result.next_cursor)
       setLocal(await searchLocalCustomers(storeId, query))
       setMessage(result.customers.length ? 'Online matches loaded.' : 'No online matches found.')
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Customer lookup is unavailable.') }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Guest lookup is unavailable.') }
     finally { setSearching(false) }
   }
   const create = async (event: FormEvent<HTMLFormElement>) => {
@@ -44,31 +44,31 @@ export function CustomerFinder({ storeId, terminal, onSelect }: { storeId: strin
     try {
       const customer = await createLocalCustomer(storeId, name, phone)
       setName(''); setPhone('')
-      setMessage('Customer saved on this browser. It will sync when connected.')
+      setMessage('Guest saved on this browser. It will sync when connected.')
       if (onSelect) onSelect(customer)
       setLocal(await searchLocalCustomers(storeId, query))
       void pushPendingOrders(storeId, terminal).catch(() => undefined)
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Customer could not be saved.') }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Guest could not be saved.') }
     finally { setBusy(false) }
   }
   const matches = [...local, ...server.filter(remote => !local.some(customer => customer.id === remote.id))]
   return <div className="crm-finder">
-    <section className="crm-panel" aria-labelledby="crm-search-title"><h2 id="crm-search-title">Find a customer</h2>
-      <p>Search by international phone number. Local matches appear immediately; online lookup adds saved store matches.</p>
+    <section className="crm-panel" aria-labelledby="crm-search-title"><h2 id="crm-search-title">Find a guest</h2>
+      <p>Search by international phone number. Local matches appear immediately; online lookup adds saved restaurant matches.</p>
       <label>Phone with country code<input type="tel" inputMode="tel" autoComplete="off" placeholder="+923001234567" value={query} onChange={event => { setQuery(event.target.value); setMessage('') }} /></label>
       <button type="button" className="secondary-cta" disabled={!query.trim() || searching || !navigator.onLine} onClick={() => void onlineSearch()}>{searching ? 'Searching…' : 'Search online'}</button>
-      {query.trim() && <div className="crm-results" role="region" aria-live="polite" aria-label="Customer matches">
+      {query.trim() && <div className="crm-results" role="region" aria-live="polite" aria-label="Guest matches">
         {matches.length ? <ul>{matches.map(customer => <li key={customer.id}><span><strong>{customer.name}</strong><small>{customer.phone_normalized ? `+${customer.phone_normalized}` : 'No phone'} · {customer.sync_status === 'synced' ? 'Saved' : customer.sync_status === 'failed' ? 'Needs review' : 'Pending sync'}</small>{customer.failure_reason && <small role="status">{customer.failure_reason}</small>}</span>
-          {onSelect && <button type="button" className="secondary-cta" onClick={() => onSelect(customer)}>Select {customer.name}</button>}</li>)}</ul> : <p className="crm-empty">No local matches. Search online or create a new customer.</p>}
+          {onSelect && <button type="button" className="secondary-cta" onClick={() => onSelect(customer)}>Select {customer.name}</button>}</li>)}</ul> : <p className="crm-empty">No local matches. Search online or create a new guest.</p>}
       </div>}
       {nextCursor && <button type="button" className="text-action" disabled={searching} onClick={() => void onlineSearch(nextCursor)}>Load more matches</button>}
     </section>
-    <section className="crm-panel" aria-labelledby="crm-create-title"><h2 id="crm-create-title">Create customer</h2>
+    <section className="crm-panel" aria-labelledby="crm-create-title"><h2 id="crm-create-title">Create guest</h2>
       <p>A name is required. Phone is optional; when supplied, include an explicit country code.</p>
-      <form onSubmit={event => void create(event)}><label>Customer name<input value={name} onChange={event => setName(event.target.value)} required aria-invalid={Boolean(nameError)} aria-describedby="customer-name-limit" autoComplete="name" /></label>
+      <form onSubmit={event => void create(event)}><label>Guest name<input value={name} onChange={event => setName(event.target.value)} required aria-invalid={Boolean(nameError)} aria-describedby="customer-name-limit" autoComplete="name" /></label>
         <p id="customer-name-limit" className={nameError ? 'form-notice error' : 'customer-name-count'} role={nameError ? 'alert' : undefined}>{nameError || `${normalizedName.length} / 30 characters`}</p>
         <label>Phone with country code (optional)<input type="tel" inputMode="tel" value={phone} onChange={event => setPhone(event.target.value)} placeholder="+923001234567" autoComplete="tel" /></label>
-        <button type="submit" className="cta" disabled={busy || !normalizedName || Boolean(nameError)}>{busy ? 'Saving…' : 'Save customer'}</button></form>
+        <button type="submit" className="cta" disabled={busy || !normalizedName || Boolean(nameError)}>{busy ? 'Saving…' : 'Save guest'}</button></form>
       {message && <p className="form-notice" role="status">{message}</p>}
       {error && <p className="form-notice error" role="alert">{error}</p>}
     </section>
@@ -96,7 +96,7 @@ export function CustomerSelector({ storeId, terminal, onClose }: { storeId: stri
   }, [onClose])
   return <div className="crm-overlay" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
     <section ref={dialog} className="crm-dialog" role="dialog" aria-modal="true" aria-labelledby="crm-dialog-title">
-      <div className="crm-dialog-head"><div><p className="kicker">CURRENT SALE</p><h2 id="crm-dialog-title">Add customer</h2></div><button ref={closeButton} type="button" className="text-action" onClick={onClose}>Close</button></div>
+      <div className="crm-dialog-head"><div><p className="kicker">CURRENT CHECK</p><h2 id="crm-dialog-title">Add guest</h2></div><button ref={closeButton} type="button" className="text-action" onClick={onClose}>Close</button></div>
       <CustomerFinder storeId={storeId} terminal={terminal} onSelect={customer => { selectCustomer(customer); onClose() }} />
     </section></div>
 }
@@ -113,13 +113,13 @@ export function CustomerScreen({ terminal = false }: { terminal?: boolean }) {
         let id: string | undefined
         if (terminal) {
           const access = await currentAccess()
-          if (!access?.policy.valid) throw new Error('Unlock this terminal before opening customers.')
+          if (!access?.policy.valid) throw new Error('Unlock this terminal before opening the guest directory.')
           id = access.cache.device.store_id
         } else {
-          if (!navigator.onLine) throw new Error('Connect to validate management customer access.')
+          if (!navigator.onLine) throw new Error('Connect to validate management guest access.')
           const client = requireSupabase()
           const { data: { user }, error: userError } = await client.auth.getUser()
-          if (userError || !user) throw new Error('Sign in to manage customers.')
+          if (userError || !user) throw new Error('Sign in to manage guests.')
           const { data, error: membershipError } = await client.from('store_memberships').select('store_id,role')
             .eq('user_id', user.id).eq('active', true).in('role', ['owner', 'manager']).limit(1)
           if (membershipError) throw membershipError
@@ -127,14 +127,14 @@ export function CustomerScreen({ terminal = false }: { terminal?: boolean }) {
         }
         if (!id) throw new Error('Store access is unavailable.')
         if (active) setStoreId(id)
-      } catch (reason) { if (active) setError(reason instanceof Error ? reason.message : 'Could not load customer access.') }
+      } catch (reason) { if (active) setError(reason instanceof Error ? reason.message : 'Could not load guest access.') }
     }
     void load(); return () => { active = false }
   }, [terminal])
-  return <section className="crm-page"><p className="kicker">{terminal ? 'CASHIER CHECKOUT' : 'STORE MANAGEMENT'}</p><h1>Customers</h1>
-    <p>Search or create customers for this store. Duplicate phone numbers remain separate records.</p>
+  return <section className="crm-page"><p className="kicker">{terminal ? 'SERVICE TERMINAL' : 'RESTAURANT MANAGEMENT'}</p><h1>Guests</h1>
+    <p>Search or create guests for this restaurant. Duplicate phone numbers remain separate records.</p>
     {error && <p className="form-notice error" role="alert">{error}</p>}
-    {!storeId && !error && <p role="status">Checking customer access…</p>}
+    {!storeId && !error && <p role="status">Checking guest access…</p>}
     {storeId && <CustomerFinder storeId={storeId} terminal={terminal} onSelect={terminal ? customer => { selectCustomer(customer); navigate('/pos/register') } : undefined} />}
   </section>
 }

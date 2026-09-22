@@ -1,7 +1,7 @@
 export function customerName(value: unknown): string {
-  if (typeof value !== 'string') throw new Error('Customer name is required.')
+  if (typeof value !== 'string') throw new Error('Guest name is required.')
   const name = value.trim().replace(/\s+/g, ' ')
-  if (name.length < 1 || name.length > 30) throw new Error('Customer name must be 1 to 30 characters.')
+  if (name.length < 1 || name.length > 30) throw new Error('Guest name must be 1 to 30 characters.')
   return name
 }
 

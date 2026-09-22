@@ -54,7 +54,7 @@ export function SettingsOverview() {
         const [nextManagement, nextTerminal] = await Promise.all([request<Management>(`/terminal-auth/manage/${storeId}`, undefined, true), readTerminal()])
         setManagement(nextManagement); setTerminal(nextTerminal)
       }
-    } catch (reason) { setLoadError(reason instanceof Error ? reason.message : 'Unable to load store settings.') }
+    } catch (reason) { setLoadError(reason instanceof Error ? reason.message : 'Unable to load restaurant settings.') }
     finally { setLoading(false) }
   }
   useEffect(() => { void load() }, [])
@@ -72,5 +72,73 @@ export function SettingsOverview() {
   const activeDevices = management.devices.filter(device => !device.revoked_at).length
   const activeEmployees = management.employees.filter(employee => employee.active).length
   const lastSynced = terminal ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(terminal.validated_at)) : ''
-  return <section className="settings-page settings-overview"><div className="settings-heading"><CardIcon>⚙</CardIcon><div><p className="kicker">STORE ADMINISTRATION</p><h1>Store settings</h1><p>Manage your team, POS terminals, and cashier access.</p></div></div>{loading ? <p className="form-notice" role="status">Loading store settings…</p> : loadError ? <p className="form-notice error" role="alert">{loadError}</p> : <>{canManagePos && <section aria-labelledby="pos-setup-title"><h2 id="pos-setup-title" className="settings-section-title">POS setup</h2><div className="pos-setup-cards"><article className="setup-card"><CardIcon>⚑</CardIcon><div><div className="card-title"><h3>Store details</h3></div><p>Currency, timezone, address and country used across receipts and reporting.</p><Link className="cta" to="/settings/store">Edit store details <b aria-hidden="true">→</b></Link></div></article><article className="setup-card"><CardIcon>▣</CardIcon><div><div className="card-title"><h3>Terminals</h3><span className="count-badge">{activeDevices} active {activeDevices === 1 ? 'terminal' : 'terminals'}</span></div><p>Provision and manage the devices used at your checkout counters.</p><Link className="cta" to="/settings/terminals">Manage terminals <b aria-hidden="true">→</b></Link></div></article><article className="setup-card"><CardIcon>♧</CardIcon><div><div className="card-title"><h3>Cashier employees</h3><span className="count-badge">{activeEmployees} active {activeEmployees === 1 ? 'cashier' : 'cashiers'}</span></div><p>Create cashier PIN access and control who can use the POS.</p><Link className="cta" to="/settings/employees">Manage employees <b aria-hidden="true">→</b></Link></div></article><article className="setup-card"><CardIcon>▤</CardIcon><div><div className="card-title"><h3>Activity log</h3></div><p>Review terminal and employee changes made by your team.</p><Link className="cta" to="/settings/activity">View activity <b aria-hidden="true">→</b></Link></div></article></div></section>}<div className="settings-columns"><section className="team-section" aria-labelledby="store-team-title"><h2 id="store-team-title" className="settings-section-title">Store team</h2><p>Invite owners and managers who need email access to Counterline.</p>{canManagePos ? <form className="invite-form" onSubmit={submitInvite}><h3>Invite new team member</h3><label>Staff email<input name="email" type="email" autoComplete="email" placeholder="name@store.com" required /></label><label>Store role<select name="role" defaultValue="manager"><option value="manager">Manager</option><option value="cashier">Cashier</option></select></label><button className="cta" type="submit">Send invite <b aria-hidden="true">→</b></button></form> : <p className="form-notice">You do not have permission to manage this store.</p>}<section className="team-members" aria-label="Current store team"><h3>Team members ({team.length})</h3>{team.length ? <ul>{team.map(member => <li key={member.user_id}><span className="team-avatar">{(member.profiles[0]?.full_name || 'Team member').slice(0, 2).toUpperCase()}</span><span><strong>{member.profiles[0]?.full_name || 'Team member'}</strong><small>{member.role}</small></span><b className={`team-role ${member.role}`}>{member.role}</b><span className="team-active">Active</span></li>)}</ul> : <p className="team-empty">No team members are active in this store yet.</p>}</section>{error && <p className="form-notice error" role="alert">{error}</p>}{message && <p className="form-notice" role="status">{message}</p>}</section><aside className="this-terminal-card"><h2>This terminal</h2>{terminal ? <><div className="terminal-summary"><CardIcon>▣</CardIcon><div><div className="card-title"><h3>{terminal.device.name}</h3><TerminalState terminal={terminal} /></div><p>Receipt prefix: <strong>{terminal.device.receipt_prefix}</strong></p></div></div><dl><div><dt>Receipt prefix</dt><dd>{terminal.device.receipt_prefix}</dd></div><div><dt>Last synced</dt><dd>{lastSynced}</dd></div></dl><Link className="secondary-cta" to="/settings/terminals">Manage terminal</Link></> : <div className="terminal-empty"><CardIcon>▣</CardIcon><h3>No terminal connected?</h3><p>Add a terminal to start processing sales and keep your store running.</p><Link className="cta" to="/settings/terminals">Add terminal <b aria-hidden="true">+</b></Link></div>}</aside></div></>}</section>
+  return <section className="settings-page settings-overview">
+    <div className="settings-heading"><CardIcon>⚙</CardIcon><div><p className="kicker">RESTAURANT ADMINISTRATION</p><h1>Restaurant settings</h1><p>Manage your team, service terminals, and staff PIN access.</p></div></div>
+    {loading ? <p className="form-notice" role="status">Loading restaurant settings…</p> : loadError ? <p className="form-notice error" role="alert">{loadError}</p> : <>
+      {canManagePos && <section aria-labelledby="pos-setup-title">
+        <h2 id="pos-setup-title" className="settings-section-title">Service setup</h2>
+        <div className="pos-setup-cards">
+          <article className="setup-card"><CardIcon>⚑</CardIcon><div>
+            <div className="card-title"><h3>Restaurant details</h3></div>
+            <p>Currency, timezone, address and country used across guest checks and reporting.</p>
+            <Link className="cta" to="/settings/store">Edit details <b aria-hidden="true">→</b></Link>
+          </div></article>
+          <article className="setup-card"><CardIcon>▣</CardIcon><div>
+            <div className="card-title"><h3>Terminals</h3><span className="count-badge">{activeDevices} active {activeDevices === 1 ? 'terminal' : 'terminals'}</span></div>
+            <p>Provision and manage the devices your team uses at the pass and the host stand.</p>
+            <Link className="cta" to="/settings/terminals">Manage terminals <b aria-hidden="true">→</b></Link>
+          </div></article>
+          <article className="setup-card"><CardIcon>♧</CardIcon><div>
+            <div className="card-title"><h3>Service staff</h3><span className="count-badge">{activeEmployees} active {activeEmployees === 1 ? 'staff member' : 'staff'}</span></div>
+            <p>Issue staff PINs and control who can open a terminal on the floor.</p>
+            <Link className="cta" to="/settings/employees">Manage staff <b aria-hidden="true">→</b></Link>
+          </div></article>
+          <article className="setup-card"><CardIcon>▤</CardIcon><div>
+            <div className="card-title"><h3>Activity log</h3></div>
+            <p>Review terminal and staff changes made by your team.</p>
+            <Link className="cta" to="/settings/activity">View activity <b aria-hidden="true">→</b></Link>
+          </div></article>
+        </div>
+      </section>}
+      <div className="settings-columns">
+        <section className="team-section" aria-labelledby="store-team-title">
+          <h2 id="store-team-title" className="settings-section-title">Management team</h2>
+          <p>Invite the owners and managers who need email access to Dineflow.</p>
+          {canManagePos ? <form className="invite-form" onSubmit={submitInvite}>
+            <h3>Invite new team member</h3>
+            <label>Work email<input name="email" type="email" autoComplete="email" placeholder="name@restaurant.com" required /></label>
+            <label>Role<select name="role" defaultValue="manager"><option value="manager">Manager</option><option value="cashier">Cashier</option></select></label>
+            <button className="cta" type="submit">Send invite <b aria-hidden="true">→</b></button>
+          </form> : <p className="form-notice">You do not have permission to manage this restaurant.</p>}
+          <section className="team-members" aria-label="Current store team">
+            <h3>Team members ({team.length})</h3>
+            {team.length ? <ul>{team.map(member => <li key={member.user_id}>
+              <span className="team-avatar">{(member.profiles[0]?.full_name || 'Team member').slice(0, 2).toUpperCase()}</span>
+              <span><strong>{member.profiles[0]?.full_name || 'Team member'}</strong><small>{member.role}</small></span>
+              <b className={`team-role ${member.role}`}>{member.role}</b>
+              <span className="team-active">Active</span>
+            </li>)}</ul> : <p className="team-empty">No team members are active in this restaurant yet.</p>}
+          </section>
+          {error && <p className="form-notice error" role="alert">{error}</p>}
+          {message && <p className="form-notice" role="status">{message}</p>}
+        </section>
+        <aside className="this-terminal-card">
+          <h2>This terminal</h2>
+          {terminal ? <>
+            <div className="terminal-summary"><CardIcon>▣</CardIcon><div>
+              <div className="card-title"><h3>{terminal.device.name}</h3><TerminalState terminal={terminal} /></div>
+              <p>Receipt prefix: <strong>{terminal.device.receipt_prefix}</strong></p>
+            </div></div>
+            <dl><div><dt>Receipt prefix</dt><dd>{terminal.device.receipt_prefix}</dd></div><div><dt>Last synced</dt><dd>{lastSynced}</dd></div></dl>
+            <Link className="secondary-cta" to="/settings/terminals">Manage terminal</Link>
+          </> : <div className="terminal-empty">
+            <CardIcon>▣</CardIcon>
+            <h3>No terminal connected?</h3>
+            <p>Add a terminal to start taking orders and keep service running.</p>
+            <Link className="cta" to="/settings/terminals">Add terminal <b aria-hidden="true">+</b></Link>
+          </div>}
+        </aside>
+      </div>
+    </>}
+  </section>
 }

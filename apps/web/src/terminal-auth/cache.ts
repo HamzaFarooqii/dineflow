@@ -11,13 +11,13 @@ export interface TerminalCache extends Projection {
 }
 class TerminalDatabase extends Dexie {
   access!: Table<TerminalCache, string>
-  constructor() { super('counterline-terminal-access'); this.version(1).stores({ access: 'key' }) }
+  constructor() { super('dineflow-terminal-access'); this.version(1).stores({ access: 'key' }) }
 }
 const database = new TerminalDatabase()
 export const readTerminal = () => database.access.get('current')
 export async function withTerminalLock<T>(work: () => Promise<T>) {
   if (!navigator.locks) throw new Error('This browser cannot coordinate terminal access. Use a supported browser over HTTPS.')
-  return navigator.locks.request('counterline-terminal-access', work)
+  return navigator.locks.request('dineflow-terminal-access', work)
 }
 export async function provisionTerminal(storeId: string, name: string) {
   return withTerminalLock(async () => {

@@ -28,7 +28,7 @@ export function OrderHistoryScreen({ terminal = false }: { terminal?: boolean })
     if (!scope.storeId) return
     const subscription = liveQuery(() => posDb.orders.where('[store_id+client_generated_at]')
       .between([scope.storeId, Dexie.minKey], [scope.storeId, Dexie.maxKey]).reverse().toArray())
-      .subscribe({ next: setOrders, error: reason => setError(reason instanceof Error ? reason.message : 'Unable to load local orders.') })
+      .subscribe({ next: setOrders, error: reason => setError(reason instanceof Error ? reason.message : 'Unable to load checks saved on this terminal.') })
     // FEAT-STAT-02: the order's own sync_status collapses several outbox states into "pending";
     // join the outbox entries so the badge can show pending/in-flight/blocked/rejected/synced distinctly.
     const outboxSubscription = liveQuery(() => posDb.outbox.where('store_id').equals(scope.storeId).and(entry => entry.entity_type === 'order').toArray())
@@ -62,7 +62,7 @@ export function OrderHistoryScreen({ terminal = false }: { terminal?: boolean })
   useEffect(() => {
     setRemoteOrders(undefined); setRemoteTruncated(false); setRemoteError('')
     if (!showRemoteHistory) return
-    if (!navigator.onLine) { setRemoteError('You are offline. Reconnect to check other devices for this date.'); return }
+    if (!navigator.onLine) { setRemoteError('You are offline. Reconnect to check other terminals for this date.'); return }
     let active = true
     void fetchOrdersPage(scope.storeId, date, null, 200)
       .then(page => {
@@ -70,7 +70,7 @@ export function OrderHistoryScreen({ terminal = false }: { terminal?: boolean })
         setRemoteOrders(page.orders)
         setRemoteTruncated(page.next_cursor !== null)
       })
-      .catch(reason => { if (active) setRemoteError(reason instanceof Error ? reason.message : 'Unable to load orders from other devices.') })
+      .catch(reason => { if (active) setRemoteError(reason instanceof Error ? reason.message : 'Unable to load checks from other terminals.') })
     return () => { active = false }
   }, [showRemoteHistory, scope.storeId, date])
   useEffect(() => {
@@ -84,28 +84,28 @@ export function OrderHistoryScreen({ terminal = false }: { terminal?: boolean })
     if (!scope.storeId || busy) return
     setBusy(true); setError(''); setNotice('')
     try {
-      if (!navigator.onLine) { setNotice('You are offline. Saved receipts remain available; reconnect to sync.'); return }
-      if (await receiptStore(terminal) !== scope.storeId) throw new Error('Store access changed. Reload Orders before syncing.')
+      if (!navigator.onLine) { setNotice('You are offline. Closed checks stay saved on this terminal; reconnect to sync.'); return }
+      if (await receiptStore(terminal) !== scope.storeId) throw new Error('Restaurant access changed. Reload checks before syncing.')
       if (orderId) await retryOrder(orderId, scope.storeId, terminal)
       else await pushPendingOrders(scope.storeId, terminal)
-      setNotice('Sync attempt finished. Check each order status below; pending or rejected sales remain saved.')
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not sync orders.') }
+      setNotice('Sync attempt finished. Review each status below; pending or rejected checks stay saved.')
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not sync checks.') }
     finally { setBusy(false) }
   }
   const visible = orders?.filter(order => (!date || saleDay(order) === date) &&
     `${order.receipt_number} ${saleDate(order)} ${saleDay(order)}`.toLowerCase().includes(query.trim().toLowerCase())) ?? []
-  return <section className="order-history receipt-history"><p className="kicker">LOCAL ORDER HISTORY</p><h1>Orders.</h1>
-    <p className="screen-note">Sales saved for this store in this browser. Dates use the timezone recorded on each sale.</p>
-    <div className="receipt-actions"><Link to={terminal ? '/pos/register' : '/register'}>New sale</Link></div>
-    <div className="history-tools"><label>Find receipt or date<input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Receipt number or date" /></label>
-      <label>Sale date<input type="date" value={date} onChange={event => setDate(event.target.value)} /></label>
+  return <section className="order-history receipt-history"><p className="kicker">SERVICE HISTORY</p><h1>Closed checks.</h1>
+    <p className="screen-note">Every check settled on this terminal, saved in this browser. Dates use the timezone recorded when the check was closed.</p>
+    <div className="receipt-actions"><Link to={terminal ? '/pos/register' : '/register'}>Open a check</Link></div>
+    <div className="history-tools"><label>Find check or date<input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Check number or date" /></label>
+      <label>Service date<input type="date" value={date} onChange={event => setDate(event.target.value)} /></label>
       {(query || date) && <button type="button" onClick={() => { setQuery(''); setDate('') }}>Clear search</button>}
-      <button type="button" onClick={() => void sync()} disabled={busy || !scope.storeId}>{busy ? 'Syncing...' : 'Sync pending orders'}</button></div>
-    {(scope.error || error) && <div className="form-notice error" role="alert"><p>{scope.error || error}</p><button type="button" onClick={scope.retry}>Reload orders</button></div>}
+      <button type="button" onClick={() => void sync()} disabled={busy || !scope.storeId}>{busy ? 'Syncing...' : 'Sync pending checks'}</button></div>
+    {(scope.error || error) && <div className="form-notice error" role="alert"><p>{scope.error || error}</p><button type="button" onClick={scope.retry}>Reload checks</button></div>}
     <p role="status">{notice}</p>
-    {!scope.error && !error && orders === undefined && <p role="status">Loading saved orders...</p>}
-    {orders?.length === 0 && <p>No orders have been saved for this store in this browser yet.</p>}
-    {Boolean(orders?.length) && !visible.length && <p>No orders match your search.</p>}
+    {!scope.error && !error && orders === undefined && <p role="status">Loading closed checks...</p>}
+    {orders?.length === 0 && <p>No checks have been closed on this terminal yet.</p>}
+    {Boolean(orders?.length) && !visible.length && <p>No checks match your search.</p>}
     <div className="history-list">{visible.map(order => {
       const outboxEntry = outboxByOrder.get(order.id)
       const state: SyncState = outboxEntry ? classifySyncState(outboxEntry) : order.sync_status === 'synced' ? 'synced' : order.sync_status === 'failed' ? 'rejected' : 'pending'
@@ -120,7 +120,7 @@ export function OrderHistoryScreen({ terminal = false }: { terminal?: boolean })
           <div><strong>{order.receipt_number}</strong><small>{saleDate(order)} | {order.timezone_snapshot}</small></div>
           <b>{formatCents(order.total_cents, order.currency)}</b>
           <span className={`order-state ${state}`}>{SYNC_STATE_LABELS[state]}</span>
-          <Link className="receipt-detail-link" to={`${terminal ? '/pos/orders' : '/orders'}/${encodeURIComponent(order.id)}`}>View receipt / print</Link>
+          <Link className="receipt-detail-link" to={`${terminal ? '/pos/orders' : '/orders'}/${encodeURIComponent(order.id)}`}>View check / print</Link>
           {canRetry && <button type="button" disabled={busy} onClick={() => void sync(order.id)}>Retry now</button>}
           {failureMsg && <p className="history-reason">{failureMsg}</p>}
         </article>
@@ -128,17 +128,17 @@ export function OrderHistoryScreen({ terminal = false }: { terminal?: boolean })
     })}</div>
     {showRemoteHistory && (
       <div className="remote-history">
-        <h2>Restored from other devices</h2>
-        {remoteOrders === undefined && !remoteError && <p role="status">Checking other devices for this date…</p>}
+        <h2>Closed on other terminals</h2>
+        {remoteOrders === undefined && !remoteError && <p role="status">Checking other terminals for this date…</p>}
         {remoteError && <p className="history-reason">{remoteError}</p>}
         {Boolean(remoteOrders?.length) && !currency && (
-          <p className="history-reason">This browser hasn't confirmed the store's currency yet. Connect once with this browser signed in, then reopen this date to see amounts.</p>
+          <p className="history-reason">This browser hasn't confirmed the restaurant's currency yet. Connect once with this browser signed in, then reopen this date to see amounts.</p>
         )}
-        {remoteOrders?.length === 0 && <p>No sales recorded on other devices for this date either.</p>}
+        {remoteOrders?.length === 0 && <p>No checks were closed on other terminals for this date either.</p>}
         {Boolean(remoteOrders?.length) && currency && (
           <>
-            <p className="screen-note">This browser has no saved copy of these sales, so only a summary is shown — receipt detail isn't available here.
-              {remoteTruncated && ' Showing the first 200 sales for this date; more exist.'}</p>
+            <p className="screen-note">This browser has no saved copy of these checks, so only a summary is shown — the full check isn't available here.
+              {remoteTruncated && ' Showing the first 200 checks for this date; more exist.'}</p>
             <div className="history-list">{remoteOrders!.map(order => (
               <article key={order.id}>
                 <div><strong>{order.receiptNumber}</strong><small>{new Date(order.time).toLocaleString()}{order.cashierName ? ` | ${order.cashierName}` : ''}</small></div>

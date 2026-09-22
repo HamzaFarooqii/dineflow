@@ -1,0 +1,151 @@
+/* ── MISE: the restaurant activity log (audit trail) ──
+   Its own stylesheet rather than reporting.css so the log reads as an admin data
+   table in its own right. Tokens come from :root in styles.css; none are defined here. */
+
+.mise-log-page {
+  max-width: 1120px;
+  padding: var(--mise-space-32) var(--mise-space-24) 64px;
+  min-width: 0;
+  align-self: start;
+  font-family: 'Archivo', sans-serif;
+  color: var(--mise-ink);
+}
+
+.mise-log-head { margin-bottom: var(--mise-space-24); }
+.mise-log-head .kicker {
+  font: 500 10px 'IBM Plex Mono', monospace;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--mise-ink-muted);
+  margin: 0 0 var(--mise-space-8);
+}
+.mise-log-head h1 {
+  font: 600 32px/1.1 'Archivo', sans-serif;
+  letter-spacing: -.02em;
+  color: var(--mise-ink);
+  margin: 0 0 var(--mise-space-8);
+}
+.mise-log-head p {
+  max-width: 62ch;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--mise-ink-secondary);
+}
+
+.mise-log-page > p[role='status'] {
+  font-size: 13px;
+  color: var(--mise-ink-secondary);
+}
+
+/* ── The log itself: a flat table of rows separated by hairlines ──────────── */
+.mise-log-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--mise-border-hairline);
+  border-radius: var(--mise-r3);
+  background: var(--mise-surface);
+  overflow: hidden;
+}
+.mise-log-list li {
+  display: grid;
+  grid-template-columns: 178px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--mise-space-16);
+  padding: var(--mise-space-16);
+  border-bottom: 1px solid var(--mise-border-hairline);
+}
+.mise-log-list li:last-child { border-bottom: 0; }
+
+.mise-log-row { display: grid; gap: var(--mise-space-4); min-width: 0; }
+.mise-log-row strong {
+  font: 500 14px 'Archivo', sans-serif;
+  color: var(--mise-ink);
+  overflow-wrap: anywhere;
+}
+.mise-log-row span {
+  font: 400 12px 'IBM Plex Mono', monospace;
+  color: var(--mise-ink-muted);
+  overflow-wrap: anywhere;
+}
+.mise-log-list small {
+  justify-self: end;
+  text-align: right;
+  font: 400 12px 'IBM Plex Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--mise-ink-muted);
+  white-space: nowrap;
+}
+.mise-log-actor { display: block; color: var(--mise-ink-secondary); }
+
+/* Same badge vocabulary as closed checks and the sync queue:
+   success = restored, danger = access removed, info = routine record change. */
+.mise-log-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--mise-space-8);
+  width: max-content;
+  padding: 6px var(--mise-space-8);
+  border-radius: var(--mise-r2);
+  background: var(--mise-info-fill);
+  color: var(--mise-info);
+  font: 500 11px 'Archivo', sans-serif;
+  letter-spacing: .02em;
+  white-space: nowrap;
+}
+.mise-log-tag::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+.mise-log-tag.success { background: var(--mise-success-fill); color: var(--mise-success); }
+.mise-log-tag.danger { background: var(--mise-danger-fill); color: var(--mise-danger); }
+
+.mise-log-empty {
+  margin: 0;
+  padding: var(--mise-space-32) var(--mise-space-16);
+  border: 1px solid var(--mise-border-hairline);
+  border-radius: var(--mise-r3);
+  background: var(--mise-surface);
+  text-align: center;
+  font-size: 13px;
+  color: var(--mise-ink-muted);
+}
+
+.mise-log-alert .mise-log-head h1,
+.mise-log-alert h2 {
+  font: 600 22px 'Archivo', sans-serif;
+  letter-spacing: -.01em;
+  margin: 0 0 var(--mise-space-8);
+  color: var(--mise-ink);
+}
+.mise-log-alert {
+  max-width: 62ch;
+}
+.mise-log-alert > div {
+  padding: var(--mise-space-24);
+  border: 1px solid var(--mise-border-hairline);
+  border-left: 3px solid var(--mise-danger);
+  border-radius: var(--mise-r3);
+  background: var(--mise-surface);
+}
+.mise-log-alert p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--mise-ink-secondary);
+}
+
+@media (max-width: 760px) {
+  .mise-log-page { padding: var(--mise-space-24) var(--mise-space-8) 48px; }
+  .mise-log-head h1 { font-size: 27px; }
+  .mise-log-list li {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--mise-space-8);
+  }
+  .mise-log-list small { justify-self: start; text-align: left; }
+}

@@ -101,7 +101,7 @@ try {
   await expect(page.getByText('$15.90', { exact: true })).toBeVisible()
   // Cross-device cashier attribution, sourced from the mocked GET /api/reports/orders above —
   // proves the panel renders real JSON data instead of the JSON-parse-error state it hit before.
-  await expect(page.getByRole('heading', { name: 'Sales by cashier' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Sales by staff' })).toBeVisible()
   await expect(page.getByText('Casey Cashier')).toBeVisible()
   await expect(page.getByText('$8.75', { exact: true })).toBeVisible()
   for (const width of [1440, 390, 375, 768]) {

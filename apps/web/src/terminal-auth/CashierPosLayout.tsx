@@ -41,7 +41,7 @@ export function CashierPosLayout({ children }: { children: ReactNode }) {
   const cashier = terminal?.employees.find(employee => employee.id === terminal.session?.employee_id)
   return <div className="cashier-pos-shell">
     <aside className="cashier-pos-sidebar">
-      <Link className="cashier-pos-brand" to="/pos/register"><span>C</span> Counterline</Link>
+      <Link className="cashier-pos-brand" to="/pos/register"><span>D</span> Dineflow</Link>
       <nav aria-label="Cashier navigation">{navigation.map(item => {
         const active = item.label === 'Sell'
           ? ['/pos/register', '/pos/payment'].includes(pathname)

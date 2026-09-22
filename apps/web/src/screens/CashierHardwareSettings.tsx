@@ -77,7 +77,7 @@ export function CashierHardwareSettings({ adapter = browserCapabilities }: { ada
   const state = !snapshot ? 'Checking terminal…' : !terminal ? 'Terminal identity unavailable' : clockInvalid ? 'Clock changed — online validation required' : expired ? 'Offline authorization expired' : 'Authorized locally'
 
   return <div className="terminal-hardware-settings">
-    <p className="kicker">CASHIER TERMINAL / SETTINGS</p>
+    <p className="kicker">THIS TERMINAL / SETTINGS</p>
     <section className="admin-panel hardware-panel" aria-labelledby="hardware-status-heading">
       <div className="hardware-title"><div><h2 id="hardware-status-heading">Terminal hardware & storage</h2></div>
         <button className="secondary-cta" type="button" disabled={checking} onClick={() => void inspect()}>{checking ? 'Checking…' : 'Check device status'}</button></div>
@@ -87,11 +87,11 @@ export function CashierHardwareSettings({ adapter = browserCapabilities }: { ada
         <span className={`terminal-state ${snapshot?.serviceAvailable ? 'active' : 'muted'}`}>{snapshot ? snapshot.serviceAvailable ? 'Terminal service available' : 'Terminal service unavailable' : 'Checking terminal service…'}</span>
         <span>{snapshot?.shell ? shellLabels[snapshot.shell.state] : 'Checking offline app…'}</span>
       </div>
-      <p className="hardware-help">Device status checks this browser, local terminal identity, and the terminal service. It does not confirm that sales have synchronized.</p>
+      <p className="hardware-help">Device status checks this browser, local terminal identity, and the terminal service. It does not confirm that closed checks have synchronized.</p>
       {snapshot?.errors.map(error => <p key={error} role="alert" className="form-notice error">{error}</p>)}
       {terminal && <dl className="hardware-details identity-details">
         <div><dt>Terminal name</dt><dd>{terminal.name}</dd></div>
-        <div><dt>Store</dt><dd>{storeName || terminal.storeId}</dd></div>
+        <div><dt>Restaurant</dt><dd>{storeName || terminal.storeId}</dd></div>
         <div><dt>Receipt prefix</dt><dd>{terminal.receiptPrefix}</dd></div>
         <div><dt>Last successful sync</dt><dd>{lastSyncedAt ? dateLabel(Date.parse(lastSyncedAt)) : 'Not yet synced on this device'}</dd></div>
         <div><dt>Last authorization validation</dt><dd>{dateLabel(validated)}</dd></div>
@@ -101,7 +101,7 @@ export function CashierHardwareSettings({ adapter = browserCapabilities }: { ada
       {(expired || clockInvalid) && <p role="alert" className="form-notice error">{expired ? 'Offline authorization has expired. Connect and open cashier sign in to refresh terminal access.' : 'This device’s clock moved backwards. Connect and refresh terminal access.'}</p>}
     </section>
     <section className="admin-panel hardware-panel" aria-labelledby="sync-center-heading">
-      <div className="hardware-title"><div><h2 id="sync-center-heading">Sync center</h2><p>Review queued and rejected sales for this terminal.</p></div>
+      <div className="hardware-title"><div><h2 id="sync-center-heading">Sync center</h2><p>Review queued and rejected checks for this terminal.</p></div>
         <Link className="secondary-cta" to="/pos/sync">Open sync center</Link></div>
     </section>
     <div className="hardware-grid">
@@ -111,7 +111,7 @@ export function CashierHardwareSettings({ adapter = browserCapabilities }: { ada
         <ul className="hardware-recovery">
           <li><strong>Offline app unavailable:</strong> connect and reopen cashier sign in to let the production app save its offline shell. Development mode does not prepare offline launch. Keep working online until the shell is ready.</li>
           <li><strong>Authorization expired or clock changed:</strong> connect and use Refresh terminal access at sign in. If access still fails, ask a manager to provision this device again.</li>
-          <li><strong>Storage unsupported, denied or full:</strong> use a supported browser and tell your manager. Do not clear site data to troubleshoot — persistent storage is not a backup.</li>
+          <li><strong>Storage unsupported, denied or full:</strong> use a supported browser and tell your manager. Do not clear site data to troubleshoot — persistent storage is not a backup for unsynced checks.</li>
         </ul>
       </section>
     </div>

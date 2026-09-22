@@ -2,8 +2,8 @@
  * StoreDetails — Owner/Manager settings screen at /settings/store.
  * Lets an owner or manager edit currency, timezone, address and country after the store
  * has already been created (Signup only collects currency/timezone up front). Built on
- * product-catalog.css's premium backoffice shell (hero, groups, fields) for visual parity
- * with the rest of the owner/manager backoffice, rather than the plain generic form styling
+ * product-catalog.css's MISE back-of-house shell (hero, groups, fields) for visual parity
+ * with the rest of the owner/manager back office, rather than the plain generic form styling
  * this screen originally reused from the invite form.
  */
 import { useEffect, useState, type FormEvent } from 'react'
@@ -45,7 +45,7 @@ export function StoreDetails() {
       if (!response.ok) throw new Error(data.message ?? `Server error (${response.status})`)
       setStore(data)
     } catch (reason) {
-      setLoadError(reason instanceof Error ? reason.message : 'Unable to load store details.')
+      setLoadError(reason instanceof Error ? reason.message : 'Unable to load restaurant details.')
     } finally {
       setLoading(false)
     }
@@ -62,7 +62,7 @@ export function StoreDetails() {
     // The server only allows currency changes before any products or sales exist.
     if (currency !== store.currency) {
       const proceed = window.confirm(
-        `Change store currency from ${store.currency} to ${currency}? This is allowed only before products or sales have been created.`,
+        `Change currency from ${store.currency} to ${currency}? This is allowed only before any dishes or sales have been created.`,
       )
       if (!proceed) return
     }
@@ -94,9 +94,9 @@ export function StoreDetails() {
       if (cachedConfig) {
         await posDb.store_config.put({ ...cachedConfig, currency: data.currency, timezone: data.timezone })
       }
-      setMessage('Store details saved.')
+      setMessage('Restaurant details saved.')
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Unable to save store details.')
+      setError(reason instanceof Error ? reason.message : 'Unable to save restaurant details.')
     } finally {
       setSaving(false)
     }
@@ -107,10 +107,10 @@ export function StoreDetails() {
       <div className="pc-hero">
         <div>
           <p className="pc-breadcrumb">
-            Store Workspace <span>/</span> Settings <span>/</span> Store Details
+            Back of house <span>/</span> Settings <span>/</span> Restaurant
           </p>
-          <h1 className="pc-title">Store details.</h1>
-          <p className="pc-subtitle">Business information used across receipts, reporting and the register.</p>
+          <h1 className="pc-title">Restaurant details.</h1>
+          <p className="pc-subtitle">House information used across receipts, reporting and the floor.</p>
         </div>
         <div className="pc-actions">
           <Link className="pc-btn-ghost" to="/settings">
@@ -140,16 +140,16 @@ export function StoreDetails() {
         {loading ? (
           <div className="pc-state" aria-busy="true">
             <h2>Loading…</h2>
-            <p>Fetching this store's business details.</p>
+            <p>Fetching this restaurant's details.</p>
           </div>
         ) : store ? (
           <form onSubmit={submit}>
             <div className="pc-group">
-              <p className="pc-group-label">General Information</p>
+              <p className="pc-group-label">Restaurant</p>
               <div className="pc-field">
-                <label htmlFor="sf-name">Store name</label>
+                <label htmlFor="sf-name">Restaurant name</label>
                 <input id="sf-name" value={store.name} disabled />
-                <p className="pc-field-hint">Set at store creation — not editable here.</p>
+                <p className="pc-field-hint">Set when the restaurant was created — not editable here.</p>
               </div>
             </div>
 
@@ -177,11 +177,11 @@ export function StoreDetails() {
                   </select>
                 </div>
               </div>
-              <p className="pc-field-hint">Currency can only be changed before products or sales are created. Timezone changes apply immediately.</p>
+              <p className="pc-field-hint">Currency can only be changed before any dishes or sales exist. Timezone changes apply immediately.</p>
             </div>
 
             <div className="pc-group">
-              <p className="pc-group-label">Location</p>
+              <p className="pc-group-label">Address</p>
               <div className="pc-field">
                 <label htmlFor="sf-address">
                   Address <span className="pc-opt">optional</span>
@@ -214,7 +214,7 @@ export function StoreDetails() {
             )}
 
             <button className="pc-submit" type="submit" disabled={saving} style={{ width: '100%' }}>
-              {saving ? 'Saving…' : 'Save store details'}
+              {saving ? 'Saving…' : 'Save restaurant details'}
             </button>
           </form>
         ) : null}

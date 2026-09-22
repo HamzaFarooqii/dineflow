@@ -1,20 +1,20 @@
-.settings-overview .setup-card > div:last-child {
-  flex: 1;
-}
+/* MISE: POS setup cards on the Settings overview.
 
-.settings-overview .setup-card {
-  position: relative;
-  padding-bottom: 112px;
+   The card body is a column, so the action sits on the baseline of the card
+   regardless of how long the description runs — no absolute positioning, no
+   fixed button width. All cards in the row therefore end on the same line. */
+
+.settings-overview .setup-card > div:last-child {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
 }
 
 .settings-overview .setup-card .cta {
   box-sizing: border-box;
-  position: absolute;
-  bottom: 20px;
-  left: 50%;
-  width: 124px;
+  align-self: flex-start;
+  width: auto;
   min-width: 0;
-  margin: 0;
-  transform: translateX(-50%);
-  justify-content: space-between;
+  margin: auto 0 0;
 }

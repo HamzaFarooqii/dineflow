@@ -103,7 +103,7 @@ try {
   await expect(page.getByRole('heading', { name: 'Current Sale' })).toBeVisible()
   await page.getByRole('link', { name: 'Products' }).click()
   await expect(page).toHaveURL(/\/pos\/products$/)
-  await expect(page.getByRole('heading', { name: 'Product catalog.' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'The menu.' })).toBeVisible()
 
   // Read-only: no add/edit affordance anywhere on the page.
   await expect(page.getByRole('button', { name: /add product/i })).toHaveCount(0)

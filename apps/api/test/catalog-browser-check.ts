@@ -96,8 +96,8 @@ try {
 
   // 1. Browse existing (seeded) catalog with stock counts
   await page.goto('http://127.0.0.1:3188/products')
-  await expect(page.getByRole('heading', { name: 'Product catalog.' })).toBeVisible()
-  await expect(page.getByText('Total Products')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'The menu.' })).toBeVisible()
+  await expect(page.getByText('Menu Items')).toBeVisible()
   await expect(page.getByText('Ceramic Mug')).toBeVisible()
   await expect(page.getByText('Low Stock').first()).toBeVisible() // Wool Scarf seeds at 5 units
 
@@ -123,10 +123,10 @@ try {
   await expect(page.getByText('Ceramic Mug')).toBeVisible()
 
   // 5. Add a new product — exercises price/cents conversion, a brand-new category, and initial stock
-  await page.getByRole('button', { name: '+ Add product' }).click()
-  const drawer = page.getByRole('dialog', { name: 'Add Product' })
-  await expect(drawer.getByRole('heading', { name: 'Add new product' })).toBeVisible()
-  await drawer.getByLabel('Product name').fill('Cold Brew Concentrate')
+  await page.getByRole('button', { name: '+ Add dish' }).click()
+  const drawer = page.getByRole('dialog', { name: 'Add dish' })
+  await expect(drawer.getByRole('heading', { name: 'Add a dish' })).toBeVisible()
+  await drawer.getByLabel('Dish name').fill('Cold Brew Concentrate')
   await drawer.getByLabel('SKU').fill('BEV-CB-01')
   await drawer.getByLabel('Barcode').fill('CB010001')
   await drawer.getByLabel('Category').selectOption({ label: '+ Create new category…' })
@@ -137,10 +137,10 @@ try {
   await drawer.getByLabel('Tax rate').selectOption({ label: '+ Create new tax rate…' })
   await drawer.getByPlaceholder('Tax rate name (e.g. Sales tax)').fill('State sales tax')
   await drawer.getByPlaceholder('Percent (e.g. 8.5)').fill('8.5')
-  await drawer.getByLabel('Unit price').fill('12.50')
+  await drawer.getByLabel('Menu price').fill('12.50')
   await drawer.getByLabel('Initial stock').fill('10')
   const createResponse = page.waitForResponse(response => response.url().includes('/catalog/products') && response.request().method() === 'POST')
-  await drawer.getByRole('button', { name: 'Save to Catalog' }).click()
+  await drawer.getByRole('button', { name: 'Save to menu' }).click()
   const response = await createResponse
   assert.equal(response.status(), 201, 'POST /catalog/products should return 201 on success')
   await expect(page.getByText('added and available on the register', { exact: false })).toBeVisible()
@@ -170,7 +170,7 @@ try {
 
   // 7. Immediate Register availability — no manual refresh, product can be added to the cart
   await page.goto('http://127.0.0.1:3188/register')
-  await expect(page.getByRole('heading', { name: 'Current Sale' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Open check' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Cold Brew Concentrate', exact: false })).toBeVisible()
   await page.getByRole('button', { name: 'Cold Brew Concentrate', exact: false }).click()
   const proceedLink = page.getByRole('link', { name: 'Proceed to payment' })
@@ -180,7 +180,7 @@ try {
 
   // 8. Responsive check — no horizontal scroll at 375/390/768/1440; screenshots at 390 and 1440
   await page.goto('http://127.0.0.1:3188/products')
-  await expect(page.getByRole('heading', { name: 'Product catalog.' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'The menu.' })).toBeVisible()
   for (const width of [375, 390, 768, 1440]) {
     await page.setViewportSize({ width, height: 1000 })
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `Product catalog page scrolls horizontally at ${width}`)

@@ -1,24 +1,397 @@
-.crm-page { padding: clamp(24px, 3vw, 48px); max-width: 1200px; margin: auto; }
-.crm-page h1, .crm-dialog h2 { font-family: Georgia, serif; color: #203d31; }
-.crm-finder { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; margin-top: 24px; }
-.crm-panel { min-width: 0; background: #fffdfa; border: 1px solid #e5dfd1; padding: 24px; }
-.crm-panel h2 { font-family: Georgia, serif; margin: 0 0 8px; }
-.crm-panel p { line-height: 1.5; }
-.crm-panel label { display: block; margin: 18px 0 12px; font-weight: 600; }
-.crm-panel input { display: block; width: 100%; box-sizing: border-box; margin-top: 7px; padding: 12px; border: 1px solid #c9c5b9; background: #fff; color: #203d31; }
-.crm-panel input:focus-visible, .crm-panel button:focus-visible, .crm-dialog button:focus-visible { outline: 3px solid #cfa848; outline-offset: 2px; }
-.customer-name-count { margin: -6px 0 12px; color: #5c675f; font-size: 0.875rem; }
-.crm-results ul { list-style: none; padding: 0; margin: 14px 0; }
-.crm-results li { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #e5dfd1; }
-.crm-results li span { min-width: 0; overflow-wrap: anywhere; }
-.crm-results small { display: block; margin-top: 4px; }
-.crm-empty { color: #6c736c; }
-.crm-overlay { position: fixed; inset: 0; z-index: 40; background: #142a22aa; display: grid; place-items: center; padding: 12px; }
-.crm-dialog { background: #f8f3e7; width: min(100%, 940px); max-height: min(94vh, 900px); overflow: auto; padding: clamp(16px, 3vw, 32px); box-sizing: border-box; }
-.crm-dialog-head { display: flex; justify-content: space-between; align-items: start; gap: 16px; }
-.crm-cart-customer { margin: 14px 0; padding: 12px; border: 1px solid #e5dfd1; background: #f8f3e7; }
-.crm-cart-customer small { display: block; }
-.crm-cart-customer-actions { display: flex; gap: 12px; margin-top: 8px; }
-.crm-sync-note { padding: 10px 12px; border: 1px solid #e9bb75; background: #fff3dd; color: #684715; font-size: 12px; line-height: 1.45; }
-@media (max-width: 768px) { .crm-finder { grid-template-columns: 1fr; } .crm-page { padding: 20px; } .crm-panel { padding: 18px; } .crm-results li { align-items: start; flex-direction: column; } }
-@media (max-width: 700px) { .mobile-nav-with-customers { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+/* ── Guests (guest directory / CRM) — MISE design system ──
+   Tokens come from :root in styles.css. Nothing new is defined here: surfaces,
+   ink, radii and spacing all reference --mise-*. Flat by default — a 1px
+   hairline is the separator; the only shadow is on the floating guest drawer. */
+
+.crm-page {
+  padding: clamp(20px, 3vw, 32px);
+  max-width: 1120px;
+  margin: 0 auto;
+  font-family: 'Archivo', sans-serif;
+  color: var(--mise-ink);
+}
+
+.crm-page > .kicker {
+  font: 500 10px 'IBM Plex Mono', monospace;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--mise-ink-muted);
+  margin: 0 0 var(--mise-space-8);
+}
+
+.crm-page h1 {
+  font-family: 'Archivo', sans-serif;
+  font-weight: 600;
+  font-size: clamp(26px, 3vw, 34px);
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+  color: var(--mise-ink);
+  margin: 0 0 var(--mise-space-8);
+}
+
+.crm-page > p {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--mise-ink-secondary);
+  max-width: 62ch;
+  margin: 0;
+}
+
+.crm-finder {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--mise-space-16);
+  margin-top: var(--mise-space-24);
+}
+
+/* Panels: guest search and guest creation */
+.crm-panel {
+  min-width: 0;
+  background: var(--mise-surface);
+  border: 1px solid var(--mise-border-hairline);
+  border-radius: var(--mise-r3);
+  padding: var(--mise-space-24);
+}
+
+.crm-panel h2 {
+  font-family: 'Archivo', sans-serif;
+  font-weight: 600;
+  font-size: 17px;
+  letter-spacing: -0.01em;
+  color: var(--mise-ink);
+  margin: 0 0 var(--mise-space-8);
+}
+
+.crm-panel p {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--mise-ink-secondary);
+  margin: 0;
+}
+
+/* Search / filter + form fields: MISE input treatment */
+.crm-panel label {
+  display: block;
+  margin: var(--mise-space-16) 0 var(--mise-space-12);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--mise-ink-muted);
+}
+
+.crm-panel input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: var(--mise-space-8);
+  min-height: 44px;
+  padding: 0 var(--mise-space-12);
+  border: 1px solid var(--mise-border-strong);
+  border-radius: var(--mise-r2);
+  background: var(--mise-surface);
+  color: var(--mise-ink);
+  font: 400 14px 'Archivo', sans-serif;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* Phone numbers are tabular data — read them in mono. */
+.crm-panel input[type='tel'] {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+
+.crm-panel input::placeholder {
+  color: var(--mise-ink-disabled);
+}
+
+.crm-panel input:hover {
+  border-color: var(--mise-ink-muted);
+}
+
+.crm-panel input:focus {
+  border-color: var(--mise-ink);
+  outline: 0;
+}
+
+.crm-panel input:focus-visible,
+.crm-panel button:focus-visible,
+.crm-dialog button:focus-visible {
+  outline: 2px solid var(--mise-ink);
+  outline-offset: 2px;
+}
+
+.customer-name-count {
+  margin: calc(-1 * var(--mise-space-8)) 0 var(--mise-space-12);
+  color: var(--mise-ink-muted);
+  font: 400 11px 'IBM Plex Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Buttons — flat, ≥44px, no lift on hover */
+.crm-panel .cta,
+.crm-dialog .cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--mise-space-8);
+  min-height: 44px;
+  min-width: 0;
+  width: 100%;
+  padding: 0 var(--mise-space-24);
+  border: 1px solid var(--mise-action);
+  border-radius: var(--mise-r3);
+  background: var(--mise-action);
+  color: var(--mise-ink-inverse);
+  font: 600 14px 'Archivo', sans-serif;
+  text-decoration: none;
+  transition: background-color 0.12s ease;
+}
+
+.crm-panel .cta:hover,
+.crm-dialog .cta:hover {
+  background: var(--mise-action-hover);
+  border-color: var(--mise-action-hover);
+  transform: none;
+}
+
+.crm-panel .cta:disabled,
+.crm-dialog .cta:disabled {
+  background: var(--mise-surface-sunken);
+  border-color: var(--mise-border-hairline);
+  color: var(--mise-ink-disabled);
+  opacity: 1;
+}
+
+.crm-panel .secondary-cta,
+.crm-dialog .secondary-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 var(--mise-space-16);
+  border: 1px solid var(--mise-border-strong);
+  border-radius: var(--mise-r3);
+  background: var(--mise-surface);
+  color: var(--mise-ink);
+  font: 600 13px 'Archivo', sans-serif;
+}
+
+.crm-panel .secondary-cta:hover,
+.crm-dialog .secondary-cta:hover {
+  background: var(--mise-surface-sunken);
+  border-color: var(--mise-ink-muted);
+}
+
+.crm-panel .secondary-cta:disabled,
+.crm-dialog .secondary-cta:disabled {
+  background: var(--mise-surface);
+  border-color: var(--mise-border-hairline);
+  color: var(--mise-ink-disabled);
+}
+
+.crm-panel .text-action,
+.crm-dialog .text-action {
+  min-height: 44px;
+  padding: 0 var(--mise-space-8);
+  border: 0;
+  background: transparent;
+  color: var(--mise-ink);
+  font: 600 13px 'Archivo', sans-serif;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.crm-panel .text-action:hover,
+.crm-dialog .text-action:hover {
+  color: var(--mise-ink-secondary);
+}
+
+.crm-panel .form-notice,
+.crm-dialog .form-notice {
+  margin: var(--mise-space-16) 0 0;
+  border: 1px solid var(--mise-border-hairline);
+  border-left: 3px solid var(--mise-saffron);
+  border-radius: var(--mise-r2);
+  background: var(--mise-saffron-fill);
+  color: var(--mise-ink-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+  padding: var(--mise-space-12);
+}
+
+.crm-panel .form-notice.error,
+.crm-dialog .form-notice.error,
+.crm-page > .form-notice.error {
+  border-left-color: var(--mise-danger);
+  background: var(--mise-danger-fill);
+  color: var(--mise-danger);
+}
+
+.crm-page > .form-notice {
+  margin: var(--mise-space-16) 0 0;
+  border: 1px solid var(--mise-border-hairline);
+  border-left: 3px solid var(--mise-saffron);
+  border-radius: var(--mise-r2);
+  background: var(--mise-saffron-fill);
+  color: var(--mise-ink-secondary);
+  font-size: 12px;
+  padding: var(--mise-space-12);
+}
+
+/* Guest results — one card per guest */
+.crm-results {
+  margin-top: var(--mise-space-16);
+}
+
+.crm-results ul {
+  list-style: none;
+  padding: 0;
+  margin: var(--mise-space-12) 0 0;
+  display: grid;
+  gap: var(--mise-space-8);
+}
+
+.crm-results li {
+  display: flex;
+  gap: var(--mise-space-12);
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  padding: var(--mise-space-12) var(--mise-space-16);
+  background: var(--mise-surface);
+  border: 1px solid var(--mise-border-hairline);
+  border-radius: var(--mise-r3);
+}
+
+.crm-results li:hover {
+  border-color: var(--mise-border-strong);
+}
+
+.crm-results li span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  display: grid;
+  gap: var(--mise-space-2);
+}
+
+.crm-results li strong {
+  font: 600 14px 'Archivo', sans-serif;
+  color: var(--mise-ink);
+}
+
+.crm-results small {
+  display: block;
+  margin-top: var(--mise-space-4);
+  font: 400 11px 'IBM Plex Mono', monospace;
+  letter-spacing: 0.01em;
+  color: var(--mise-ink-muted);
+}
+
+.crm-empty {
+  color: var(--mise-ink-muted);
+  font-size: 13px;
+  margin: var(--mise-space-12) 0 0;
+}
+
+/* Floating guest drawer over the register — the one place elevation is earned */
+.crm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(27, 25, 23, 0.48);
+  display: grid;
+  place-items: center;
+  padding: var(--mise-space-12);
+}
+
+.crm-dialog {
+  background: var(--mise-canvas);
+  border: 1px solid var(--mise-border-hairline);
+  border-radius: var(--mise-r4);
+  box-shadow: var(--mise-e3);
+  width: min(100%, 940px);
+  max-height: min(94vh, 900px);
+  overflow: auto;
+  padding: clamp(16px, 3vw, 32px);
+  box-sizing: border-box;
+  font-family: 'Archivo', sans-serif;
+  color: var(--mise-ink);
+}
+
+.crm-dialog-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: var(--mise-space-16);
+  padding-bottom: var(--mise-space-16);
+  border-bottom: 1px solid var(--mise-border-hairline);
+}
+
+.crm-dialog-head .kicker {
+  font: 500 10px 'IBM Plex Mono', monospace;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--mise-ink-muted);
+  margin: 0 0 var(--mise-space-4);
+}
+
+.crm-dialog h2 {
+  font-family: 'Archivo', sans-serif;
+  font-weight: 600;
+  font-size: 20px;
+  letter-spacing: -0.02em;
+  color: var(--mise-ink);
+  margin: 0;
+}
+
+/* Guest attached to the open check (rendered inside the register cart) */
+.crm-cart-customer {
+  margin: var(--mise-space-12) 0;
+  padding: var(--mise-space-12);
+  border: 1px solid var(--mise-border-hairline);
+  border-radius: var(--mise-r2);
+  background: var(--mise-surface);
+  font-family: 'Archivo', sans-serif;
+  font-size: 13px;
+  color: var(--mise-ink);
+}
+
+.crm-cart-customer small {
+  display: block;
+  font: 400 11px 'IBM Plex Mono', monospace;
+  color: var(--mise-ink-muted);
+  margin-top: var(--mise-space-2);
+}
+
+.crm-cart-customer-actions {
+  display: flex;
+  gap: var(--mise-space-12);
+  margin-top: var(--mise-space-8);
+}
+
+.crm-sync-note {
+  padding: var(--mise-space-8) var(--mise-space-12);
+  border: 1px solid var(--mise-border-hairline);
+  border-left: 3px solid var(--mise-warning);
+  border-radius: var(--mise-r2);
+  background: var(--mise-warning-fill);
+  color: var(--mise-warning);
+  font-family: 'Archivo', sans-serif;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+@media (max-width: 768px) {
+  .crm-finder { grid-template-columns: 1fr; }
+  .crm-page { padding: var(--mise-space-16) var(--mise-space-12); }
+  .crm-panel { padding: var(--mise-space-16); }
+  .crm-results li { align-items: stretch; flex-direction: column; }
+  .crm-results li .secondary-cta { width: 100%; }
+}
+
+@media (max-width: 700px) {
+  .mobile-nav-with-customers { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+}

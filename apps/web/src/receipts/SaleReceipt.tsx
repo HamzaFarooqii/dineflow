@@ -4,9 +4,9 @@ import { saleDate, type SavedReceipt } from './data'
 export function SaleReceipt({ receipt, duplicate }: { receipt: SavedReceipt; duplicate: boolean }) {
   const { order, items, payment } = receipt
   const money = (value: number) => formatCents(value, order.currency)
-  return <article className="sale-receipt" aria-label="Saved sale receipt">
-    <header><h2>{order.store_name_snapshot}</h2><p className="receipt-kind">{duplicate ? 'DUPLICATE RECEIPT' : 'SALE RECEIPT'}</p>
-      <p>Receipt <strong>{order.receipt_number}</strong></p><p><time dateTime={order.client_generated_at}>{saleDate(order)}</time><br />{order.timezone_snapshot}</p></header>
+  return <article className="sale-receipt" aria-label="Saved guest check">
+    <header><h2>{order.store_name_snapshot}</h2><p className="receipt-kind">{duplicate ? 'DUPLICATE CHECK' : 'GUEST CHECK'}</p>
+      <p>Check <strong>{order.receipt_number}</strong></p><p><time dateTime={order.client_generated_at}>{saleDate(order)}</time><br />{order.timezone_snapshot}</p></header>
     <div className="receipt-items">{items.map(item => <section className="receipt-line" key={item.id}>
       <strong>{item.snapshot_name}</strong><small>SKU: {item.snapshot_sku}</small>
       <div><span>{item.quantity} × {money(item.snapshot_price_cents)}</span><b>{money(item.subtotal_cents)}</b></div>
@@ -22,6 +22,6 @@ export function SaleReceipt({ receipt, duplicate }: { receipt: SavedReceipt; dup
       <div><dt>Change</dt><dd>{money(payment.change_cents)}</dd></div>
       {payment.method === 'card' && payment.reference && <div><dt>Card reference</dt><dd>{payment.reference}</dd></div>}
       {order.manager_id && <div><dt>Manager approval</dt><dd>Recorded {order.manager_approved_at ? new Date(order.manager_approved_at).toLocaleString() : ''}</dd></div>}
-    </dl><footer>Thank you for shopping with us.</footer>
+    </dl><footer>Thank you for dining with us.</footer>
   </article>
 }

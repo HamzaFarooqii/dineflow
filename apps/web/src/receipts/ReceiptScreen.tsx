@@ -23,7 +23,7 @@ export function ReceiptScreen({ terminal = false }: { terminal?: boolean }) {
     setReceipt(undefined); setError('')
     if (!scope.storeId) return
     const subscription = liveQuery(() => readReceipt(scope.storeId, orderId)).subscribe({ next: setReceipt,
-      error: reason => setError(reason instanceof Error ? reason.message : 'Unable to read this receipt.') })
+      error: reason => setError(reason instanceof Error ? reason.message : 'Unable to read this check.') })
     return () => subscription.unsubscribe()
   }, [scope.storeId, orderId, attempt])
   const failure = scope.error || error
@@ -55,7 +55,7 @@ export function ReceiptScreen({ terminal = false }: { terminal?: boolean }) {
   // history) sees the same fact immediately.
   const submitRefund = async () => {
     if (!receipt || refunding) return
-    if (!window.confirm(`Refund receipt ${receipt.order.receipt_number} for the full sale amount? This cannot be undone.`)) return
+    if (!window.confirm(`Refund check ${receipt.order.receipt_number} for its full amount? This cannot be undone.`)) return
     setRefunding(true)
     setRefundError('')
     try {
@@ -80,23 +80,23 @@ export function ReceiptScreen({ terminal = false }: { terminal?: boolean }) {
       const amountCents = data.refund ? Number(data.refund.amount_cents) : receipt.order.total_cents
       await posDb.orders.update(receipt.order.id, { refunded_at: new Date().toISOString(), refunded_amount_cents: amountCents })
     } catch (reason) {
-      setRefundError(reason instanceof Error ? reason.message : 'Could not refund this order.')
+      setRefundError(reason instanceof Error ? reason.message : 'Could not refund this check.')
     } finally {
       setRefunding(false)
     }
   }
 
-  return <section className="receipt-page"><p className="kicker">SAVED LOCAL SALE</p><h1>Receipt.</h1>
-    <div className="receipt-actions"><Link to={terminal ? '/pos/orders' : '/orders'}>← Back to orders</Link><Link to={terminal ? '/pos/register' : '/register'}>New sale →</Link></div>
+  return <section className="receipt-page"><p className="kicker">SAVED CHECK</p><h1>Guest check.</h1>
+    <div className="receipt-actions"><Link to={terminal ? '/pos/orders' : '/orders'}>← Back to checks</Link><Link to={terminal ? '/pos/register' : '/register'}>Open a check →</Link></div>
     {failure ? <div role="alert"><p>{failure}</p><button type="button" onClick={() => { scope.retry(); setAttempt(value => value + 1) }}>Try again</button></div>
-      : receipt === undefined ? <p role="status">Loading saved receipt…</p>
-      : receipt === null ? <div role="status"><h2>Receipt not found</h2><p>This receipt is not saved for this store in this browser. Check Orders on the terminal that recorded the sale.</p></div>
-      : <><p role="status">{fresh ? 'Sale saved in this browser. ' : ''}{syncLabel(receipt.order)}{receipt.order.failure_reason ? ` — ${receipt.order.failure_reason}` : ''}</p>
+      : receipt === undefined ? <p role="status">Loading saved check…</p>
+      : receipt === null ? <div role="status"><h2>Check not found</h2><p>This check is not saved for this restaurant in this browser. Look under Orders on the terminal that closed it.</p></div>
+      : <><p role="status">{fresh ? 'Check closed and saved in this browser. ' : ''}{syncLabel(receipt.order)}{receipt.order.failure_reason ? ` — ${receipt.order.failure_reason}` : ''}</p>
         <ReceiptOutput key={receipt.order.id} receipt={receipt} fresh={fresh} />
         {canRefund && receipt.order.sync_status === 'synced' && <div className="refund-action">
           {receipt.order.refunded_at
             ? <p role="status">Refunded {formatCents(receipt.order.refunded_amount_cents ?? receipt.order.total_cents, receipt.order.currency)} on {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(receipt.order.refunded_at))}.</p>
-            : <><button type="button" className="cta" onClick={() => void submitRefund()} disabled={refunding}>{refunding ? 'Refunding…' : 'Refund this receipt'}</button>
+            : <><button type="button" className="cta" onClick={() => void submitRefund()} disabled={refunding}>{refunding ? 'Refunding…' : 'Refund this check'}</button>
               {refundError && <p role="alert" className="form-notice error">{refundError}</p>}</>}
         </div>}</>}
   </section>

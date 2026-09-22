@@ -1,9 +1,9 @@
 /**
- * ProductCatalogScreen — Owner / Manager Backoffice
- * Premium SaaS / POS redesign built with Counterline's brand tokens:
- * - Parchment (#f7f2e7), White cards, subtle borders (#d9d0c0)
- * - Deep evergreen (#13261e), Coral CTA (#cd6048 / #ae4834)
- * - DM Serif Display, DM Sans, DM Mono
+ * ProductCatalogScreen — Menu management for the owner / manager back of house.
+ * Styled with the MISE design system (see :root in styles.css):
+ * - Warm neutral canvas, white cards, hairline borders, flat by default
+ * - Archivo for text, IBM Plex Mono for prices, SKUs and counts
+ * - Saffron reserved for focus / action-needed, semantic fills for stock status
  * - Offline-first liveQuery via Dexie, integer cents
  */
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
@@ -119,7 +119,7 @@ export function ProductCatalogScreen() {
         if (cfg) setCurrency(cfg.currency)
       })
       .catch((e) => {
-        if (live) setLoadErr(e instanceof Error ? e.message : 'Could not load store.')
+        if (live) setLoadErr(e instanceof Error ? e.message : 'Could not load this restaurant.')
       })
     return () => {
       live = false
@@ -131,7 +131,7 @@ export function ProductCatalogScreen() {
     if (!storeId) return
     const s1 = liveQuery(() => posDb.products.where('store_id').equals(storeId).toArray()).subscribe({
       next: (rows) => setProducts(rows.sort((a, b) => a.name.localeCompare(b.name))),
-      error: () => setLoadErr('Failed to read product catalog.'),
+      error: () => setLoadErr('Failed to read the menu.'),
     })
     const s2 = liveQuery(() => posDb.categories.where('store_id').equals(storeId).toArray()).subscribe({
       next: setCategories,
@@ -171,13 +171,13 @@ export function ProductCatalogScreen() {
   useEffect(() => {
     if (!storeId || products === null || products.length > 0) return
     if (!navigator.onLine) {
-      setLoadErr('No local catalog. Connect to load.')
+      setLoadErr('No menu saved on this device. Connect to load it.')
       return
     }
     setRefreshing(true)
     void loadCatalog(storeId)
-      .then(() => setNotice('Catalog loaded from server.'))
-      .catch((e) => setLoadErr(e instanceof Error ? e.message : 'Catalog load failed.'))
+      .then(() => setNotice('Menu loaded from server.'))
+      .catch((e) => setLoadErr(e instanceof Error ? e.message : 'Menu load failed.'))
       .finally(() => setRefreshing(false))
   }, [storeId, products])
 
@@ -223,7 +223,7 @@ export function ProductCatalogScreen() {
 
   function validate(): FieldErrors {
     const e: FieldErrors = {}
-    if (!form.name.trim()) e.name = 'Product name is required.'
+    if (!form.name.trim()) e.name = 'Dish name is required.'
     else if (form.name.trim().length > 160) e.name = 'Max 160 characters.'
     if (!form.sku.trim()) e.sku = 'SKU is required.'
     else if (form.sku.trim().length > 80) e.sku = 'Max 80 characters.'
@@ -296,7 +296,7 @@ export function ProductCatalogScreen() {
         const { error: uploadError } = await requireSupabase().storage
           .from('product-images')
           .upload(path, imageFile, { cacheControl: '3600', upsert: false, contentType: imageFile.type })
-        if (uploadError) throw new Error(uploadError.message || 'Could not upload the product image.')
+        if (uploadError) throw new Error(uploadError.message || 'Could not upload the dish photo.')
         imageUrl = requireSupabase().storage.from('product-images').getPublicUrl(path).data.publicUrl
       }
 
@@ -339,7 +339,7 @@ export function ProductCatalogScreen() {
         message?: string
       }
       if (!resp.ok) throw new Error(data.message ?? `Server error (${resp.status})`)
-      if (!data.product) throw new Error('Server returned no product.')
+      if (!data.product) throw new Error('Server returned no dish.')
 
       await posDb.transaction('rw', [posDb.products, posDb.server_stock, posDb.categories, posDb.tax_rates], async () => {
         if (data.category) await posDb.categories.put({ ...data.category, parent_id: null })
@@ -354,14 +354,14 @@ export function ProductCatalogScreen() {
         }
       })
 
-      setNotice(`"${data.product.name}" added and available on the register.`)
+      setNotice(`"${data.product.name}" is on the menu and ready on the register.`)
       setDrawerOpen(false)
       setForm(EMPTY)
       setErrs({})
       setImageFile(null)
       setImageError('')
     } catch (err) {
-      setSubmitErr(err instanceof Error ? err.message : 'Could not create product.')
+      setSubmitErr(err instanceof Error ? err.message : 'Could not add the dish.')
     } finally {
       setBusy(false)
     }
@@ -374,7 +374,7 @@ export function ProductCatalogScreen() {
     setNotice('')
     try {
       const r = await loadCatalog(storeId)
-      setNotice(r === 'updated' ? 'Catalog refreshed.' : 'Already up to date.')
+      setNotice(r === 'updated' ? 'Menu refreshed.' : 'Already up to date.')
     } catch (e) {
       setLoadErr(e instanceof Error ? e.message : 'Refresh failed.')
     } finally {
@@ -400,10 +400,10 @@ export function ProductCatalogScreen() {
       <div className="pc-hero">
         <div>
           <p className="pc-breadcrumb">
-            Store Workspace <span>/</span> Products
+            Back of house <span>/</span> Menu
           </p>
-          <h1 className="pc-title">Product catalog.</h1>
-          <p className="pc-subtitle">View, manage, and track your store's inventory.</p>
+          <h1 className="pc-title">The menu.</h1>
+          <p className="pc-subtitle">Build, price and track every dish your kitchen sends out.</p>
         </div>
         <div className="pc-actions">
           <button
@@ -412,7 +412,7 @@ export function ProductCatalogScreen() {
             onClick={() => void handleRefresh()}
             disabled={refreshing || !storeId}
           >
-            {refreshing ? 'Refreshing…' : 'Refresh catalog'}
+            {refreshing ? 'Refreshing…' : 'Refresh menu'}
           </button>
           <button
             id="pc-add-btn"
@@ -425,7 +425,7 @@ export function ProductCatalogScreen() {
             }}
             disabled={!storeId}
           >
-            + Add product
+            + Add dish
           </button>
         </div>
       </div>
@@ -434,24 +434,24 @@ export function ProductCatalogScreen() {
       {products !== null && (
         <div className="pc-stats-strip">
           <div className="pc-stat">
-            <span className="pc-stat-label">Total Products</span>
+            <span className="pc-stat-label">Menu Items</span>
             <span className="pc-stat-value">{total}</span>
             <span className="pc-stat-sub">Across all categories</span>
           </div>
           <div className="pc-stat">
             <span className="pc-stat-label">In Stock</span>
             <span className="pc-stat-value">{inStock}</span>
-            <span className="pc-stat-sub">Ready to sell</span>
+            <span className="pc-stat-sub">Ready to serve</span>
           </div>
           <div className="pc-stat">
             <span className="pc-stat-label">Low Stock</span>
             <span className="pc-stat-value">{lowStock}</span>
-            <span className="pc-stat-sub">5 units or less</span>
+            <span className="pc-stat-sub">5 portions or fewer</span>
           </div>
           <div className="pc-stat">
             <span className="pc-stat-label">Out of Stock</span>
             <span className="pc-stat-value">{outStock}</span>
-            <span className="pc-stat-sub">Needs replenishment</span>
+            <span className="pc-stat-sub">Needs restocking</span>
           </div>
         </div>
       )}
@@ -487,10 +487,10 @@ export function ProductCatalogScreen() {
               id="pc-search"
               className="pc-search-input"
               type="search"
-              placeholder="Search by name, SKU or barcode…"
+              placeholder="Search dishes by name, SKU or barcode…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              aria-label="Search products"
+              aria-label="Search the menu"
             />
             {query && (
               <button
@@ -538,7 +538,7 @@ export function ProductCatalogScreen() {
         {/* Results Meta */}
         {!isLoading && filtered.length > 0 && (
           <div className="pc-meta">
-            Showing {filtered.length} product{filtered.length !== 1 ? 's' : ''}
+            Showing {filtered.length} dish{filtered.length !== 1 ? 'es' : ''}
             {hasFilters && ` (filtered from ${total})`}
           </div>
         )}
@@ -547,7 +547,7 @@ export function ProductCatalogScreen() {
         {isLoading && (
           <div className="pc-table-wrap" aria-busy="true">
             <div className="pc-thead">
-              <span>Product</span>
+              <span>Dish</span>
               <span>Barcode</span>
               <span>Category</span>
               <span>Price</span>
@@ -574,11 +574,11 @@ export function ProductCatalogScreen() {
         {/* Empty State */}
         {!isLoading && products !== null && filtered.length === 0 && (
           <div className="pc-state">
-            <h2>{hasFilters ? 'No products found' : 'No products yet'}</h2>
+            <h2>{hasFilters ? 'No dishes found' : 'Nothing on the menu yet'}</h2>
             <p>
               {hasFilters
-                ? 'Try adjusting your search terms or category filter to find what you are looking for.'
-                : 'Get started by creating your first product. It will be available immediately at the register.'}
+                ? 'Try adjusting your search terms or category filter to find the dish you are looking for.'
+                : 'Add your first dish. It goes live on the register the moment you save it.'}
             </p>
             {!hasFilters && (
               <button
@@ -590,7 +590,7 @@ export function ProductCatalogScreen() {
                   setErrs({})
                 }}
               >
-                + Add first product
+                + Add first dish
               </button>
             )}
           </div>
@@ -598,9 +598,9 @@ export function ProductCatalogScreen() {
 
         {/* Product Table */}
         {!isLoading && filtered.length > 0 && (
-          <div className="pc-table-wrap" role="table" aria-label="Products">
+          <div className="pc-table-wrap" role="table" aria-label="Menu items">
             <div className="pc-thead" role="row">
-              <span>Product</span>
+              <span>Dish</span>
               <span>Barcode</span>
               <span>Category</span>
               <span>Price</span>
@@ -650,23 +650,23 @@ export function ProductCatalogScreen() {
         )}
       </div>
 
-      {/* ── Add Product Slide-over Drawer ── */}
+      {/* ── Add Dish Slide-over Drawer ── */}
       {drawerOpen && (
         <div
           className="pc-overlay"
           role="dialog"
           aria-modal="true"
-          aria-label="Add Product"
+          aria-label="Add dish"
           onClick={(e) => {
             if (e.target === e.currentTarget) closeDrawer()
           }}
         >
           <div className="pc-drawer">
-            {/* Header with evergreen gradient */}
+            {/* Header — flat surface, hairline separator */}
             <div className="pc-drawer-head">
               <div className="pc-drawer-head-copy">
-                <p className="pc-drawer-eyebrow">Inventory Management</p>
-                <h2 className="pc-drawer-title">Add new product</h2>
+                <p className="pc-drawer-eyebrow">Menu management</p>
+                <h2 className="pc-drawer-title">Add a dish</h2>
               </div>
               <button
                 type="button"
@@ -697,9 +697,9 @@ export function ProductCatalogScreen() {
 
               {/* Group 1: Identity */}
               <div className="pc-group">
-                <p className="pc-group-label">General Information</p>
+                <p className="pc-group-label">Dish Details</p>
                 <div className="pc-field">
-                  <label htmlFor="pf-name">Product name</label>
+                  <label htmlFor="pf-name">Dish name</label>
                   <input
                     ref={firstRef}
                     id="pf-name"
@@ -708,7 +708,7 @@ export function ProductCatalogScreen() {
                     value={form.name}
                     onChange={(e) => setField('name', e.target.value)}
                     maxLength={160}
-                    placeholder="e.g. Single Origin Espresso"
+                    placeholder="e.g. Seared Scallops, Beurre Blanc"
                     autoComplete="off"
                   />
                   {errs.name && <p className="pc-field-err">{errs.name}</p>}
@@ -724,7 +724,7 @@ export function ProductCatalogScreen() {
                       value={form.sku}
                       onChange={(e) => setField('sku', e.target.value.trim())}
                       maxLength={80}
-                      placeholder="BEV-ESP-01"
+                      placeholder="MAIN-SCAL-01"
                       autoComplete="off"
                     />
                     {errs.sku && <p className="pc-field-err">{errs.sku}</p>}
@@ -755,7 +755,7 @@ export function ProductCatalogScreen() {
 
               {/* Group 2: Categorization & Tax */}
               <div className="pc-group">
-                <p className="pc-group-label">Classification & Taxes</p>
+                <p className="pc-group-label">Menu Category & Tax</p>
                 <div className="pc-field">
                   <label htmlFor="pf-cat">
                     Category <span className="pc-opt">optional</span>
@@ -779,7 +779,7 @@ export function ProductCatalogScreen() {
                     <input
                       className={`pc-newcat ${errs.newCategoryName ? 'err' : ''}`}
                       type="text"
-                      placeholder="Category name (e.g. Specialty Beverages)"
+                      placeholder="Category name (e.g. Starters)"
                       value={form.newCategoryName}
                       onChange={(e) => setField('newCategoryName', e.target.value)}
                       maxLength={120}
@@ -839,7 +839,7 @@ export function ProductCatalogScreen() {
                 <p className="pc-group-label">Pricing & Stock</p>
                 <div className="pc-pair">
                   <div className="pc-field">
-                    <label htmlFor="pf-price">Unit price</label>
+                    <label htmlFor="pf-price">Menu price</label>
                     <div className="pc-price-wrap">
                       <span className="pc-price-prefix">$</span>
                       <input
@@ -877,9 +877,9 @@ export function ProductCatalogScreen() {
                 </div>
               </div>
 
-              {/* Group 4: Product Image */}
+              {/* Group 4: Dish Photo */}
               <div className="pc-group">
-                <p className="pc-group-label">Product Image</p>
+                <p className="pc-group-label">Dish Photo</p>
                 <div className="pc-field">
                   <label htmlFor="pf-image">
                     Photo <span className="pc-opt">optional</span>
@@ -895,7 +895,7 @@ export function ProductCatalogScreen() {
                   ) : imageFile ? (
                     <p className="pc-field-hint">{imageFile.name} selected. Shown on the register once saved.</p>
                   ) : (
-                    <p className="pc-field-hint">Shown in the catalog and on the register. Falls back to a placeholder when absent.</p>
+                    <p className="pc-field-hint">Shown on the menu and on the register. Falls back to a placeholder when absent.</p>
                   )}
                 </div>
               </div>
@@ -904,7 +904,7 @@ export function ProductCatalogScreen() {
             {/* Footer */}
             <div className="pc-drawer-foot">
               <button type="submit" className="pc-submit" disabled={busy || !storeId}>
-                {busy ? 'Saving product…' : 'Save to Catalog'}
+                {busy ? 'Saving dish…' : 'Save to menu'}
               </button>
               <button type="button" className="pc-cancel" onClick={closeDrawer} disabled={busy}>
                 Cancel

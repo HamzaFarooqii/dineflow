@@ -1,7 +1,7 @@
 ﻿/**
  * apps/web/src/lib/db.ts
  *
- * Dexie v4 local database for Counterline POS.
+ * Dexie v4 local database for Dineflow.
  * All monetary fields are integer cents — never float.
  *
  * Schema version 1 is the initial schema for this branch.
@@ -164,7 +164,7 @@ export interface LocalStockAdjustment {
 // Database class
 // ---------------------------------------------------------------------------
 
-export class CounterlineDatabase extends Dexie {
+export class DineflowDatabase extends Dexie {
   store_config!: EntityTable<StoreConfig, 'id'>
   categories!: EntityTable<LocalCategory, 'id'>
   tax_rates!: EntityTable<LocalTaxRate, 'id'>
@@ -179,7 +179,7 @@ export class CounterlineDatabase extends Dexie {
   stock_adjustments!: Table<LocalStockAdjustment, [string, string]>
 
   constructor() {
-    super('counterline-pos')
+    super('dineflow')
 
     this.version(1).stores({
       // Key path first, then indexed fields
@@ -241,4 +241,4 @@ export class CounterlineDatabase extends Dexie {
 }
 
 /** Singleton database instance — import this everywhere in the app. */
-export const posDb = new CounterlineDatabase()
+export const posDb = new DineflowDatabase()

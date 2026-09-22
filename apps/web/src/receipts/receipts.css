@@ -1,22 +1,474 @@
-.receipt-page{max-width:960px;padding:28px 20px;min-width:0;overflow-wrap:anywhere;align-self:start}
-.receipt-page h1{font:400 48px 'DM Serif Display',serif;margin:0 0 20px;color:var(--ink)}
-.receipt-actions{display:flex;flex-wrap:wrap;gap:16px;align-items:center;margin:16px 0}
-.receipt-actions a,.receipt-detail-link{display:inline-flex;align-items:center;min-height:44px;padding:10px 14px;border:1px solid var(--line);background:#f9f5eb;color:var(--pine);text-decoration:none}
-.receipt-feedback{font-size:13px;max-width:620px}
-.sale-receipt{width:100%;max-width:440px;margin:20px 0;background:#fffdf8;border:1px solid var(--line);padding:24px;font:13px/1.5 'DM Sans',sans-serif;color:#111;overflow-wrap:anywhere}
-.sale-receipt header{text-align:center}.sale-receipt h2{font:400 26px/1.2 'DM Serif Display',serif;margin:0 0 12px}.sale-receipt p{margin:8px 0}.receipt-kind{font-weight:800;letter-spacing:.04em}
-.receipt-line{padding:12px 0;border-top:1px dashed #aaa;break-inside:avoid}.receipt-line>strong,.receipt-line>small{display:block}.receipt-line>small{margin:3px 0 8px}.receipt-line>div,.receipt-totals>div{display:flex;justify-content:space-between;gap:12px}.receipt-line>div>*{min-width:0}.receipt-line b{flex-shrink:0}.receipt-line-discount span,.receipt-discount dd{color:#bb4c16}
-.receipt-totals{border-top:1px dashed #aaa;margin:0;padding-top:12px;break-inside:avoid}.receipt-totals>div{margin:6px 0}.receipt-totals dd{margin:0;text-align:right;max-width:65%}.receipt-total{font-size:17px;font-weight:800;border-bottom:1px solid #aaa;padding-bottom:10px}.sale-receipt footer{text-align:center;margin-top:20px}
-.sale-print-root{display:none}.receipt-history{min-width:0;align-self:start}.receipt-history .history-list article>div{min-width:0;overflow-wrap:anywhere}.receipt-history .history-tools label{min-width:0;max-width:100%}.receipt-history .history-tools input{width:100%;min-width:0;max-width:100%}.receipt-history .history-list article{overflow-wrap:anywhere}
-@media(max-width:800px){.cashier-pos-shell>.cashier-pos-sidebar{display:block;padding:8px 9px}.cashier-pos-sidebar>.cashier-pos-brand,.cashier-pos-sidebar>footer,.cashier-pos-sidebar .cashier-nav-muted{display:none}.cashier-pos-shell>.cashier-pos-sidebar>nav{display:flex;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}.cashier-pos-shell>.cashier-pos-sidebar>nav::-webkit-scrollbar{display:none}.cashier-pos-sidebar>nav a{min-height:44px;padding:8px 16px;white-space:nowrap;flex-shrink:0}.receipt-page{padding:20px 8px}.sale-receipt{padding:18px}.receipt-history .history-list article>div{flex-basis:100%}}
-@page saleReceipt{size:80mm 200mm;margin:4mm}
-@media print{
-  body:has(>.sale-print-root){margin:0!important;padding:0!important;background:white!important}
-  body:has(>.sale-print-root)>:not(.sale-print-root){display:none!important}
-  body>.sale-print-root{display:block!important;width:72mm;page:saleReceipt;margin:0;padding:0}
-  .sale-print-root .sale-receipt{width:72mm;max-width:72mm;border:0;padding:0;margin:0;background:white;color:black;font:10pt/1.35 Arial,sans-serif}
-  .sale-print-root h2{font:700 15pt/1.2 Arial,sans-serif}.sale-print-root .receipt-total{font-size:12pt}
-  .sale-print-root .receipt-line{break-inside:avoid;page-break-inside:avoid}.sale-print-root header{break-inside:avoid}.sale-print-root .receipt-totals{break-inside:avoid}
+/* ── MISE: checks, service history, sync center and the guest check itself ──
+   Tokens come from :root in styles.css. Nothing new is defined here.
+   Selectors are deliberately doubled up (.order-history.receipt-history …) so this
+   file wins over the legacy .order-history/.history-* rules in styles.css no matter
+   which order the bundler emits the two stylesheets in. */
+
+.order-history.receipt-history,
+.receipt-page {
+  font-family: 'Archivo', sans-serif;
+  color: var(--mise-ink);
 }
-.refund-action { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
+
+/* ── Page heading ─────────────────────────────────────────────────────────── */
+.order-history.receipt-history {
+  max-width: 1120px;
+  padding: var(--mise-space-32) var(--mise-space-24) 64px;
+  min-width: 0;
+  align-self: start;
+}
+.order-history.receipt-history > .kicker,
+.receipt-page > .kicker {
+  font: 500 10px 'IBM Plex Mono', monospace;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--mise-ink-muted);
+  margin: 0 0 var(--mise-space-8);
+}
+.order-history.receipt-history > h1,
+.receipt-page > h1 {
+  font: 600 32px/1.1 'Archivo', sans-serif;
+  letter-spacing: -.02em;
+  color: var(--mise-ink);
+  margin: 0 0 var(--mise-space-8);
+}
+.order-history.receipt-history > .screen-note,
+.receipt-page .screen-note {
+  max-width: 62ch;
+  margin: 0 0 var(--mise-space-24);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--mise-ink-secondary);
+}
+
+/* ── Inline action row (links styled as quiet MISE buttons) ───────────────── */
+.receipt-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mise-space-12);
+  align-items: center;
+  margin: 0 0 var(--mise-space-16);
+}
+.receipt-actions a,
+.receipt-detail-link,
+.order-history.receipt-history .receipt-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 var(--mise-space-16);
+  border: 1px solid var(--mise-border-strong);
+  border-radius: var(--mise-r3);
+  background: var(--mise-surface);
+  color: var(--mise-ink);
+  font: 500 13px 'Archivo', sans-serif;
+  text-decoration: none;
+  transition: background .12s ease, border-color .12s ease, color .12s ease;
+}
+.receipt-actions a:hover,
+.receipt-detail-link:hover,
+.order-history.receipt-history .receipt-actions button:hover {
+  background: var(--mise-surface-sunken);
+  border-color: var(--mise-ink-muted);
+}
+.receipt-actions .cta {
+  min-width: 0;
+  border: 1px solid var(--mise-action);
+  border-radius: var(--mise-r3);
+  background: var(--mise-action);
+  color: var(--mise-ink-inverse);
+  padding: 0 var(--mise-space-24);
+  gap: var(--mise-space-12);
+  font-weight: 600;
+  transition: background .12s ease;
+}
+.receipt-actions .cta:hover { background: var(--mise-action-hover); transform: none; }
+
+/* ── Filter / search toolbar ──────────────────────────────────────────────── */
+.order-history.receipt-history .history-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mise-space-12);
+  align-items: end;
+  padding: var(--mise-space-16);
+  border: 1px solid var(--mise-border-hairline);
+  border-radius: var(--mise-r3);
+  background: var(--mise-surface);
+  box-shadow: var(--mise-e1);
+}
+.order-history.receipt-history .history-tools label {
+  display: grid;
+  gap: var(--mise-space-8);
+  min-width: 0;
+  max-width: 100%;
+  font: 500 11px 'Archivo', sans-serif;
+  letter-spacing: .02em;
+  color: var(--mise-ink-secondary);
+}
+.order-history.receipt-history .history-tools input {
+  width: 100%;
+  min-width: min(280px, 72vw);
+  max-width: 100%;
+  min-height: 44px;
+  padding: 0 var(--mise-space-12);
+  border: 1px solid var(--mise-border-strong);
+  border-radius: var(--mise-r2);
+  background: var(--mise-surface);
+  color: var(--mise-ink);
+  font: 400 14px 'Archivo', sans-serif;
+}
+.order-history.receipt-history .history-tools input[type='date'] { font-family: 'IBM Plex Mono', monospace; font-size: 13px; }
+.order-history.receipt-history .history-tools input:focus {
+  border-color: var(--mise-ink);
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--mise-ink);
+}
+.order-history.receipt-history .history-tools button,
+.order-history.receipt-history .history-list button,
+.order-history.receipt-history .history-detail button {
+  min-height: 44px;
+  padding: 0 var(--mise-space-16);
+  border: 1px solid var(--mise-border-strong);
+  border-radius: var(--mise-r3);
+  background: var(--mise-surface);
+  color: var(--mise-ink);
+  font: 500 13px 'Archivo', sans-serif;
+  transition: background .12s ease, border-color .12s ease, color .12s ease;
+}
+.order-history.receipt-history .history-tools button:hover:not(:disabled),
+.order-history.receipt-history .history-list button:hover:not(:disabled) {
+  background: var(--mise-surface-sunken);
+  border-color: var(--mise-ink-muted);
+}
+.order-history.receipt-history .history-tools button.selected {
+  border-color: var(--mise-action);
+  background: var(--mise-action);
+  color: var(--mise-ink-inverse);
+}
+.order-history.receipt-history .history-tools button.selected:hover { background: var(--mise-action-hover); border-color: var(--mise-action-hover); color: var(--mise-ink-inverse); }
+
+/* Sync Center's state filter row is a toolbar of toggles, not a form. */
+.order-history.receipt-history .history-tools[role='group'] {
+  gap: var(--mise-space-8);
+  align-items: center;
+  background: var(--mise-surface-sunken);
+  border-color: var(--mise-border-hairline);
+  box-shadow: none;
+}
+
+/* ── Status / feedback messages ───────────────────────────────────────────── */
+.order-history.receipt-history > p[role='status'],
+.order-history.receipt-history > p {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--mise-ink-secondary);
+}
+.order-history.receipt-history > p[role='status']:empty { margin: 0; }
+.order-history.receipt-history .form-notice,
+.receipt-page .form-notice {
+  border: 1px solid var(--mise-border-hairline);
+  border-left: 3px solid var(--mise-saffron);
+  border-radius: var(--mise-r2);
+  background: var(--mise-saffron-fill);
+  color: var(--mise-ink);
+  padding: var(--mise-space-12) var(--mise-space-16);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.order-history.receipt-history .form-notice.error,
+.receipt-page .form-notice.error {
+  border-color: var(--mise-border-hairline);
+  border-left-color: var(--mise-danger);
+  background: var(--mise-danger-fill);
+  color: var(--mise-danger);
+}
+.order-history.receipt-history .form-notice.error button {
+  margin-top: var(--mise-space-8);
+  background: var(--mise-surface);
+}
+
+/* ── The list of closed checks / queued operations ────────────────────────── */
+.order-history.receipt-history .history-list {
+  display: grid;
+  gap: var(--mise-space-8);
+  margin-top: var(--mise-space-24);
+}
+.order-history.receipt-history .history-list article {
+  display: flex;
+  align-items: center;
+  gap: var(--mise-space-16);
+  flex-wrap: wrap;
+  padding: var(--mise-space-16);
+  border: 1px solid var(--mise-border-hairline);
+  border-radius: var(--mise-r3);
+  background: var(--mise-surface);
+  overflow-wrap: anywhere;
+}
+.order-history.receipt-history .history-list article > div {
+  display: grid;
+  gap: var(--mise-space-4);
+  flex: 1;
+  min-width: 180px;
+}
+.order-history.receipt-history .history-list article > div strong {
+  font: 600 15px 'IBM Plex Mono', monospace;
+  letter-spacing: -.01em;
+  color: var(--mise-ink);
+}
+.order-history.receipt-history .history-list article small {
+  font: 400 12px 'IBM Plex Mono', monospace;
+  color: var(--mise-ink-muted);
+}
+.order-history.receipt-history .history-list article > b {
+  font: 600 16px 'IBM Plex Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--mise-ink);
+  white-space: nowrap;
+}
+.order-history.receipt-history .history-reason {
+  width: 100%;
+  margin: 0;
+  padding: var(--mise-space-8) var(--mise-space-12);
+  border-radius: var(--mise-r2);
+  background: var(--mise-surface-sunken);
+  color: var(--mise-ink-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* ── Status badges. One vocabulary across checks, sync queue and activity ───
+   synced → success · pending → warning · syncing → info
+   blocked → violet accent · rejected → danger. Square-ish (r2), never a full
+   pill, and never used decoratively. */
+.receipt-history .order-state,
+.order-state {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--mise-space-8);
+  width: max-content;
+  padding: 6px var(--mise-space-8);
+  border: 1px solid transparent;
+  border-radius: var(--mise-r2);
+  font: 500 11px 'Archivo', sans-serif;
+  letter-spacing: .02em;
+  white-space: nowrap;
+}
+.receipt-history .order-state::before,
+.order-state::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+.receipt-history .order-state,
+.order-state {
+  background: var(--mise-warning-fill);
+  border-color: var(--mise-warning-fill);
+  color: var(--mise-warning);
+}
+.receipt-history .order-state.synced,
+.order-state.synced { background: var(--mise-success-fill); border-color: var(--mise-success-fill); color: var(--mise-success); }
+.receipt-history .order-state.rejected,
+.order-state.rejected { background: var(--mise-danger-fill); border-color: var(--mise-danger-fill); color: var(--mise-danger); }
+.receipt-history .order-state.in_flight,
+.order-state.in_flight { background: var(--mise-info-fill); border-color: var(--mise-info-fill); color: var(--mise-info); }
+.receipt-history .order-state.blocked,
+.order-state.blocked {
+  background: color-mix(in srgb, var(--mise-accent-violet) 12%, var(--mise-surface));
+  border-color: color-mix(in srgb, var(--mise-accent-violet) 18%, var(--mise-surface));
+  color: var(--mise-accent-violet);
+}
+
+/* ── Cross-device backfill section ────────────────────────────────────────── */
+.order-history.receipt-history .remote-history {
+  margin-top: var(--mise-space-32);
+  padding-top: var(--mise-space-24);
+  border-top: 1px solid var(--mise-border-hairline);
+}
+.order-history.receipt-history .remote-history h2 {
+  font: 600 18px 'Archivo', sans-serif;
+  letter-spacing: -.01em;
+  color: var(--mise-ink);
+  margin: 0 0 var(--mise-space-8);
+}
+
+/* ── Guest check (the printed / on-screen receipt) ────────────────────────── */
+.receipt-page {
+  max-width: 960px;
+  padding: var(--mise-space-32) var(--mise-space-24) 64px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  align-self: start;
+}
+.receipt-page > div[role='alert'],
+.receipt-page > div[role='status'] {
+  max-width: 62ch;
+  padding: var(--mise-space-16);
+  border: 1px solid var(--mise-border-hairline);
+  border-radius: var(--mise-r3);
+  background: var(--mise-surface);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--mise-ink-secondary);
+}
+.receipt-page > div[role='status'] h2 {
+  margin: 0 0 var(--mise-space-8);
+  font: 600 18px 'Archivo', sans-serif;
+  color: var(--mise-ink);
+}
+.receipt-page > p[role='status'] {
+  font: 500 13px 'Archivo', sans-serif;
+  color: var(--mise-ink-secondary);
+}
+.receipt-feedback { font-size: 13px; line-height: 1.55; max-width: 62ch; color: var(--mise-ink-secondary); }
+
+.sale-receipt {
+  width: 100%;
+  max-width: 440px;
+  margin: var(--mise-space-24) 0;
+  padding: var(--mise-space-24);
+  border: 1px solid var(--mise-border-hairline);
+  border-radius: var(--mise-r3);
+  background: var(--mise-surface);
+  box-shadow: var(--mise-e1);
+  font: 400 13px/1.55 'Archivo', sans-serif;
+  color: var(--mise-ink);
+  overflow-wrap: anywhere;
+}
+.sale-receipt header { text-align: center; padding-bottom: var(--mise-space-16); }
+.sale-receipt h2 {
+  font: 600 20px/1.25 'Archivo', sans-serif;
+  letter-spacing: -.01em;
+  margin: 0 0 var(--mise-space-8);
+  color: var(--mise-ink);
+}
+.sale-receipt p { margin: var(--mise-space-8) 0; }
+.sale-receipt header p { color: var(--mise-ink-secondary); font-size: 12px; }
+.sale-receipt header strong,
+.sale-receipt header time { font-family: 'IBM Plex Mono', monospace; color: var(--mise-ink); }
+.receipt-kind {
+  font: 500 10px 'IBM Plex Mono', monospace;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  color: var(--mise-ink-muted);
+}
+.receipt-line {
+  padding: var(--mise-space-12) 0;
+  border-top: 1px solid var(--mise-border-hairline);
+  break-inside: avoid;
+}
+.receipt-line > strong { display: block; font: 600 13px 'Archivo', sans-serif; }
+.receipt-line > small { display: block; margin: 3px 0 var(--mise-space-8); font: 400 11px 'IBM Plex Mono', monospace; color: var(--mise-ink-muted); }
+.receipt-line > div,
+.receipt-totals > div { display: flex; justify-content: space-between; gap: var(--mise-space-12); }
+.receipt-line > div { font-size: 12px; color: var(--mise-ink-secondary); }
+.receipt-line > div > * { min-width: 0; font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; }
+.receipt-line b { flex-shrink: 0; color: var(--mise-ink); font-weight: 600; }
+.receipt-line-discount span,
+.receipt-discount dd { color: var(--mise-saffron-deep); }
+.receipt-totals {
+  border-top: 1px solid var(--mise-border-strong);
+  margin: 0;
+  padding-top: var(--mise-space-12);
+  break-inside: avoid;
+  font-family: 'IBM Plex Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+.receipt-totals > div { margin: 6px 0; }
+.receipt-totals dt { color: var(--mise-ink-secondary); }
+.receipt-totals dd { margin: 0; text-align: right; max-width: 65%; color: var(--mise-ink); }
+.receipt-total {
+  font-size: 16px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--mise-border-strong);
+  padding-bottom: var(--mise-space-12);
+  margin-bottom: var(--mise-space-12) !important;
+}
+.receipt-total dt { color: var(--mise-ink) !important; }
+.sale-receipt footer {
+  text-align: center;
+  margin-top: var(--mise-space-24);
+  padding-top: var(--mise-space-16);
+  border-top: 1px solid var(--mise-border-hairline);
+  font-size: 12px;
+  color: var(--mise-ink-muted);
+}
+
+/* On the terminal at the pass, every control is 56px rather than 44px. */
+.cashier-pos-main .receipt-actions a,
+.cashier-pos-main .receipt-actions button,
+.cashier-pos-main .receipt-detail-link,
+.cashier-pos-main .order-history.receipt-history .history-tools input,
+.cashier-pos-main .order-history.receipt-history .history-tools button,
+.cashier-pos-main .order-history.receipt-history .history-list button { min-height: 56px; }
+
+.sale-print-root { display: none; }
+.receipt-history { min-width: 0; align-self: start; }
+.receipt-history .history-list article > div { min-width: 0; overflow-wrap: anywhere; }
+
+@media (max-width: 800px) {
+  .cashier-pos-shell > .cashier-pos-sidebar { display: block; padding: var(--mise-space-8); }
+  .cashier-pos-sidebar > .cashier-pos-brand,
+  .cashier-pos-sidebar > footer,
+  .cashier-pos-sidebar .cashier-nav-muted { display: none; }
+  .cashier-pos-shell > .cashier-pos-sidebar > nav { display: flex; gap: var(--mise-space-8); overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .cashier-pos-shell > .cashier-pos-sidebar > nav::-webkit-scrollbar { display: none; }
+  .cashier-pos-sidebar > nav a { min-height: 48px; padding: 0 var(--mise-space-16); white-space: nowrap; flex-shrink: 0; }
+  .receipt-page { padding: var(--mise-space-24) var(--mise-space-8) 48px; }
+  .order-history.receipt-history { padding: var(--mise-space-24) var(--mise-space-8) 48px; }
+  .order-history.receipt-history > h1, .receipt-page > h1 { font-size: 27px; }
+  .sale-receipt { padding: var(--mise-space-16); }
+  .receipt-history .history-list article > div { flex-basis: 100%; }
+}
+
+@page saleReceipt { size: 80mm 200mm; margin: 4mm }
+@media print {
+  body:has(>.sale-print-root) { margin: 0 !important; padding: 0 !important; background: white !important; }
+  body:has(>.sale-print-root)>:not(.sale-print-root) { display: none !important; }
+  body > .sale-print-root { display: block !important; width: 72mm; page: saleReceipt; margin: 0; padding: 0; }
+  .sale-print-root .sale-receipt {
+    width: 72mm; max-width: 72mm; border: 0; border-radius: 0; box-shadow: none;
+    padding: 0; margin: 0; background: white; color: black;
+    font: 400 10pt/1.4 'Archivo', Arial, sans-serif;
+  }
+  .sale-print-root h2 { font: 700 15pt/1.2 'Archivo', Arial, sans-serif; color: black; }
+  .sale-print-root .receipt-kind { color: black; letter-spacing: .18em; }
+  .sale-print-root .receipt-line > small,
+  .sale-print-root .receipt-totals,
+  .sale-print-root .receipt-line > div > * { font-family: 'IBM Plex Mono', 'Courier New', monospace; }
+  .sale-print-root .receipt-line,
+  .sale-print-root .receipt-totals,
+  .sale-print-root .receipt-total,
+  .sale-print-root .sale-receipt footer { border-color: black; }
+  .sale-print-root .receipt-line > div,
+  .sale-print-root .receipt-totals dt,
+  .sale-print-root .receipt-line > small,
+  .sale-print-root .sale-receipt footer { color: black; }
+  .sale-print-root .receipt-totals { font-size: 10pt; }
+  .sale-print-root .receipt-total { font-size: 12pt; }
+  .sale-print-root .receipt-line { break-inside: avoid; page-break-inside: avoid; }
+  .sale-print-root header { break-inside: avoid; }
+  .sale-print-root .receipt-totals { break-inside: avoid; }
+}
+
+.refund-action {
+  margin-top: var(--mise-space-24);
+  padding-top: var(--mise-space-16);
+  border-top: 1px solid var(--mise-border-hairline);
+}
+.refund-action .cta {
+  min-width: 0;
+  min-height: 44px;
+  border: 1px solid var(--mise-danger);
+  border-radius: var(--mise-r3);
+  background: var(--mise-surface);
+  color: var(--mise-danger);
+  padding: 0 var(--mise-space-24);
+  font-weight: 600;
+  transition: background .12s ease;
+}
+.refund-action .cta:hover { background: var(--mise-danger-fill); transform: none; }
 @media print { .refund-action { display: none; } }

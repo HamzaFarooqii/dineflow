@@ -51,9 +51,9 @@ const CURRENCIES = [
   ['ZMW', 'Zambian Kwacha'], ['ZWL', 'Zimbabwean Dollar'],
 ] as const
 const STEPS = [
-  { label: 'Store profile', title: 'Make it official.', copy: 'Confirm the details customers and receipts will use.' },
-  { label: 'Terminal', title: 'Bring your counter online.', copy: 'Provision this browser as your first checkout terminal.' },
-  { label: 'Staff', title: 'Add your first teammate.', copy: 'Give your team a PIN so they can start selling.' },
+  { label: 'Restaurant profile', title: 'Name the house.', copy: 'Confirm the details your guests and guest checks will carry.' },
+  { label: 'Terminal', title: 'Open the pass.', copy: 'Provision this browser as your first service terminal.' },
+  { label: 'Staff', title: 'Bring on your first server.', copy: 'Issue a PIN so your team can open a terminal and start service.' },
 ] as const
 
 export function OnboardingWizard() {
@@ -78,12 +78,12 @@ export function OnboardingWizard() {
         const { data: memberships, error: membershipError } = await client.from('store_memberships').select('store_id').eq('user_id', user.id).eq('active', true).eq('role', 'owner').limit(1)
         if (membershipError) throw membershipError
         const storeId = memberships?.[0]?.store_id
-        if (!storeId) throw new Error('No store was found for this account.')
+        if (!storeId) throw new Error('No restaurant was found for this account.')
         const { data: storeRow, error: storeError } = await client.from('stores').select('id,name,timezone,currency,onboarding_completed_at').eq('id', storeId).single()
         if (storeError) throw storeError
         if (storeRow.onboarding_completed_at) { go('/dashboard', { replace: true }); return }
         if (active) setStore({ id: storeRow.id, name: storeRow.name, timezone: storeRow.timezone, currency: storeRow.currency })
-      } catch (reason) { if (active) setError(reason instanceof Error ? reason.message : 'Unable to load your store.') }
+      } catch (reason) { if (active) setError(reason instanceof Error ? reason.message : 'Unable to load your restaurant.') }
       finally { if (active) setLoading(false) }
     })()
     return () => { active = false }
@@ -103,7 +103,7 @@ export function OnboardingWizard() {
       if (updateError) throw updateError
       setStore({ ...store, name, currency, timezone })
       setStep(1)
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to save the store profile.') }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to save the restaurant profile.') }
     finally { setBusy(false) }
   }
 
@@ -128,10 +128,10 @@ export function OnboardingWizard() {
     try {
       try {
         await request('/terminal-auth/employees', { store_id: store.id, name: String(form.get('name')).trim(), role: 'cashier', active: true, pin: String(form.get('pin') ?? '') }, true)
-      } catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to add this employee.'); return }
+      } catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to add this staff member.'); return }
       setStaffDone(true)
       await finish()
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'The employee was added, but setup could not be finished. Try again.') }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'The staff member was added, but setup could not be finished. Try again.') }
     finally { setBusy(false) }
   }
 

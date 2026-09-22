@@ -1,9 +1,9 @@
 /**
  * CashierProductsScreen — /pos/products
- * Read-only catalog browse for the cashier terminal (FEAT-CAT-01).
- * Reuses ProductCatalogScreen's visual language (product-catalog.css) and
+ * Read-only menu browse for the service terminal (FEAT-CAT-01).
+ * Reuses ProductCatalogScreen's MISE visual language (product-catalog.css) and
  * read-side data shape, but bootstraps from terminal auth instead of Supabase,
- * and has no add/edit affordance — catalog creation stays owner/manager only.
+ * and has no add/edit affordance — menu editing stays owner/manager only.
  */
 import { useEffect, useMemo, useState } from 'react'
 import { liveQuery } from 'dexie'
@@ -26,12 +26,12 @@ export function CashierProductsScreen() {
     let active = true
     void currentAccess().then(async access => {
       if (!active) return
-      if (!access?.policy.valid) { setLoadErr('Unlock this terminal before browsing products.'); return }
+      if (!access?.policy.valid) { setLoadErr('Unlock this terminal before browsing the menu.'); return }
       const id = access.cache.device.store_id
       setStoreId(id)
       const config = await posDb.store_config.get(id)
       if (config && active) setCurrency(config.currency)
-    }).catch(reason => { if (active) setLoadErr(reason instanceof Error ? reason.message : 'Could not load this store.') })
+    }).catch(reason => { if (active) setLoadErr(reason instanceof Error ? reason.message : 'Could not load this restaurant.') })
     return () => { active = false }
   }, [])
 
@@ -39,7 +39,7 @@ export function CashierProductsScreen() {
     if (!storeId) return
     const productsSub = liveQuery(() => posDb.products.where('store_id').equals(storeId).toArray()).subscribe({
       next: rows => setProducts(rows.filter(product => product.active).sort((a, b) => a.name.localeCompare(b.name))),
-      error: () => setLoadErr('Failed to read the saved product catalog.'),
+      error: () => setLoadErr('Failed to read the saved menu.'),
     })
     const categoriesSub = liveQuery(() => posDb.categories.where('store_id').equals(storeId).toArray()).subscribe({
       next: rows => setCategories(rows.filter(category => category.active)),
@@ -73,16 +73,16 @@ export function CashierProductsScreen() {
 
   return <div className="pc-page">
     <div className="pc-hero"><div>
-      <p className="pc-breadcrumb">Cashier terminal <span>/</span> Products</p>
-      <h1 className="pc-title">Product catalog.</h1>
-      <p className="pc-subtitle">Browse this store's products, prices and stock. Ask a manager to add or edit items.</p>
+      <p className="pc-breadcrumb">Service terminal <span>/</span> Menu</p>
+      <h1 className="pc-title">The menu.</h1>
+      <p className="pc-subtitle">Browse tonight's dishes, prices and stock. Ask a manager to add or edit a dish.</p>
     </div></div>
 
     {products !== null && <div className="pc-stats-strip">
-      <div className="pc-stat"><span className="pc-stat-label">Total Products</span><span className="pc-stat-value">{total}</span><span className="pc-stat-sub">Across all categories</span></div>
-      <div className="pc-stat"><span className="pc-stat-label">In Stock</span><span className="pc-stat-value">{inStock}</span><span className="pc-stat-sub">Ready to sell</span></div>
-      <div className="pc-stat"><span className="pc-stat-label">Low Stock</span><span className="pc-stat-value">{lowStock}</span><span className="pc-stat-sub">5 units or less</span></div>
-      <div className="pc-stat"><span className="pc-stat-label">Out of Stock</span><span className="pc-stat-value">{outStock}</span><span className="pc-stat-sub">Needs replenishment</span></div>
+      <div className="pc-stat"><span className="pc-stat-label">Menu Items</span><span className="pc-stat-value">{total}</span><span className="pc-stat-sub">Across all categories</span></div>
+      <div className="pc-stat"><span className="pc-stat-label">In Stock</span><span className="pc-stat-value">{inStock}</span><span className="pc-stat-sub">Ready to serve</span></div>
+      <div className="pc-stat"><span className="pc-stat-label">Low Stock</span><span className="pc-stat-value">{lowStock}</span><span className="pc-stat-sub">5 portions or fewer</span></div>
+      <div className="pc-stat"><span className="pc-stat-label">Out of Stock</span><span className="pc-stat-value">{outStock}</span><span className="pc-stat-sub">Needs restocking</span></div>
     </div>}
 
     <div className="pc-content">
@@ -92,7 +92,7 @@ export function CashierProductsScreen() {
       <div className="pc-toolbar">
         <div className="pc-search">
           <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4.5" stroke="currentColor" strokeWidth="1.5" /><path d="M10 10 13.5 13.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
-          <input id="pc-search" className="pc-search-input" type="search" placeholder="Search by name, SKU or barcode…" value={query} onChange={event => setQuery(event.target.value)} aria-label="Search products" />
+          <input id="pc-search" className="pc-search-input" type="search" placeholder="Search dishes by name, SKU or barcode…" value={query} onChange={event => setQuery(event.target.value)} aria-label="Search the menu" />
           {query && <button type="button" className="pc-search-clear" onClick={() => setQuery('')} aria-label="Clear search">✕</button>}
         </div>
         <select id="pc-cat-filter" className="pc-cat-select" value={catFilter} onChange={event => setCatFilter(event.target.value)} aria-label="Filter by category">
@@ -102,10 +102,10 @@ export function CashierProductsScreen() {
         {hasFilters && <button type="button" className="pc-clear-btn" onClick={() => { setQuery(''); setCatFilter('all') }}>Clear filters</button>}
       </div>
 
-      {!isLoading && filtered.length > 0 && <div className="pc-meta">Showing {filtered.length} product{filtered.length !== 1 ? 's' : ''}{hasFilters && ` (filtered from ${total})`}</div>}
+      {!isLoading && filtered.length > 0 && <div className="pc-meta">Showing {filtered.length} dish{filtered.length !== 1 ? 'es' : ''}{hasFilters && ` (filtered from ${total})`}</div>}
 
       {isLoading && <div className="pc-table-wrap" aria-busy="true">
-        <div className="pc-thead"><span>Product</span><span>Barcode</span><span>Category</span><span>Price</span><span>Stock</span></div>
+        <div className="pc-thead"><span>Dish</span><span>Barcode</span><span>Category</span><span>Price</span><span>Stock</span></div>
         {Array.from({ length: 6 }).map((_, index) => <div key={index} className="pc-skel-row">
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div className="pc-bone" style={{ width: 36, height: 36, borderRadius: 6, flexShrink: 0 }} />
@@ -119,12 +119,12 @@ export function CashierProductsScreen() {
       </div>}
 
       {!isLoading && !loadErr && products !== null && filtered.length === 0 && <div className="pc-state">
-        <h2>{hasFilters ? 'No products found' : 'No products yet'}</h2>
-        <p>{hasFilters ? 'Try adjusting your search terms or category filter to find what you are looking for.' : 'Connect this terminal to load the store catalog.'}</p>
+        <h2>{hasFilters ? 'No dishes found' : 'Nothing on the menu yet'}</h2>
+        <p>{hasFilters ? 'Try adjusting your search terms or category filter to find the dish you are looking for.' : 'Connect this terminal to load the restaurant menu.'}</p>
       </div>}
 
-      {!isLoading && filtered.length > 0 && <div className="pc-table-wrap" role="table" aria-label="Products">
-        <div className="pc-thead" role="row"><span>Product</span><span>Barcode</span><span>Category</span><span>Price</span><span>Stock</span></div>
+      {!isLoading && filtered.length > 0 && <div className="pc-table-wrap" role="table" aria-label="Menu items">
+        <div className="pc-thead" role="row"><span>Dish</span><span>Barcode</span><span>Category</span><span>Price</span><span>Stock</span></div>
         {filtered.map(product => {
           const level = stock[product.id] ?? 0
           const catName = product.category_id ? catMap[product.category_id] ?? '' : ''
