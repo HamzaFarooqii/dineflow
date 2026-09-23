@@ -161,18 +161,41 @@ floor/table endpoint. This has to be built today, not assumed to exist.
 
 Neither merges directly into `develop`. Both go through PR review by the Team Lead.
 
-## 7. Days 2–5 (summary — not built this session)
+## 7. Days 2–5: four implementation days, one stage each
 
-- **Day 2 — Orders + FOH + Kitchen:** persist `OrderType` on orders; table→order→kitchen
-  ticket flow; Kitchen Display System consuming `kitchen_stations`; ticket states
-  (preparing/ready/served) live on the order/ticket, not the table.
-- **Day 3 — Recipes + Inventory:** ingredients, units, recipes, recipe costing, stock
-  consumption, batches/expiry/wastage — new tables, additive to `pos_stock`.
-- **Day 4 — Customers + Loyalty:** visit history, lifetime spend, loyalty points/tiers,
-  promotions — extends the existing `pos_customers`/guests model from `docs/05`.
-- **Day 5 — Reporting + Intelligence foundation:** owner dashboard, dish profitability,
-  food-cost, wastage, kitchen performance; forecasting only once real data exists — no
-  fabricated AI features.
+Day 1 was setup and foundation only — design system, nav shell, base schema, CI. That leaves
+**four full implementation days** to deliver the entire remaining product vision, one complete
+stage per day. Nothing is deferred to a "day 6"; each day below must land its whole stage
+end-to-end (schema → API → UI) before the next day's branches are cut. Full per-person task
+breakdowns (Ahmed/Bisma/Lead, as separate reviewable markdown files) are produced day-by-day in
+`docs/day-plans/` — `day2-ahmed.md`, `day2-bisma.md` and `day2-lead.md` exist now; Day 3–5's
+are written once the prior day is merged, so they reflect what actually landed rather than
+guessing ahead.
+
+- **Day 2 — Orders + Front of House + Kitchen.** *Ahmed:* persist `order_type`/`table_id` on
+  orders, generate kitchen tickets per station on checkout, build the Kitchen Display System.
+  *Bisma:* real table-status writes (available→seated→ordering→bill_requested→dirty→available),
+  waiter assignment, enabling the Day 1 Add order/Transfer/Merge/Bill actions. *Lead:* the
+  `kitchen_tickets`/`kitchen_ticket_items` schema and shared `KitchenTicketStatus` contract,
+  landed before either branch starts.
+- **Day 3 — Recipes + Ingredient Inventory.** *Ahmed (menu/costing side):* recipes, recipe
+  ingredients, portion quantities, recipe costing surfaced on the menu/POS side. *Bisma
+  (inventory/ops side):* ingredient-level stock, units, batches/expiry, wastage, stock movements
+  tied to the kitchen tickets Day 2 introduced. *Lead:* `ingredients`/`units`/`recipes`/
+  `recipe_ingredients`/`stock_movements` schema and the shared costing contract, plus deciding
+  exactly how a served kitchen ticket decrements ingredient stock.
+- **Day 4 — Customers + Loyalty + Restaurant CRM.** *Ahmed:* loyalty points/tiers and
+  reward-rule logic tied to checkout. *Bisma:* visit history, lifetime spend, and
+  promotions/discounts surfaced on the guest profile (extends the existing `pos_customers`/
+  guests model from `docs/05`) plus table-side "loyalty customer" recognition on the floor.
+  *Lead:* loyalty schema (points ledger, tiers, reward rules) and the shared reward-rule
+  contract.
+- **Day 5 — Reporting + Management + Intelligence Foundation.** *Ahmed:* dish profitability,
+  food-cost and kitchen-performance reports, drawing on Day 2's tickets and Day 3's recipe
+  costs. *Bisma:* the owner dashboard, sales/customer reporting, wastage and inventory
+  reporting, drawing on Day 3's stock movements and Day 4's loyalty data. *Lead:* final
+  cross-module integration and polish; demand-forecasting/prep-recommendation groundwork only
+  if real operational data already exists by then — no fabricated AI features.
 
 Each day's branches are cut fresh from `develop` **after** the previous day's PRs are merged
 and pushed — never from a stale prior-day branch.
