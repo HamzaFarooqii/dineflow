@@ -10,6 +10,7 @@ import { liveQuery } from 'dexie'
 import { formatCents } from '../../../../packages/domain/src/money'
 import { posDb, type LocalCategory, type LocalProduct } from '../lib/db'
 import { currentAccess } from '../terminal-auth/cache'
+import { DishAvailability } from './menu/DishAvailability'
 import './product-catalog.css'
 
 export function CashierProductsScreen() {
@@ -134,7 +135,13 @@ export function CashierProductsScreen() {
           const pillLabel = level > 5 ? 'In Stock' : level > 0 ? 'Low Stock' : 'Out of Stock'
           return <div key={product.id} className="pc-row" role="row">
             <div className="pc-cell-product" role="cell">{product.image_url ? <img className="pc-avatar-img" src={product.image_url} alt="" aria-hidden="true" /> : <div className="pc-avatar" aria-hidden="true">{initial}</div>}
-              <div style={{ minWidth: 0 }}><div className="pc-prod-name" title={product.name}>{product.name}</div><div className="pc-prod-sku">{product.sku}</div></div></div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                  <span className="pc-prod-name" title={product.name}>{product.name}</span>
+                  <DishAvailability isAvailable={product.is_available} unavailableUntil={product.unavailable_until} />
+                </div>
+                <div className="pc-prod-sku">{product.sku}</div>
+              </div></div>
             <div className="pc-cell-code" role="cell">{product.barcode || '—'}</div>
             <div className="pc-cell" role="cell"><span className={`pc-badge ${catName ? '' : 'empty'}`}>{catName || 'Unassigned'}</span></div>
             <div className="pc-cell-price" role="cell">{formatCents(product.unit_price_cents, currency)}</div>

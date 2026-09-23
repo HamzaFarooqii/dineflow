@@ -322,6 +322,11 @@ html{font-family:'Archivo',sans-serif;color:var(--mise-ink);background:var(--mis
 /* Cart line discounts (FEAT-CART-02): 4px leading status rail per line, compact toggle, popover. */
 .cart-line-wrap{border-left:4px solid var(--mise-ink);border-bottom:1px solid var(--mise-border-hairline);padding:0 0 10px 12px;margin-bottom:6px}
 .cart-line-wrap .cart-line{border-bottom:0;padding-bottom:4px}
+.cart-line-note-row{display:flex;align-items:center;gap:6px;padding:0 0 6px}
+.cart-line-note-row input{flex:1;min-width:0;min-height:32px;border:1px solid var(--mise-border-hairline);border-radius:var(--mise-r2);background:var(--mise-surface-sunken);padding:0 8px;font:400 11px 'Archivo',sans-serif;color:var(--mise-ink);outline:0}
+.cart-line-note-row input:focus{border-color:var(--mise-saffron);box-shadow:0 0 0 2px var(--mise-saffron-fill)}
+.cart-line-note-row input::placeholder{color:var(--mise-ink-disabled)}
+.cart-line-modifiers-placeholder{flex-shrink:0;min-height:32px;padding:0 9px;border:1px dashed var(--mise-border-strong);border-radius:var(--mise-r2);background:transparent;color:var(--mise-ink-disabled);font:600 11px 'Archivo',sans-serif;cursor:not-allowed}
 .cart-line-discount-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 0 4px}
 .discount-button{min-height:34px;padding:5px 11px;border:1px solid var(--mise-border-strong);border-radius:var(--mise-r2);background:var(--mise-surface);color:var(--mise-ink-secondary);font:600 11px 'Archivo',sans-serif;transition:background .15s ease,border-color .15s ease,color .15s ease}
 .discount-button:hover,.discount-button.active{border-color:var(--mise-saffron);background:var(--mise-saffron-fill);color:var(--mise-saffron-deep)}

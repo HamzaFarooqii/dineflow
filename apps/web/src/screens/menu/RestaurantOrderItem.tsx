@@ -5,7 +5,7 @@ import type { CartItem } from '../../lib/pos-store'
 // register's cart-line markup — all discount/quantity state still lives in RegisterScreen; this
 // component only renders it, so behavior is unchanged from before the extraction.
 export function RestaurantOrderItem({ item, currency, flagged, approvalValid, discountEditorOpen, discountKind, discountInput, discountError,
-  onIncrement, onDecrement, onRemove, onOpenDiscountEditor, onSetDiscountKind, onSetDiscountInput, onRemoveDiscount, onCancelDiscountEditor, onApplyDiscount }: {
+  onIncrement, onDecrement, onRemove, onOpenDiscountEditor, onSetDiscountKind, onSetDiscountInput, onRemoveDiscount, onCancelDiscountEditor, onApplyDiscount, onSetNote }: {
   item: CartItem
   currency: string
   flagged: boolean
@@ -23,6 +23,7 @@ export function RestaurantOrderItem({ item, currency, flagged, approvalValid, di
   onRemoveDiscount: () => void
   onCancelDiscountEditor: () => void
   onApplyDiscount: () => void
+  onSetNote: (notes: string) => void
 }) {
   const line = calculateDiscountedLine(item.unitPriceCents, item.quantity, item.taxRateBps, item.discount)
   return <div className="cart-line-wrap">
@@ -30,6 +31,14 @@ export function RestaurantOrderItem({ item, currency, flagged, approvalValid, di
       <div className="quantity"><button type="button" aria-label={`Remove one ${item.name}`} onClick={onDecrement}>−</button><b>{item.quantity}</b>
         <button type="button" aria-label={`Add one ${item.name}`} onClick={onIncrement}>+</button></div>
       <button type="button" aria-label={`Remove ${item.name}`} onClick={onRemove}>×</button></div>
+    <div className="cart-line-note-row">
+      <input type="text" maxLength={200} value={item.notes ?? ''} placeholder="Note for the kitchen (e.g. no onions)"
+        aria-label={`Note for ${item.name}`} onChange={event => onSetNote(event.target.value)} />
+      {/* Modifiers/add-ons structure (Blueprint-aligned placeholder): visibly present, not yet
+          wired to a data model — no modifier groups exist on pos_products today, so this stays
+          disabled rather than fabricating options. Day 2+ work once that schema lands. */}
+      <button type="button" className="cart-line-modifiers-placeholder" disabled title="Modifiers — coming soon">+ Modifiers</button>
+    </div>
     <div className="cart-line-discount-row">
       <button type="button" className={`discount-button ${item.discount ? 'active' : ''}`} onClick={onOpenDiscountEditor}>{item.discount ? 'Edit discount' : '% Discount'}</button>
       {item.discount ? <div className="cart-line-money">

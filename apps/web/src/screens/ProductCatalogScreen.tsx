@@ -12,6 +12,7 @@ import { formatCents, parseCents } from '../../../../packages/domain/src/money'
 import { posDb, type LocalCategory, type LocalProduct, type LocalTaxRate } from '../lib/db'
 import { activeStoreId, accessToken, configuredApiUrl, loadCatalog } from '../lib/catalog'
 import { requireSupabase } from '../lib/supabase'
+import { DishAvailability } from './menu/DishAvailability'
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 import './product-catalog.css'
@@ -623,7 +624,10 @@ export function ProductCatalogScreen() {
                       <div className="pc-avatar" aria-hidden="true">{initial}</div>
                     )}
                     <div style={{ minWidth: 0 }}>
-                      <div className="pc-prod-name" title={product.name}>{product.name}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                        <span className="pc-prod-name" title={product.name}>{product.name}</span>
+                        <DishAvailability isAvailable={product.is_available} unavailableUntil={product.unavailable_until} />
+                      </div>
                       <div className="pc-prod-sku">{product.sku}</div>
                     </div>
                   </div>
