@@ -76,6 +76,15 @@ export interface PosStore {
   storeName: string
   setStoreContext: (storeId: string, storeName: string) => void
 
+  // The restaurant table the current register cart belongs to, set by the Floor screen's "Add
+  // order" action (Day 2 table lifecycle). Cleared when its table finishes the dirty -> available
+  // cleaning cycle, or when the store context actually changes. The correct long-term clearing
+  // point is a successful bill_requested -> dirty settlement, once payment integration owns that
+  // transition (apps/web/src/screens/floor/FloorScreen.tsx does not trigger it today) — that's a
+  // follow-up for whoever builds checkout's table linkage, not implemented here.
+  activeTableId: string | null
+  setActiveTableId: (tableId: string | null) => void
+
   // Cart
   items: CartItem[]
   addItem: (product: Omit<CartItem, 'quantity' | 'discount'>) => void
@@ -119,7 +128,11 @@ export const usePosStore = create<PosStore>((set, get) => ({
     storeId, storeName,
     items: state.storeId && state.storeId !== storeId ? [] : state.items,
     selectedCustomer: state.storeId && state.storeId !== storeId ? null : state.selectedCustomer,
+    activeTableId: state.storeId && state.storeId !== storeId ? null : state.activeTableId,
   })),
+
+  activeTableId: null,
+  setActiveTableId: tableId => set({ activeTableId: tableId }),
 
   items: [],
   selectedCustomer: null,
