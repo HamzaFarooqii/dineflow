@@ -13,6 +13,7 @@ import './floor.css'
 const SEAT_FROM: TableStatus = 'available'
 const ADD_ORDER_FROM: TableStatus = 'seated'
 const BILLABLE_FROM: readonly TableStatus[] = ['ordering', 'served']
+const BILL_SETTLED_FROM: TableStatus = 'bill_requested'
 const CLEANED_FROM: TableStatus = 'dirty'
 
 export function FloorScreen() {
@@ -115,6 +116,11 @@ export function FloorScreen() {
     await runTransition(table, table.status, 'bill_requested')
   }
 
+  async function handleBillSettled(table: RestaurantTable) {
+    const updated = await runTransition(table, BILL_SETTLED_FROM, 'dirty')
+    if (updated && activeTableId === table.id) setActiveTableId(null)
+  }
+
   async function handleCleaned(table: RestaurantTable) {
     const updated = await runTransition(table, CLEANED_FROM, 'available')
     if (updated && activeTableId === table.id) setActiveTableId(null)
@@ -165,6 +171,7 @@ export function FloorScreen() {
         <button type="button" disabled title="Available once table–order linking lands">Transfer</button>
         <button type="button" disabled title="Available once table–order linking lands">Merge</button>
         <button type="button" disabled={actionBusy || !BILLABLE_FROM.includes(selectedTable.status)} onClick={() => void handleBill(selectedTable)}>Bill</button>
+        <button type="button" disabled={actionBusy || selectedTable.status !== BILL_SETTLED_FROM} onClick={() => void handleBillSettled(selectedTable)}>Bill settled</button>
         <button type="button" disabled={actionBusy || selectedTable.status !== CLEANED_FROM} onClick={() => void handleCleaned(selectedTable)}>Cleaned</button>
       </div>
     </aside>}

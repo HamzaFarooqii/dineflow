@@ -78,10 +78,8 @@ export interface PosStore {
 
   // The restaurant table the current register cart belongs to, set by the Floor screen's "Add
   // order" action (Day 2 table lifecycle). Cleared when its table finishes the dirty -> available
-  // cleaning cycle, or when the store context actually changes. The correct long-term clearing
-  // point is a successful bill_requested -> dirty settlement, once payment integration owns that
-  // transition (apps/web/src/screens/floor/FloorScreen.tsx does not trigger it today) — that's a
-  // follow-up for whoever builds checkout's table linkage, not implemented here.
+  // cleaning cycle, when the floor records bill settlement, or when the store context actually
+  // changes. A future payment integration can trigger that settlement transition automatically.
   activeTableId: string | null
   setActiveTableId: (tableId: string | null) => void
 

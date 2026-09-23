@@ -64,10 +64,8 @@ terminalFloorRouter.get('/', (req, res) => getFloorPlan(req, res, true))
 // billable. Flag to the lead: confirm this narrowing is correct, since the original spec used
 // `*` and this file is picking a conservative interpretation instead of guessing every case.
 //
-// `bill_requested -> dirty` is implemented here (API-level only) because the definition of done
-// needs the full lifecycle to be reachable at all, but per the lead's instruction to flag rather
-// than guess, the floor UI does NOT expose a "Bill settled" button for it today — that decision
-// (floor vs. payment flow) is called out in the PR description for the lead to confirm.
+// `bill_requested -> dirty` is exposed by the floor as an explicit manual "Bill settled" action.
+// A future payment integration can trigger the same guarded transition automatically.
 //
 // Note: no edge below ever produces 'served' — a table can only reach it by a direct DB write
 // (e.g. a future kitchen-display integration), never through this endpoint. Flagging this so it
