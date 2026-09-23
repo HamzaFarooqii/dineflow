@@ -216,12 +216,18 @@ async function push(req: import('express').Request, res: import('express').Respo
       // kitchen station (Day 1's pos_products.station_id, nullable). Created for every order type,
       // not just dine-in — takeaway and delivery still need the kitchen to prep the food; only
       // table_id is dine-in-only. (docs/09, Day 2, Ahmed section 3.)
+      //
+      // Items fire straight to 'preparing' (fired_at = now()) rather than sitting in 'queued' —
+      // a completed, paid order is definitionally ready for the kitchen to start on immediately,
+      // so a manual "Fire" click for every brand-new ticket was pure friction, not a real queueing
+      // step. 'queued' stays a valid state in KITCHEN_TICKET_ITEM_TRANSITIONS for any future
+      // hold-before-firing workflow; it's just never the initial one.
       const ticketId = randomUUID()
-      await client.query(`insert into public.kitchen_tickets(id,store_id,order_id,table_id,status) values ($1,$2,$3,$4,'queued')`,
+      await client.query(`insert into public.kitchen_tickets(id,store_id,order_id,table_id,status) values ($1,$2,$3,$4,'preparing')`,
         [ticketId, operation.storeId, operation.operationId, operation.order.table_id])
       for (const item of operation.items) {
-        await client.query(`insert into public.kitchen_ticket_items(id,store_id,ticket_id,order_item_id,station_id,status)
-          values ($1,$2,$3,$4,$5,'queued')`,
+        await client.query(`insert into public.kitchen_ticket_items(id,store_id,ticket_id,order_item_id,station_id,status,fired_at)
+          values ($1,$2,$3,$4,$5,'preparing',now())`,
           [randomUUID(), operation.storeId, ticketId, item.id, stationByProduct.get(item.product_id) ?? null])
       }
       await client.query(`insert into public.pos_payments(id,store_id,order_id,method,amount_cents,tendered_cents,change_cents,reference,client_generated_at)

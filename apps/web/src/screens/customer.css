@@ -372,6 +372,14 @@
   margin-top: var(--mise-space-8);
 }
 
+/* A guest is required on every check — this outline is the only visual difference from the
+   ordinary state above; the button itself switches to .secondary-cta (styles.css) so the
+   required action reads as a call to action, not a muted optional link. */
+.crm-cart-customer-required {
+  border-color: var(--mise-warning);
+  background: var(--mise-warning-fill);
+}
+
 .crm-sync-note {
   padding: var(--mise-space-8) var(--mise-space-12);
   border: 1px solid var(--mise-border-hairline);

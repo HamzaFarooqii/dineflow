@@ -1,16 +1,20 @@
-import { posDb, type LocalOrder, type LocalOrderItem, type LocalPayment } from '../lib/db'
+import { posDb, type LocalCustomer, type LocalOrder, type LocalOrderItem, type LocalPayment } from '../lib/db'
 
-export interface SavedReceipt { order: LocalOrder; items: LocalOrderItem[]; payment: LocalPayment }
+// customer is null both when the order has no customer_id and when that customer isn't (or
+// isn't yet) synced to this browser — the receipt shows "Guest not on file" either way rather
+// than distinguishing the two, since neither is actionable from a receipt screen.
+export interface SavedReceipt { order: LocalOrder; items: LocalOrderItem[]; payment: LocalPayment; customer: LocalCustomer | null }
 
 // One read-only transaction: never reconstruct a historical sale from the catalog.
 export async function readReceipt(storeId: string, orderId: string): Promise<SavedReceipt | null> {
-  return posDb.transaction('r', posDb.orders, posDb.order_items, posDb.payments, async () => {
+  return posDb.transaction('r', posDb.orders, posDb.order_items, posDb.payments, posDb.customers, async () => {
     const order = await posDb.orders.get(orderId)
     if (!order || order.store_id !== storeId) return null
     const items = await posDb.order_items.where('order_id').equals(orderId).toArray()
     const payment = await posDb.payments.where('order_id').equals(orderId).first()
     if (!items.length || !payment) throw new Error('This saved receipt is incomplete. Keep the local data and ask a manager to review it. Do not charge again.')
-    return { order, items, payment }
+    const customer = order.customer_id ? (await posDb.customers.get(order.customer_id)) ?? null : null
+    return { order, items, payment, customer }
   })
 }
 
