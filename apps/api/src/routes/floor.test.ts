@@ -8,16 +8,40 @@ import { PGlite } from '@electric-sql/pglite'
 // Same pattern as reports.test.ts: pure validation never opens a connection; the PGlite-backed
 // test below monkey-patches db.query before use.
 process.env.DATABASE_URL ??= 'postgresql://localhost:5432/validation_only'
-const { storeIdParam, applyTableStatusTransition } = await import('./floor.js')
+const { storeIdParam, parseStatusUpdateBody, applyTableStatusTransition } = await import('./floor.js')
 const { db } = await import('../db.js')
 
 function reqWith(query: Record<string, unknown>) {
   return { query } as unknown as Parameters<typeof storeIdParam>[0]
 }
 
+function reqWithBody(body: Record<string, unknown>) {
+  return { body } as unknown as Parameters<typeof parseStatusUpdateBody>[0]
+}
+
 test('storeIdParam rejects malformed input', () => {
   assert.throws(() => storeIdParam(reqWith({ store_id: 'not-a-uuid' })), /valid store_id/)
   assert.throws(() => storeIdParam(reqWith({})), /valid store_id/)
+})
+
+test('a manager can mark a table served by hand; a cashier terminal cannot', () => {
+  const body = { expected_status: 'ordering', status: 'served' }
+  const managerResult = parseStatusUpdateBody(reqWithBody(body), true)
+  assert.equal(managerResult.status, 'served')
+
+  assert.throws(() => parseStatusUpdateBody(reqWithBody(body), false), /Cannot move a table from ordering to served/)
+})
+
+test('ordinary transitions still work identically for both manager and terminal callers', () => {
+  const body = { expected_status: 'available', status: 'seated' }
+  assert.equal(parseStatusUpdateBody(reqWithBody(body), true).status, 'seated')
+  assert.equal(parseStatusUpdateBody(reqWithBody(body), false).status, 'seated')
+})
+
+test('the manager-only edge does not leak into unrelated statuses', () => {
+  // Only ordering -> served is manager-only; a manager still can't skip straight from
+  // 'available' to 'served', for example.
+  assert.throws(() => parseStatusUpdateBody(reqWithBody({ expected_status: 'available', status: 'served' }), true), /Cannot move a table from available to served/)
 })
 
 const root = fileURLToPath(new URL('../../../../', import.meta.url))

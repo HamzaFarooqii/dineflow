@@ -14,6 +14,13 @@ import './floor.css'
 // re-validates every transition itself.
 const SEAT_FROM: TableStatus = 'available'
 const ADD_ORDER_FROM: TableStatus = 'seated'
+// Normally automatic — kitchen.ts flips a table to 'served' by itself once every item on its
+// ticket is served. This manual path exists for when the kitchen can't be the only source of
+// truth (an item never rang through the KDS, a side dish added by hand) — manager-only, both
+// here and on the API (apps/api/src/routes/floor.ts's MANAGER_ONLY_TRANSITIONS); this whole
+// screen already requires an owner/manager session to open, so no extra role check is needed
+// client-side, but the server still enforces it independently.
+const MARK_SERVED_FROM: TableStatus = 'ordering'
 const BILLABLE_FROM: readonly TableStatus[] = ['ordering', 'served']
 const BILL_SETTLED_FROM: TableStatus = 'bill_requested'
 const CLEANED_FROM: TableStatus = 'dirty'
@@ -115,6 +122,10 @@ export function FloorScreen() {
     if (updated) { setActiveTableId(table.id); navigate('/register') }
   }
 
+  async function handleMarkServed(table: RestaurantTable) {
+    await runTransition(table, MARK_SERVED_FROM, 'served')
+  }
+
   async function handleBill(table: RestaurantTable) {
     if (!BILLABLE_FROM.includes(table.status)) return
     await runTransition(table, table.status, 'bill_requested')
@@ -175,6 +186,8 @@ export function FloorScreen() {
       <div className="floor-detail-actions">
         <button type="button" disabled={actionBusy || selectedTable.status !== SEAT_FROM} onClick={() => void handleSeat(selectedTable)}>Seat</button>
         <button type="button" disabled={actionBusy || selectedTable.status !== ADD_ORDER_FROM} onClick={() => void handleAddOrder(selectedTable)}>Add order</button>
+        <button type="button" disabled={actionBusy || selectedTable.status !== MARK_SERVED_FROM} onClick={() => void handleMarkServed(selectedTable)}
+          title="The kitchen normally does this automatically once every item on the ticket is served">Mark served</button>
         <button type="button" disabled title="Available once table–order linking lands">Transfer</button>
         <button type="button" disabled title="Available once table–order linking lands">Merge</button>
         <button type="button" disabled={actionBusy || !BILLABLE_FROM.includes(selectedTable.status)} onClick={() => void handleBill(selectedTable)}>Bill</button>
