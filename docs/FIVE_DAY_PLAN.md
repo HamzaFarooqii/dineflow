@@ -35,19 +35,24 @@ both closes the two gaps left from Day 2 and does the schema/integration work on
 should own. Ahmed's `units`/`recipes` migration must be applied before Bisma's
 `ingredients`/`stock_movements` (the latter's `recipe_ingredients` references both).
 
-- **Hamza:** ✅ both Day 2 gaps closed and merged — table order total on the Floor screen
-  (honestly labeled "Last order," not a live tab) and ticket-served → table sync, with a
-  manager-only manual override added on top (`docs/MODULE_STATUS.md` has the full detail).
-  Still open: review Ahmed's/Bisma's migrations and PRs, then wire the consumption hook once
-  both are live.
+- **Hamza:** ✅ both Day 2 gaps closed and merged (table order total, ticket-served → table
+  sync with a manager override). ✅ Manual QA after that surfaced four more real gaps plus two
+  long-standing placeholders, all now built and pushed on two more branches awaiting merge:
+  a stock-oversell warning at checkout, mandatory guest selection, a bill showing guest
+  name/phone/order type, kitchen tickets auto-firing to `preparing`, full floor area/table
+  CRUD, and Transfer/Merge actually implemented (previously disabled placeholders). Full-scratch
+  "Ticket CRUD" was scoped out deliberately — a ticket is derived 1:1 from a paid order, so
+  standalone creation would break that invariant. Still open: merge both pushed branches, then
+  review Ahmed's/Bisma's migrations and PRs once they exist, then wire the consumption hook.
 - **Ahmed:** Recipes + menu-side costing — not started. Creates and owns his own branch/PR
   (`docs/day-plans/day3.md` has the exact migration, files, and workflow).
 - **Bisma:** Ingredient inventory, full stack — not started. Same: her own branch/PR, full
   detail in `docs/day-plans/day3.md`.
 
 ### Day 3 Definition of Done
-- Hamza: both Day 2 gaps closed and verified end-to-end (done); recipe/inventory schema
-  reviewed; consumption hook wired once Ahmed's and Bisma's PRs are merged.
+- Hamza: both Day 2 gaps closed and verified end-to-end (done); the four checkout-integrity
+  fixes and floor CRUD/Transfer/Merge merged into `develop`; recipe/inventory schema reviewed;
+  consumption hook wired once Ahmed's and Bisma's PRs are merged.
 - Ahmed: a menu item can have a costed recipe.
 - Bisma: ingredients, batches, and stock movements exist and are manageable via a real screen.
 

@@ -12,7 +12,7 @@ section under each person's task tells them exactly what to run.
 
 ## Hamza — Lead + developer
 
-### ✅ Already shipped today (merged into `develop`)
+### ✅ Merged into `develop` already
 
 Both were genuine Day 2 gaps, now closed:
 
@@ -24,27 +24,67 @@ Both were genuine Day 2 gaps, now closed:
 2. **Ticket-served → table sync, with a manager override.** A fully-served dine-in kitchen
    ticket now flips its table to `served` automatically (`kitchen.ts` calls `floor.ts`'s
    `applyTableStatusTransition` directly). A manager can also trigger the same transition by
-   hand from the Floor screen's new **"Mark served"** button — for when the kitchen isn't a
+   hand from the Floor screen's **"Mark served"** button — for when the kitchen isn't a
    reliable enough source of truth (an item never rang through the KDS, a side dish added
    without a ticket). A cashier terminal cannot trigger either path.
 
-Covered by `apps/api/src/routes/floor.test.ts` (7 tests: the compare-and-swap primitive,
-waiter assignment through the full status cycle, tenant isolation, and the manager-vs-terminal
-authorization split). Full detail in the merge commits on `develop`
-(`3896502`, `400a352`) and `docs/MODULE_STATUS.md`.
+Full detail in commits `3896502`/`400a352` on `develop` and `docs/MODULE_STATUS.md`.
 
-### ⏳ Still to do today
+### 📦 Pushed, awaiting merge into `develop` (two more branches, from manual QA)
 
-3. **Schema review.** Before Ahmed or Bisma applies their migration (below), review it for:
-   the composite `(store_id, id)` tenant-scoping convention (`docs/ARCHITECTURE.md` §1.4),
-   additive-only changes, and no overlap with the existing `pos_stock` table.
-4. **Consumption-wiring integration** — blocked until both Ahmed's `recipes` and Bisma's
-   `ingredients`/`stock_movements` migrations are live. Once they are: wire `kitchen.ts`'s
-   item-served transition (the same code path that now calls `applyTableStatusTransition`) to
-   also insert `stock_movements` rows for the served item's recipe ingredients. This reaches
-   into both new modules at once, so it stays a Lead task, not Ahmed's or Bisma's.
-5. **Review Ahmed's and Bisma's PRs** against the checklists in their sections below, and merge
-   them (Ahmed's first — Bisma's migration has an FK into his `recipes` table).
+Manual testing after the above surfaced four more real gaps, plus two features (Table CRUD,
+Transfer/Merge) that had been sitting as placeholders since Day 1. Per the git-ownership rule,
+these are pushed and tested but **not self-merged** — they're branches for you to review/merge
+the same way Ahmed's and Bisma's PRs will be.
+
+**`feature/hamza/day3-checkout-integrity`** (commit `0fdf468`):
+3. **Stock check, not a silent oversell.** A cart line exceeding its last-synced stock now
+   shows an inline warning and a summary banner requiring explicit "Proceed anyway" before
+   checkout — re-required if the oversold quantity changes again. A confirmation gate, not a
+   hard block: `pos_stock` is allowed to go negative by design (`loadOversold` already reports
+   it for reconciliation), and rejecting an already-in-progress paid sale would be worse than a
+   rare oversell.
+4. **Guest is now mandatory** on every check, wherever the register can actually resolve one
+   (gated on `customerAuthorized` specifically, so an offline non-terminal session isn't
+   permanently blocked from checking out at all — that would have broken this app's
+   offline-first guarantee).
+5. **The bill shows the guest's name, phone number, and order type** — sourced from data
+   already on the order, no new schema.
+6. **Kitchen tickets fire straight to `preparing`** (`fired_at = now()`) instead of sitting in
+   `queued` — a paid order is definitionally ready for the kitchen, so the manual "Fire" click
+   on every brand-new ticket was pure friction.
+
+**`feature/hamza/day3-floor-crud`** (commit `7b8cc04`):
+7. **Full CRUD for floor areas and tables** (create/edit/delete), behind a new "Edit floor"
+   toggle on the Floor screen so day-to-day service view stays exactly as clean as before.
+   Deletes are soft and refuse to orphan or interrupt anything in use.
+8. **Transfer and Merge, actually implemented** — not placeholders anymore. Both move a
+   table's open kitchen tickets to another table through a transaction-locked, deadlock-safe
+   `moveTableParty` primitive, with real precondition checks. 6 new tests against real PGlite
+   transactions.
+9. Fixed a real, unrelated bug found while building this: `.secondary-cta` had no base CSS
+   rule anywhere in the app (used on a dozen screens, rendering unstyled outside one narrow
+   selector) — added the missing base style to `styles.css`.
+
+**Deliberately not built:** full "Ticket CRUD" (create/edit a ticket's contents from
+scratch) — a kitchen ticket is derived 1:1 from a paid order
+(`unique(store_id, order_id)` on `kitchen_tickets`), so standalone creation would duplicate
+what checkout already does and break that invariant. Dropped per your instruction rather than
+guessed at.
+
+### ⏳ Still to do today (blocked on Ahmed and Bisma)
+
+10. **Schema review.** Before Ahmed or Bisma applies their migration (below), review it for:
+    the composite `(store_id, id)` tenant-scoping convention (`docs/ARCHITECTURE.md` §1.4),
+    additive-only changes, and no overlap with the existing `pos_stock` table.
+11. **Consumption-wiring integration** — blocked until both Ahmed's `recipes` and Bisma's
+    `ingredients`/`stock_movements` migrations are live. Once they are: wire `kitchen.ts`'s
+    item-served transition (the same code path that now calls `applyTableStatusTransition`) to
+    also insert `stock_movements` rows for the served item's recipe ingredients. This reaches
+    into both new modules at once, so it stays a Lead task, not Ahmed's or Bisma's.
+12. **Review Ahmed's and Bisma's PRs** against the checklists in their sections below, and
+    merge them (Ahmed's first — Bisma's migration has an FK into his `recipes` table). Neither
+    has started as of this writing — nothing to review yet.
 
 ---
 
@@ -132,10 +172,15 @@ handles category/tax-rate edits.
 `apps/web/src/screens/menu/`, `apps/api/src/routes/catalog.ts`, your migration file.
 
 ### 6. Do not touch
-`apps/web/src/screens/floor/`, `apps/web/src/screens/kitchen/`, `apps/api/src/routes/floor.ts`,
-`apps/api/src/routes/kitchen.ts` (Hamza owns both today — his consumption-wiring task lands in
-`kitchen.ts` once your and Bisma's schemas exist), `pos-store.ts`, `RegisterScreen.tsx`'s
-checkout logic.
+`apps/web/src/screens/floor/`, `apps/web/src/screens/kitchen/`, `apps/api/src/routes/floor.ts`
+(now substantially bigger than Day 2 left it — full area/table CRUD plus Transfer/Merge),
+`apps/api/src/routes/kitchen.ts` (Hamza's consumption-wiring task lands here once your and
+Bisma's schemas exist), `pos-store.ts`, `RegisterScreen.tsx` and `apps/api/src/routes/orders.ts`
+(both gained real logic today — stock-oversell warning, mandatory guest, ticket auto-fire — on
+top of the checkout/discount logic that was already off-limits). If your costing UI ever needs
+to reference the register's stock-warning pattern for consistency (e.g. a future low-stock
+badge on `MenuItemCard`), reuse the `--mise-warning` treatment already established in
+`RestaurantOrderItem.tsx`'s `.cart-line-stock-warning` rather than inventing a new one.
 
 ### 7. Before opening your PR
 Run the full check from `RULES.md` §6 (domain/api/web test+build+typecheck). Add at least one
@@ -254,7 +299,10 @@ components in the same folder, styled entirely from existing `--mise-*` tokens, 
 and `apps/api/src/routes/kitchen.ts` (Hamza wires the consumption hook there later today — note
 that file now also contains the Day 2 ticket→table-status sync, so read it before assuming its
 shape; your job is to make sure `ingredients`/`stock_movements` exist and are queryable, not to
-call into that file yourself).
+call into that file yourself), `apps/web/src/screens/floor/` and `apps/api/src/routes/floor.ts`
+(Hamza built full area/table CRUD and Transfer/Merge there today — unrelated to your module, but
+don't touch it), `RegisterScreen.tsx` and `apps/api/src/routes/orders.ts` (gained stock-warning,
+mandatory-guest, and ticket-auto-fire logic today).
 
 ### 5. Before opening your PR
 Run the full check from `RULES.md` §6. Add a test for at least the low-stock/reorder-threshold
@@ -269,14 +317,33 @@ consumes stock automatically yet — that's Hamza's follow-up once your migratio
 
 ## Day 3 completion checklist (nothing missed)
 
-- [x] Table order total on the Floor screen (Hamza) — merged.
-- [x] Ticket-served → table sync, automatic + manager override (Hamza) — merged.
-- [ ] `units` + `recipes` schema, applied and recorded in `APPLIED.md` (Ahmed).
-- [ ] Recipe builder UI + costing display (Ahmed).
+**Hamza:**
+- [x] Table order total on the Floor screen — merged.
+- [x] Ticket-served → table sync, automatic + manager override — merged.
+- [x] Stock-oversell warning at checkout — pushed (`feature/hamza/day3-checkout-integrity`),
+      awaiting your merge.
+- [x] Mandatory guest selection at checkout — pushed, same branch.
+- [x] Bill shows guest name/phone/order type — pushed, same branch.
+- [x] Kitchen tickets auto-fire to `preparing` — pushed, same branch.
+- [x] Floor area/table CRUD — pushed (`feature/hamza/day3-floor-crud`), awaiting your merge.
+- [x] Transfer and Merge, actually implemented — pushed, same branch.
+- [ ] Merge both of the above branches into `develop` (yours to do, per the git-ownership rule).
+- [ ] Schema review of Ahmed's and Bisma's migrations, once either exists.
+- [ ] Consumption-wiring hook in `kitchen.ts`, once both schemas are live.
+- [ ] Review and merge Ahmed's PR, then Bisma's, once they exist.
+- [ ] Deliberately dropped: full Ticket CRUD (create/edit ticket contents from scratch) — see
+      the reasoning above; not tracked as outstanding, it's an intentional scope decision.
+
+**Ahmed** (not started as of this writing):
+- [ ] `units` + `recipes` schema, applied and recorded in `APPLIED.md`.
+- [ ] Recipe builder UI + costing display.
+
+**Bisma** (not started as of this writing):
 - [ ] `ingredients` + `ingredient_batches` + `stock_movements` + `recipe_ingredients` schema,
-      applied and recorded in `APPLIED.md` (Bisma).
-- [ ] Ingredient inventory screen: list, batches, ledger, wastage (Bisma).
-- [ ] Both PRs reviewed and merged in order — Ahmed, then Bisma (Hamza).
-- [ ] Consumption-wiring hook in `kitchen.ts`, once both schemas are live (Hamza).
-- [ ] `docs/MODULE_STATUS.md` and `docs/FIVE_DAY_PLAN.md` updated to reflect the true end-of-day
-      state, including anything that slipped.
+      applied and recorded in `APPLIED.md`.
+- [ ] Ingredient inventory screen: list, batches, ledger, wastage.
+
+**Documentation:**
+- [ ] `docs/MODULE_STATUS.md` and `docs/FIVE_DAY_PLAN.md` given a final pass once Ahmed's and
+      Bisma's work lands too, reflecting the true end-of-day state including anything that
+      slipped.
