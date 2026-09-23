@@ -83,9 +83,7 @@ terminalFloorRouter.get('/', (req, res) => getFloorPlan(req, res, true))
 // `bill_requested -> dirty` is exposed by the floor as an explicit manual "Bill settled" action.
 // A future payment integration can trigger the same guarded transition automatically.
 //
-// Note: no edge below ever produces 'served' — a table can only reach it by a direct DB write
-// (e.g. a future kitchen-display integration), never through this endpoint. Flagging this so it
-// isn't mistaken for an oversight: the UI's BILLABLE_FROM already accounts for it defensively.
+// `ordering -> served` is deliberately absent here — see MANAGER_ONLY_TRANSITIONS below.
 const TRANSITIONS: Record<TableStatus, readonly TableStatus[]> = {
   available: ['seated'],
   seated: ['ordering'],
@@ -95,6 +93,17 @@ const TRANSITIONS: Record<TableStatus, readonly TableStatus[]> = {
   dirty: ['available'],
   reserved: [],
   out_of_service: [],
+}
+
+// `ordering -> served` normally happens automatically — kitchen.ts's patchItem calls
+// applyTableStatusTransition directly once every item on a dine-in ticket is served, bypassing
+// this endpoint entirely. But the kitchen can't always be relied on to be the one source of
+// truth (an item never rung through the KDS, a mistake in the ticket, a walked-in side dish) —
+// a manager can also mark a table served by hand from the Floor screen. A cashier terminal
+// cannot: only the manager/owner web route (requireStoreManager, not requireCashierTerminal)
+// is allowed to use this map — see updateTableStatus's `managerCapable` argument below.
+const MANAGER_ONLY_TRANSITIONS: Partial<Record<TableStatus, readonly TableStatus[]>> = {
+  ordering: ['served'],
 }
 
 function isTableStatus(value: unknown): value is TableStatus {
@@ -107,7 +116,7 @@ interface StatusUpdateBody {
   assignedWaiterId: string | null
 }
 
-function parseStatusUpdateBody(req: Request): StatusUpdateBody {
+export function parseStatusUpdateBody(req: Request, managerCapable: boolean): StatusUpdateBody {
   const body = req.body as Record<string, unknown> | null
   if (!body || typeof body !== 'object') throw new ApiError(422, 'validation_failed', 'A JSON object is required.')
   const { expected_status, status, assigned_waiter_id } = body
@@ -116,7 +125,9 @@ function parseStatusUpdateBody(req: Request): StatusUpdateBody {
   if (assigned_waiter_id !== undefined && assigned_waiter_id !== null && !UUID_RE.test(String(assigned_waiter_id))) {
     throw new ApiError(422, 'validation_failed', 'assigned_waiter_id must be a valid uuid or null.')
   }
-  if (!TRANSITIONS[expected_status].includes(status)) {
+  const allowed = TRANSITIONS[expected_status].includes(status)
+    || (managerCapable && (MANAGER_ONLY_TRANSITIONS[expected_status]?.includes(status) ?? false))
+  if (!allowed) {
     throw new ApiError(400, 'invalid_transition', `Cannot move a table from ${expected_status} to ${status}.`)
   }
   const assignedWaiterId = (assigned_waiter_id ?? null) as string | null
@@ -148,14 +159,13 @@ export interface TableStatusRow {
 
 // The one place anything writes to restaurant_tables.status — an atomic compare-and-swap
 // (only applies if the row is still at expectedStatus) so two concurrent callers can never both
-// think their transition won. Shared by the HTTP handler below (which enforces TRANSITIONS
-// against a caller-supplied expected_status/status pair) and by kitchen.ts's item-served hook
-// (Day 3, closing a Day 2 gap), which calls this directly rather than going through the HTTP
-// endpoint's TRANSITIONS check — a served-by-the-kitchen table is a system transition, not one
-// a manager should be able to trigger by hand through the API, so it deliberately never becomes
-// a reachable edge in the public TRANSITIONS map below. Returns null (never throws) when the
-// row wasn't at expectedStatus or doesn't exist/isn't active — callers decide whether that's an
-// error (the HTTP handler does) or an ignorable no-op (the kitchen hook does).
+// think their transition won. Shared by the HTTP handler below (which enforces TRANSITIONS,
+// plus MANAGER_ONLY_TRANSITIONS for a manager-authenticated caller) and by kitchen.ts's
+// item-served hook (Day 3), which calls this directly, bypassing the HTTP layer's checks
+// entirely — a served-by-the-kitchen table is a system transition, always allowed regardless of
+// who's signed in, unlike the manager's manual override above. Returns null (never throws) when
+// the row wasn't at expectedStatus or doesn't exist/isn't active — callers decide whether that's
+// an error (the HTTP handler does) or an ignorable no-op (the kitchen hook does).
 export async function applyTableStatusTransition(storeId: string, tableId: string, expectedStatus: TableStatus, status: TableStatus, assignedWaiterId: string | null = null): Promise<TableStatusRow | null> {
   const result = await db.query<TableStatusRow>(
     `update public.restaurant_tables
@@ -187,7 +197,7 @@ async function updateTableStatus(req: Request, res: Response, terminal = false) 
     } else {
       await requireStoreManager(req, storeId)
     }
-    const { expectedStatus, status, assignedWaiterId } = parseStatusUpdateBody(req)
+    const { expectedStatus, status, assignedWaiterId } = parseStatusUpdateBody(req, !terminal)
     await validateWaiter(storeId, assignedWaiterId)
 
     const updated = await applyTableStatusTransition(storeId, tableId, expectedStatus, status, assignedWaiterId)

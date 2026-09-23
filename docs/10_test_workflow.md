@@ -66,6 +66,10 @@ indirectly). If these pass locally, CI will pass.
   if staff already clicked Bill early, the sync is a silent no-op (by design — see
   `apps/api/src/routes/kitchen.ts`'s comment). From `served`, Bill/Bill settled/Cleaned work as
   before.
+- **Manager override for the same transition:** open a table that's at `ordering` and click
+  **Mark served** in the detail panel — it should move straight to `served`, the same as the
+  kitchen doing it automatically. This is manager/owner-only by design (this whole screen
+  already requires that role to open); there's no cashier-terminal equivalent of this button.
 - **Table card total (Day 3):** once a table has a completed order against it, its card and
   detail panel show that order's total, labeled "Last order" — this is the most recent
   *completed* order, not a live running tab (the codebase has no in-progress-order concept yet,
