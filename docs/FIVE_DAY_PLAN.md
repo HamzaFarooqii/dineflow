@@ -26,58 +26,30 @@ Summary for context, not to be redone:
 
 ## Day 3 — Food Operations
 
+Full work division, exact migration SQL, file ownership and workflow steps:
+**`docs/day-plans/day3.md`.** Summary:
+
 Core relationship: **Dish → Recipe → Ingredients → Inventory**. Three people means this day
-stays sequential-by-module (unlike a since-reverted draft that assumed a 4th developer and
-pulled Day 4 work forward) — Ahmed and Bisma each take one half of Food Operations, and Hamza
+stays sequential-by-module — Ahmed and Bisma each take one half of Food Operations, and Hamza
 both closes the two gaps left from Day 2 and does the schema/integration work only the Lead
-should own.
+should own. Ahmed's `units`/`recipes` migration must be applied before Bisma's
+`ingredients`/`stock_movements` (the latter's `recipe_ingredients` references both).
 
-**Sequencing:** Ahmed's `units`/`recipes` migration must be applied before Bisma applies her
-`ingredients`/`stock_movements` migration (the latter's `recipe_ingredients` table references
-both). Ahmed applies first thing and confirms to Bisma before she applies hers.
-
-### Hamza — Lead + developer
-
-**Branch:** `feature/hamza/day3-close-day2-gaps` (implementing this now, in this session)
-
-1. **Close Day 2 gap — table order total.** `apps/api/src/routes/floor.ts`: join `pos_orders`
-   (by `table_id`, latest non-cancelled order) to surface a running total on `GET /floor`.
-   `TableCard.tsx`: replace the "—" placeholder with it.
-2. **Close Day 2 gap — ticket served → table status.** When every item on a dine-in ticket
-   reaches `served`, call the existing table-status transition (`ordering`/`seated` → `served`)
-   from `kitchen.ts`'s `patchItem`. Requires extending `floor.ts`'s `TRANSITIONS` map with an
-   edge into `served` that's reachable only from this system-triggered call, not the table
-   detail UI — the UI's action buttons stay exactly as they are.
-
-**Also today:**
-3. Review Ahmed's and Bisma's migrations before either applies (composite-FK convention,
-   additive-only, no overlap with `pos_stock`).
-4. Once both are live, wire the **consumption hook**: `kitchen.ts`'s item-served transition
-   inserts `stock_movements` rows for the served item's recipe ingredients (Ahmed's
-   `recipe_ingredients` × Bisma's `ingredients`). Cross-cutting, Lead-owned by design.
-5. Review Ahmed's and Bisma's PRs; merge order: Ahmed → Bisma → this branch last (task 4
-   depends on both).
-
-**Files:** `apps/api/src/routes/kitchen.ts`, `apps/api/src/routes/floor.ts`,
-`apps/web/src/screens/floor/TableCard.tsx`, `packages/domain/src/table-status.ts` (if the
-`served`-from-system edge needs a type-level note, not a new status value).
-
-### Ahmed — Recipes + Menu-Side Costing
-
-Individual brief: `docs/day-plans/day3-ahmed.md`. **Branch:**
-`feature/ahmed/day3-recipes-costing`.
-
-### Bisma — Ingredient Inventory (full stack)
-
-Individual brief: `docs/day-plans/day3-bisma.md`. **Branch:**
-`feature/bisma/day3-ingredient-inventory`.
+- **Hamza:** ✅ both Day 2 gaps closed and merged — table order total on the Floor screen
+  (honestly labeled "Last order," not a live tab) and ticket-served → table sync, with a
+  manager-only manual override added on top (`docs/MODULE_STATUS.md` has the full detail).
+  Still open: review Ahmed's/Bisma's migrations and PRs, then wire the consumption hook once
+  both are live.
+- **Ahmed:** Recipes + menu-side costing — not started. Creates and owns his own branch/PR
+  (`docs/day-plans/day3.md` has the exact migration, files, and workflow).
+- **Bisma:** Ingredient inventory, full stack — not started. Same: her own branch/PR, full
+  detail in `docs/day-plans/day3.md`.
 
 ### Day 3 Definition of Done
-- Hamza: both Day 2 gaps closed and verified end-to-end; recipe/inventory schema reviewed.
+- Hamza: both Day 2 gaps closed and verified end-to-end (done); recipe/inventory schema
+  reviewed; consumption hook wired once Ahmed's and Bisma's PRs are merged.
 - Ahmed: a menu item can have a costed recipe.
 - Bisma: ingredients, batches, and stock movements exist and are manageable via a real screen.
-- Consumption wiring (Hamza, task 4) may land slightly after both PRs merge — that's expected,
-  not a delay to flag.
 
 ---
 
