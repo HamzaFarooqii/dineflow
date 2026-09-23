@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { formatCents } from '../../../../../packages/domain/src/money'
 import { TABLE_STATUS_LABELS, TABLE_STATUS_TONE, type TableStatus } from '../../../../../packages/domain/src/table-status'
 import { fetchFloorPlan, TableStatusConflictError, updateTableStatus, type FloorArea, type FloorEmployee, type RestaurantTable } from '../../lib/floor'
+import { posDb } from '../../lib/db'
 import { requireSupabase } from '../../lib/supabase'
 import { usePosStore } from '../../lib/pos-store'
 import { TableCard } from './TableCard'
@@ -19,6 +21,7 @@ const CLEANED_FROM: TableStatus = 'dirty'
 export function FloorScreen() {
   const navigate = useNavigate()
   const [storeId, setStoreId] = useState('')
+  const [currency, setCurrency] = useState('')
   const [areas, setAreas] = useState<FloorArea[]>([])
   const [tables, setTables] = useState<RestaurantTable[]>([])
   const [employees, setEmployees] = useState<FloorEmployee[]>([])
@@ -50,7 +53,8 @@ export function FloorScreen() {
         const id = data?.[0]?.store_id
         if (!id) throw new Error('Store access is unavailable.')
         const plan = await fetchFloorPlan(id)
-        if (active) { setStoreId(id); setAreas(plan.areas); setTables(plan.tables); setEmployees(plan.employees) }
+        const config = await posDb.store_config.get(id)
+        if (active) { setStoreId(id); setCurrency(config?.currency ?? ''); setAreas(plan.areas); setTables(plan.tables); setEmployees(plan.employees) }
       } catch (reason) {
         if (active) setError(reason instanceof Error ? reason.message : 'Could not load the floor plan.')
       } finally { if (active) setLoading(false) }
@@ -140,7 +144,7 @@ export function FloorScreen() {
         {areas.map(area => <button key={area.id} type="button" className={selectedArea === area.id ? 'active' : ''} onClick={() => setSelectedArea(area.id)}>{area.name}</button>)}
       </div>
       <div className="floor-grid">
-        {visibleTables.map(table => <TableCard key={table.id} table={table} areaName={areaName(table.floor_area_id)} onSelect={() => openTable(table)} />)}
+        {visibleTables.map(table => <TableCard key={table.id} table={table} areaName={areaName(table.floor_area_id)} currency={currency} onSelect={() => openTable(table)} />)}
         {visibleTables.length === 0 && <p className="floor-empty">No tables in this area.</p>}
       </div>
     </>}
@@ -151,8 +155,11 @@ export function FloorScreen() {
         <div><dt>Seats</dt><dd>{selectedTable.seats}</dd></div>
         <div><dt>Status</dt><dd><span className={`floor-status floor-status-${TABLE_STATUS_TONE[selectedTable.status]}`}>{TABLE_STATUS_LABELS[selectedTable.status]}</span></dd></div>
         <div><dt>Waiter</dt><dd>{selectedTable.assigned_waiter_name ?? '—'}</dd></div>
-        {/* No open-ticket layer exists yet — order total/elapsed time stay "—" until Ahmed's order/table link is merged. */}
-        <div><dt>Open order</dt><dd>—</dd></div>
+        {/* Last completed order for this table, not a live running tab — see lib/floor.ts's
+            RestaurantTable comment. There is still no open-ticket layer to source an in-progress
+            total from while the table is at 'ordering'. */}
+        <div><dt>Last order</dt><dd>{selectedTable.current_order_total_cents && currency
+          ? formatCents(Number(selectedTable.current_order_total_cents), currency) : '—'}</dd></div>
       </dl>
       {selectedTable.status === SEAT_FROM && <label className="floor-waiter-select">
         Assign a waiter (optional)

@@ -3,6 +3,7 @@ import { db } from '../db.js'
 import { requireStoreMember, sendApiError, ApiError } from './auth.js'
 import { requireCashierTerminal } from '../terminal-auth/routes.js'
 import { deriveTicketStatus, KITCHEN_TICKET_ITEM_TRANSITIONS, KITCHEN_TICKET_STATUSES, type KitchenTicketStatus } from '../../../../packages/domain/src/kitchen-ticket-status.js'
+import { applyTableStatusTransition } from './floor.js'
 
 export const kitchenRouter = Router()
 export const terminalKitchenRouter = Router()
@@ -123,12 +124,24 @@ async function patchItem(req: Request, res: Response) {
         [storeId, ticketId],
       )
       const ticketStatus = deriveTicketStatus(siblings.rows.map(row => row.status))
-      await client.query('update public.kitchen_tickets set status=$1 where store_id=$2 and id=$3', [ticketStatus, storeId, ticketId])
-      // If this just fully served the ticket, a table's status would flip here — but that write
-      // belongs to Bisma's Day 2 status-update endpoint, not this route (do not write to
-      // restaurant_tables directly). That endpoint doesn't exist yet as of this branch; wire this
-      // call once it does.
+      const ticket = await client.query<{ table_id: string | null }>(
+        'update public.kitchen_tickets set status=$1 where store_id=$2 and id=$3 returning table_id',
+        [ticketStatus, storeId, ticketId],
+      )
       await client.query('commit')
+
+      // Closing a Day 2 gap: a fully-served dine-in ticket frees its table. This calls floor.ts's
+      // shared transition primitive directly rather than writing to restaurant_tables here — it's
+      // a system-triggered transition, not one exposed through the public status-update endpoint
+      // (see applyTableStatusTransition's own comment). Best-effort and outside the transaction
+      // above: if the table already moved on (e.g. staff hit "Bill" early) or has no table_id
+      // (takeaway/delivery), this is a silent no-op, not a failure — the ticket is correctly
+      // served either way, and the kitchen's response below doesn't depend on this succeeding.
+      const tableId = ticket.rows[0]?.table_id
+      if (ticketStatus === 'served' && tableId) {
+        await applyTableStatusTransition(storeId, tableId, 'ordering', 'served').catch(() => undefined)
+      }
+
       res.json({ ticket_id: ticketId, ticket_status: ticketStatus, item: { id: itemId, status: to } })
     } catch (reason) { await client.query('rollback'); throw reason }
     finally { client.release() }

@@ -60,10 +60,16 @@ indirectly). If these pass locally, CI will pass.
   item on a ticket is served, the ticket disappears from the board (it's an active-tickets-only
   view, not a history). Place a Takeaway or Delivery order too and confirm it also produces a
   ticket — kitchen tickets are created for every order type, not just dine-in.
-- **Known gap to be aware of while testing:** serving every item on a dine-in ticket does
-  *not* currently flip its table back to `served`/available automatically — that cross-feature
-  wire-up between the kitchen and the floor isn't built yet (flagged in the code, tracked as a
-  follow-up). You'll need to settle that table manually via the Bill/Cleaned buttons above.
+- **Ticket → table sync (Day 3):** serve every item on a dine-in ticket from `/kitchen`, then
+  check `/floor` — the table should now read `served` on its own, without touching the Bill
+  button. This only fires if the table was still in `ordering` when the last item was served;
+  if staff already clicked Bill early, the sync is a silent no-op (by design — see
+  `apps/api/src/routes/kitchen.ts`'s comment). From `served`, Bill/Bill settled/Cleaned work as
+  before.
+- **Table card total (Day 3):** once a table has a completed order against it, its card and
+  detail panel show that order's total, labeled "Last order" — this is the most recent
+  *completed* order, not a live running tab (the codebase has no in-progress-order concept yet,
+  so a table still at `ordering` correctly shows "—" until checkout finishes).
 
 ## 4. Seeding floor data for testing
 

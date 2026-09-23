@@ -19,6 +19,14 @@ export function storeIdParam(req: Request): string {
 // store, plus the store's active terminal employees so the web app can populate a waiter
 // selector without any browser access to public.terminal_employees (that table revokes all
 // browser grants — see 202609150001_terminal_employee_access.sql).
+//
+// current_order_total_cents/current_order_id (Day 3, closing a Day 2 gap): the most recent
+// non-refunded order placed against this table. This is honestly labeled "last order," not a
+// live running tab — pos_orders rows are only created at checkout, after payment, because
+// there is no in-progress/open-ticket concept in this codebase yet (docs/09 flags this
+// explicitly). A table sitting at 'ordering' has no order row at all until the register
+// checkout completes; this column is null until then. Building a true pre-payment running
+// total is a bigger feature (an open-ticket layer) than this fixup, not a Day 3 task.
 async function getFloorPlan(req: Request, res: Response, terminal = false) {
   try {
     const storeId = storeIdParam(req)
@@ -37,9 +45,17 @@ async function getFloorPlan(req: Request, res: Response, terminal = false) {
       ),
       db.query(
         `select t.id, t.store_id, t.floor_area_id, t.label, t.seats, t.status, t.assigned_waiter_id,
-                e.name as assigned_waiter_name
+                e.name as assigned_waiter_name, o.id as current_order_id, o.total_cents::text as current_order_total_cents
          from public.restaurant_tables t
          left join public.terminal_employees e on e.id = t.assigned_waiter_id and e.store_id = t.store_id
+         left join lateral (
+           select po.id, po.total_cents
+           from public.pos_orders po
+           where po.store_id = t.store_id and po.table_id = t.id
+             and not exists (select 1 from public.pos_refunds pr where pr.store_id = po.store_id and pr.order_id = po.id)
+           order by po.client_generated_at desc
+           limit 1
+         ) o on true
          where t.store_id = $1 and t.active = true
          order by t.label`,
         [storeId],
@@ -125,6 +141,42 @@ function tableIdParam(req: Request): string {
   return id
 }
 
+export interface TableStatusRow {
+  id: string; store_id: string; floor_area_id: string; label: string; seats: number
+  status: TableStatus; assigned_waiter_id: string | null
+}
+
+// The one place anything writes to restaurant_tables.status — an atomic compare-and-swap
+// (only applies if the row is still at expectedStatus) so two concurrent callers can never both
+// think their transition won. Shared by the HTTP handler below (which enforces TRANSITIONS
+// against a caller-supplied expected_status/status pair) and by kitchen.ts's item-served hook
+// (Day 3, closing a Day 2 gap), which calls this directly rather than going through the HTTP
+// endpoint's TRANSITIONS check — a served-by-the-kitchen table is a system transition, not one
+// a manager should be able to trigger by hand through the API, so it deliberately never becomes
+// a reachable edge in the public TRANSITIONS map below. Returns null (never throws) when the
+// row wasn't at expectedStatus or doesn't exist/isn't active — callers decide whether that's an
+// error (the HTTP handler does) or an ignorable no-op (the kitchen hook does).
+export async function applyTableStatusTransition(storeId: string, tableId: string, expectedStatus: TableStatus, status: TableStatus, assignedWaiterId: string | null = null): Promise<TableStatusRow | null> {
+  const result = await db.query<TableStatusRow>(
+    `update public.restaurant_tables
+     set
+       status = $1,
+       assigned_waiter_id = case
+         when $1 = 'seated' then $4::uuid
+         when $1 = 'available' then null
+         else assigned_waiter_id
+       end,
+       updated_at = now()
+     where id = $2
+       and store_id = $3
+       and status = $5
+       and active = true
+     returning id, store_id, floor_area_id, label, seats, status, assigned_waiter_id`,
+    [status, tableId, storeId, assignedWaiterId, expectedStatus],
+  )
+  return result.rows[0] ?? null
+}
+
 async function updateTableStatus(req: Request, res: Response, terminal = false) {
   try {
     const storeId = storeIdParam(req)
@@ -138,30 +190,12 @@ async function updateTableStatus(req: Request, res: Response, terminal = false) 
     const { expectedStatus, status, assignedWaiterId } = parseStatusUpdateBody(req)
     await validateWaiter(storeId, assignedWaiterId)
 
-    const result = await db.query(
-      `with updated as (
-         update public.restaurant_tables
-         set
-           status = $1,
-           assigned_waiter_id = case
-             when $1 = 'seated' then $4::uuid
-             when $1 = 'available' then null
-             else assigned_waiter_id
-           end,
-           updated_at = now()
-         where id = $2
-           and store_id = $3
-           and status = $5
-           and active = true
-         returning id, store_id, floor_area_id, label, seats, status, assigned_waiter_id
-       )
-       select u.*, e.name as assigned_waiter_name
-       from updated u
-       left join public.terminal_employees e on e.id = u.assigned_waiter_id and e.store_id = u.store_id`,
-      [status, tableId, storeId, assignedWaiterId, expectedStatus],
-    )
-    if (result.rowCount) {
-      res.json(result.rows[0])
+    const updated = await applyTableStatusTransition(storeId, tableId, expectedStatus, status, assignedWaiterId)
+    if (updated) {
+      const employee = updated.assigned_waiter_id
+        ? await db.query<{ name: string }>('select name from public.terminal_employees where id = $1 and store_id = $2', [updated.assigned_waiter_id, storeId])
+        : null
+      res.json({ ...updated, assigned_waiter_name: employee?.rows[0]?.name ?? null })
       return
     }
 
