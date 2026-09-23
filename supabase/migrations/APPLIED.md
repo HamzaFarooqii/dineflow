@@ -33,6 +33,9 @@ schema no longer matches history, and it needs manual reconciliation, not a sile
 | 202609190002_remove_demo_catalog_seed.sql | `3a53091f607da9d43874458a7cd3e9f01ae78f1b7c372b536dd3ee3961d18443` | yes | function `pos_seed_new_store` is absent (dropped) |
 | 202609190003_store_sync_feed_init.sql | `8039268781ce168ec2887fd409ea620291565e30e8248b10eac52b9b76e916e2` | yes | function `pos_init_store_sync_state` exists |
 | 202609200001_service_role_only_rls_policies.sql | `c5d91c60277e769cfd13c295a781ab5a0302082967d696bafd4bb7839d5731b1` | yes | policy `pos_change_feed_service_role_only` exists |
+| 202609230001_kitchen_display_system.sql | `bb9c97448b609f9de0c0443c30aaaca4d1e839d5de613dbc1428ab9ae58b1f55` | yes | `public.kitchen_tickets` table exists |
 
-No pending or applied-but-missing-from-repo migrations were found: all 15 files map to a
-confirmed live object, and no live object was found that isn't explained by one of these files.
+No pending or applied-but-missing-from-repo migrations were found among the files verified above.
+Note: `202609210001_restaurant_foundation.sql` (Day 1) predates this row and was applied outside
+this ledger's original 2026-09-19 pass; it is not yet checked by `verify-migrations.mjs` — a
+pre-existing gap, not introduced here, left for whoever owns that migration to add.

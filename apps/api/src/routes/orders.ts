@@ -1,8 +1,9 @@
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { Router } from 'express'
 import { db } from '../db.js'
 import { ApiError, requireStoreMember, requireStoreManager, sendApiError } from './auth.js'
 import { boundedInteger, calculateDiscountedLine, discountNeedsManagerApproval, MAX_CENTS, sumDiscountedLines, type LineDiscount } from '../../../../packages/domain/src/money.js'
+import { ORDER_TYPES, type OrderType } from '../../../../packages/domain/src/order-type.js'
 import { requireCashierTerminal, requireDeviceTerminal } from '../terminal-auth/routes.js'
 
 export const ordersRouter = Router()
@@ -32,6 +33,14 @@ function timestamp(value: unknown, name: string): string {
     throw new ApiError(422, 'validation_failed', `${name} must be a valid UTC timestamp.`)
   }
   return result
+}
+// Absent means 'dine_in' — the DB column defaults the same way, so an offline sale queued in a
+// cashier's outbox before this field existed still validates and syncs unchanged (Restaurant POS
+// Transformation Blueprint, docs/09, Day 2).
+function orderTypeValue(value: unknown): OrderType {
+  if (value === null || value === undefined) return 'dine_in'
+  if (typeof value !== 'string' || !ORDER_TYPES.includes(value as OrderType)) throw new ApiError(422, 'validation_failed', 'Order type is invalid.')
+  return value as OrderType
 }
 // A line may send discount_kind/discount_value together, or omit both for no discount.
 function parseDiscount(item: JsonRecord, label: string): LineDiscount {
@@ -89,6 +98,9 @@ export function validateOperation(raw: unknown) {
       totals.taxCents !== order.tax_cents || totals.totalCents !== order.total_cents) {
     throw new ApiError(422, 'total_mismatch', 'Order totals do not match line totals.')
   }
+  const parsedOrderType = orderTypeValue(order.order_type)
+  const tableId = order.table_id === null || order.table_id === undefined ? null : id(order.table_id, 'Table ID')
+  if (tableId && parsedOrderType !== 'dine_in') throw new ApiError(422, 'validation_failed', 'A table can only be set for a dine-in order.')
   const employeeId = order.employee_id === null || order.employee_id === undefined ? null : id(order.employee_id, 'Employee ID')
   const managerId = order.manager_id === null || order.manager_id === undefined ? null : id(order.manager_id, 'Manager ID')
   const managerApprovedAt = order.manager_approved_at === null || order.manager_approved_at === undefined ? null : timestamp(order.manager_approved_at, 'Manager approval time')
@@ -110,7 +122,7 @@ export function validateOperation(raw: unknown) {
   }
   return { operationId, storeId, items: parsedItems, totals,
     order: { customer_id: customerId, receipt_number: text(order.receipt_number, 'Receipt number', 100),
-      catalog_version: order.catalog_version as number,
+      catalog_version: order.catalog_version as number, order_type: parsedOrderType, table_id: tableId,
       client_generated_at: generatedAt, employee_id: employeeId, manager_id: managerId, manager_approved_at: managerApprovedAt },
     payment: { id: id(payment.id, 'Payment ID'), method, amount_cents: amount,
       tendered_cents: tendered, change_cents: change,
@@ -146,8 +158,10 @@ async function push(req: import('express').Request, res: import('express').Respo
       const store = await client.query('select name,timezone,currency from public.stores where id=$1', [operation.storeId])
       if (!store.rows[0]) throw new ApiError(422, 'cross_store_reference', 'Store no longer exists.')
       const productIds = [...new Set(operation.items.map(item => item.product_id))]
-      const products = await client.query('select id from public.pos_products where store_id=$1 and id = any($2::uuid[])', [operation.storeId, productIds])
+      const products = await client.query<{ id: string; station_id: string | null }>(
+        'select id, station_id from public.pos_products where store_id=$1 and id = any($2::uuid[])', [operation.storeId, productIds])
       if (products.rowCount !== productIds.length) throw new ApiError(422, 'cross_store_reference', 'An item refers to a product outside this store.')
+      const stationByProduct = new Map(products.rows.map(row => [row.id, row.station_id]))
       if (operation.order.customer_id) {
         const customer = await client.query('select 1 from public.pos_customers where store_id=$1 and id=$2', [operation.storeId, operation.order.customer_id])
         if (!customer.rowCount) {
@@ -165,6 +179,15 @@ async function push(req: import('express').Request, res: import('express').Respo
           operation.order.employee_id = null
         }
       }
+      if (operation.order.table_id) {
+        const table = await client.query('select 1 from public.restaurant_tables where store_id=$1 and id=$2', [operation.storeId, operation.order.table_id])
+        if (!table.rowCount) {
+          // Table was deleted or never synced — accept the order without the table link rather
+          // than blocking this paid sale from syncing permanently, same as customer_id/employee_id
+          // above. The kitchen ticket below still gets created; it just has no table reference.
+          operation.order.table_id = null
+        }
+      }
       if (operation.order.manager_id) {
         const manager = await client.query(
           "select 1 from public.terminal_employees where store_id=$1 and id=$2 and role='manager' and active=true",
@@ -172,12 +195,14 @@ async function push(req: import('express').Request, res: import('express').Respo
         if (!manager.rowCount) throw new ApiError(422, 'validation_failed', 'Manager approval references an employee who is not an active manager for this store.')
       }
       await client.query(`insert into public.pos_orders(id,store_id,receipt_number,currency,store_name_snapshot,timezone_snapshot,
-        subtotal_cents,discount_cents,tax_cents,total_cents,catalog_version,client_generated_at,customer_id,employee_id,manager_id,manager_approved_at)
-        values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+        subtotal_cents,discount_cents,tax_cents,total_cents,catalog_version,client_generated_at,customer_id,employee_id,manager_id,manager_approved_at,
+        order_type,table_id)
+        values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
         [operation.operationId, operation.storeId, operation.order.receipt_number, store.rows[0].currency,
           store.rows[0].name, store.rows[0].timezone, operation.totals.subtotalCents, operation.totals.discountCents, operation.totals.taxCents,
           operation.totals.totalCents, operation.order.catalog_version, operation.order.client_generated_at, operation.order.customer_id,
-          operation.order.employee_id, operation.order.manager_id, operation.order.manager_approved_at])
+          operation.order.employee_id, operation.order.manager_id, operation.order.manager_approved_at,
+          operation.order.order_type, operation.order.table_id])
       for (const item of operation.items) {
         await client.query(`insert into public.pos_order_items(id,store_id,order_id,product_id,snapshot_name,snapshot_sku,
           snapshot_price_cents,snapshot_tax_bps,catalog_version,quantity,discount_kind,discount_value,
@@ -186,6 +211,18 @@ async function push(req: import('express').Request, res: import('express').Respo
           [item.id, operation.storeId, operation.operationId, item.product_id, item.snapshot_name, item.snapshot_sku,
             item.snapshot_price_cents, item.snapshot_tax_bps, item.catalog_version, item.quantity, item.discount_kind, item.discount_value,
             item.subtotal_cents, item.discount_applied_cents, item.taxable_cents, item.tax_cents, item.total_cents])
+      }
+      // Kitchen ticket — one per order, one item per order line, each tagged with its product's
+      // kitchen station (Day 1's pos_products.station_id, nullable). Created for every order type,
+      // not just dine-in — takeaway and delivery still need the kitchen to prep the food; only
+      // table_id is dine-in-only. (docs/09, Day 2, Ahmed section 3.)
+      const ticketId = randomUUID()
+      await client.query(`insert into public.kitchen_tickets(id,store_id,order_id,table_id,status) values ($1,$2,$3,$4,'queued')`,
+        [ticketId, operation.storeId, operation.operationId, operation.order.table_id])
+      for (const item of operation.items) {
+        await client.query(`insert into public.kitchen_ticket_items(id,store_id,ticket_id,order_item_id,station_id,status)
+          values ($1,$2,$3,$4,$5,'queued')`,
+          [randomUUID(), operation.storeId, ticketId, item.id, stationByProduct.get(item.product_id) ?? null])
       }
       await client.query(`insert into public.pos_payments(id,store_id,order_id,method,amount_cents,tendered_cents,change_cents,reference,client_generated_at)
         values ($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [operation.payment.id, operation.storeId, operation.operationId,

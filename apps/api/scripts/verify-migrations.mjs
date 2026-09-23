@@ -17,6 +17,7 @@ const checks = [
   { file: '202609190002_remove_demo_catalog_seed.sql', sql: `select 1 from pg_proc where proname='pos_seed_new_store'` }, // expect NO row (function was dropped)
   { file: '202609190003_store_sync_feed_init.sql', sql: `select 1 from pg_proc where proname='pos_init_store_sync_state'` },
   { file: '202609200001_service_role_only_rls_policies.sql', sql: `select 1 from pg_policies where schemaname='public' and tablename='pos_change_feed' and policyname='pos_change_feed_service_role_only'` },
+  { file: '202609230001_kitchen_display_system.sql', sql: `select 1 from information_schema.tables where table_schema='public' and table_name='kitchen_tickets'` },
 ]
 
 const client = new Client({ connectionString: process.env.DATABASE_URL })

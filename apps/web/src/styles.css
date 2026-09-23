@@ -48,6 +48,16 @@
 .order-state.rejected{background:var(--mise-danger-fill);color:var(--mise-danger)}
 .order-state.in_flight{background:var(--mise-info-fill);color:var(--mise-info)}
 .order-state.blocked{background:color-mix(in srgb,var(--mise-accent-violet) 16%,white);color:var(--mise-accent-violet)}
+/* Generic StatusTone modifiers (packages/domain's table-status.ts/kitchen-ticket-status.ts) on
+   the same .order-state primitive — Blueprint Section 1: extend this chip family, don't invent a
+   new one. The named modifiers above predate this and stay as-is; new tone-consuming screens
+   (Kitchen Display System) use these instead. */
+.order-state.tone-success{background:var(--mise-success-fill);color:var(--mise-success)}
+.order-state.tone-saffron{background:var(--mise-saffron-fill);color:var(--mise-saffron-deep)}
+.order-state.tone-info{background:var(--mise-info-fill);color:var(--mise-info)}
+.order-state.tone-warning{background:var(--mise-warning-fill);color:var(--mise-warning)}
+.order-state.tone-danger{background:var(--mise-danger-fill);color:var(--mise-danger)}
+.order-state.tone-muted{background:var(--mise-surface-sunken);color:var(--mise-ink-muted)}
 .history-detail{margin-top:18px;padding:20px;background:var(--mise-surface);border:1px solid var(--mise-border-hairline);border-radius:var(--mise-r3)}
 .history-detail h2{font:600 24px 'Archivo',sans-serif;letter-spacing:-.02em;color:var(--mise-ink);margin:0}
 .history-detail p{font-size:13px;color:var(--mise-ink-secondary)}
