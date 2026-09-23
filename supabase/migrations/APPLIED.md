@@ -34,6 +34,13 @@ schema no longer matches history, and it needs manual reconciliation, not a sile
 | 202609190003_store_sync_feed_init.sql | `8039268781ce168ec2887fd409ea620291565e30e8248b10eac52b9b76e916e2` | yes | function `pos_init_store_sync_state` exists |
 | 202609200001_service_role_only_rls_policies.sql | `c5d91c60277e769cfd13c295a781ab5a0302082967d696bafd4bb7839d5731b1` | yes | policy `pos_change_feed_service_role_only` exists |
 | 202609230001_kitchen_display_system.sql | `bb9c97448b609f9de0c0443c30aaaca4d1e839d5de613dbc1428ab9ae58b1f55` | yes | `public.kitchen_tickets` table exists |
+| 202609230002_table_waiter_assignment.sql | `610f377741fbd81103396563ddc1dd34e8972f57e5e7a286686423940a5f900e` | yes | `restaurant_tables.assigned_waiter_id` column exists |
+
+Note: `202609230002_table_waiter_assignment.sql` was renamed from `..._0001_...` (Lead
+integration fixup, PR #4) — it and Ahmed's kitchen-display migration were both authored the
+same day and independently picked the same sequence number; the content is unchanged, only the
+filename and this ledger entry are new. Its `APPLIED.md` row was also missing from the original
+PR and is added here for the same reason.
 
 No pending or applied-but-missing-from-repo migrations were found among the files verified above.
 Note: `202609210001_restaurant_foundation.sql` (Day 1) predates this row and was applied outside

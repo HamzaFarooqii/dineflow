@@ -82,9 +82,11 @@ export interface PosStore {
   setStoreContext: (storeId: string, storeName: string) => void
 
   // The restaurant table the current register cart belongs to, set by the Floor screen's "Add
-  // order" action (Day 2 table lifecycle). Cleared when its table finishes the dirty -> available
-  // cleaning cycle, when the floor records bill settlement, or when the store context actually
-  // changes. A future payment integration can trigger that settlement transition automatically.
+  // order" action (Day 2 table lifecycle — the one shared touch-point between the two Day 2
+  // branches). Only meaningful while orderType is 'dine_in'; checkout.ts reads both together and
+  // never sends a table_id for a non-dine-in order. Cleared on clearCart (a new check starts with
+  // no table) and on an actual store-context change; a future payment/settlement integration can
+  // clear it too once that flow exists.
   activeTableId: string | null
   setActiveTableId: (tableId: string | null) => void
 
@@ -103,14 +105,6 @@ export interface PosStore {
   // Local/UI state only today — no orders column exists yet to persist it against (Day 2 work).
   orderType: OrderType
   setOrderType: (orderType: OrderType) => void
-
-  // The table this check is for, when opened from the Floor screen's "Add order" button
-  // (Bisma's Day 2 work) — the one shared touch-point between the two Day 2 branches, kept to
-  // this single field on purpose. Only meaningful while orderType is 'dine_in'; checkout.ts reads
-  // both together and never sends a table_id for a non-dine-in order. Cleared on clearCart, same
-  // as orderType.
-  activeTableId: string | null
-  setActiveTableId: (tableId: string | null) => void
 
   // Line discounts (FEAT-CART-02) and the manager evidence that authorizes them (FEAT-AUTH-02).
   // Any cart mutation above clears managerApproval; setLineDiscount does too, since it changes the signature.
@@ -152,9 +146,6 @@ export const usePosStore = create<PosStore>((set, get) => ({
 
   orderType: 'dine_in',
   setOrderType: orderType => set({ orderType }),
-
-  activeTableId: null,
-  setActiveTableId: tableId => set({ activeTableId: tableId }),
 
   addItem: (product) =>
     set((state) => {
