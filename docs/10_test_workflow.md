@@ -37,13 +37,33 @@ indirectly). If these pass locally, CI will pass.
 
 - Sign in (or sign up and complete onboarding).
 - **Register** (`/register`): the Dine-In / Takeaway / Delivery selector sits above "Open
-  check" — confirm switching it highlights the active pill. Add a menu item, apply a discount,
-  proceed to payment. Checkout must behave exactly as it did before any restaurant-POS work.
+  check" — confirm switching it highlights the active pill. Add a menu item, type a kitchen
+  note into the line's note field ("no onions"), notice the disabled "+ Modifiers" affordance
+  (placeholder only — not wired to anything yet). Apply a discount, proceed to payment, and
+  complete checkout — confirm it still works exactly as before any restaurant-POS work.
 - **Floor & Tables** (`/floor`): on a store with no floor data yet, it correctly shows "No floor
   areas or tables are set up for this restaurant yet." — see the seed snippet below to populate
-  it. After seeding, reload and confirm area tabs, table cards and status colors render, and
-  clicking a table opens the detail panel with Add order / Transfer / Merge / Bill visibly
-  present but disabled (real transitions are Day 2 work).
+  it. After seeding, reload and confirm area tabs, table cards and status colors render.
+- **Table lifecycle** (Day 2, now real — not just disabled buttons): click an `available`
+  table. Optionally pick a waiter from the "Assign a waiter (optional)" dropdown (needs at
+  least one employee under Settings → Team first), then **Seat** — status moves to `seated`
+  and the waiter's name appears on the card. Click **Add order** — this sends you to
+  `/register` with the table attached; complete a Dine-In checkout there. Back on `/floor`,
+  the table should show `ordering`. Click **Bill**, then **Bill settled**, then **Cleaned** —
+  confirm the table walks `ordering → bill_requested → dirty → available` and the waiter
+  clears once it's back to `available`. **Transfer** and **Merge** are still intentionally
+  disabled (need the table–order linking that isn't built yet) — confirm they say so, not
+  just "disabled" with no explanation.
+- **Kitchen Display System** (`/kitchen`, new this round): after the checkout above, a ticket
+  card should appear here for that order, showing its item(s) and elapsed time. Click **Fire**
+  (queued → preparing), then **Mark ready** (→ ready), then **Serve** (→ served) — once every
+  item on a ticket is served, the ticket disappears from the board (it's an active-tickets-only
+  view, not a history). Place a Takeaway or Delivery order too and confirm it also produces a
+  ticket — kitchen tickets are created for every order type, not just dine-in.
+- **Known gap to be aware of while testing:** serving every item on a dine-in ticket does
+  *not* currently flip its table back to `served`/available automatically — that cross-feature
+  wire-up between the kitchen and the floor isn't built yet (flagged in the code, tracked as a
+  follow-up). You'll need to settle that table manually via the Bill/Cleaned buttons above.
 
 ## 4. Seeding floor data for testing
 
