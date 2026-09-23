@@ -8,7 +8,7 @@ import { PGlite } from '@electric-sql/pglite'
 // Same pattern as reports.test.ts: pure validation never opens a connection; the PGlite-backed
 // test below monkey-patches db.query before use.
 process.env.DATABASE_URL ??= 'postgresql://localhost:5432/validation_only'
-const { storeIdParam, parseStatusUpdateBody, applyTableStatusTransition } = await import('./floor.js')
+const { storeIdParam, parseStatusUpdateBody, applyTableStatusTransition, moveTableParty } = await import('./floor.js')
 const { db } = await import('../db.js')
 
 function reqWith(query: Record<string, unknown>) {
@@ -58,6 +58,7 @@ const chain = [
   '202609180002_pos_orders_report_read_access.sql',
   '202609180005_refunds.sql',
   '202609210001_restaurant_foundation.sql',
+  '202609230001_kitchen_display_system.sql',
   '202609230002_table_waiter_assignment.sql',
 ]
 
@@ -120,6 +121,106 @@ test('applyTableStatusTransition is an atomic compare-and-swap that also manages
     await applyTableStatusTransition(store, table, 'bill_requested', 'dirty')
     const cleaned = await applyTableStatusTransition(store, table, 'dirty', 'available')
     assert.equal(cleaned?.assigned_waiter_id, null)
+  } finally {
+    await database.close()
+  }
+})
+
+test('moveTableParty transfers and merges, moving open kitchen tickets and enforcing preconditions', async () => {
+  const database = new PGlite()
+  try {
+    await database.exec(`create role anon; create role authenticated; create role service_role bypassrls;
+      create schema auth; create table auth.users(id uuid primary key,raw_user_meta_data jsonb);
+      create function auth.uid() returns uuid language sql as 'select null::uuid';
+      create function auth.jwt() returns jsonb language sql as 'select ''{}''::jsonb';`)
+    for (const name of chain) {
+      const sql = (await readFile(root + `supabase/migrations/${name}`, 'utf8')).replace('create extension if not exists pgcrypto;', '')
+      await database.exec(sql)
+    }
+    const owner = randomUUID(), store = randomUUID(), area = randomUUID(), product = randomUUID()
+    const tableA = randomUUID(), tableB = randomUUID(), tableC = randomUUID(), waiter = randomUUID()
+    await database.query('insert into auth.users(id) values ($1)', [owner])
+    await database.query("insert into public.stores(id,name,code,created_by,timezone) values ($1,'One','floor-move-test',$2,'UTC')", [store, owner])
+    await database.query('insert into public.floor_areas(id,store_id,name) values ($1,$2,$3)', [area, store, 'Main Hall'])
+    await database.query('insert into public.restaurant_tables(id,store_id,floor_area_id,label,seats) values ($1,$2,$3,$4,4)', [tableA, store, area, 'A1'])
+    await database.query('insert into public.restaurant_tables(id,store_id,floor_area_id,label,seats) values ($1,$2,$3,$4,4)', [tableB, store, area, 'A2'])
+    await database.query('insert into public.restaurant_tables(id,store_id,floor_area_id,label,seats) values ($1,$2,$3,$4,4)', [tableC, store, area, 'A3'])
+    await database.query(`insert into public.terminal_employees(id,store_id,name,role,pin_salt,pin_hash) values
+      ($1,$2,'Waiter One','cashier',repeat('a',32),repeat('b',64))`, [waiter, store])
+    await database.query(`insert into public.pos_products(id,store_id,sku,name,unit_price_cents) values ($1,$2,'SKU-1','Test item',500)`, [product, store])
+
+    const fixture = db as unknown as { query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[]; rowCount: number }>; connect: () => Promise<import('pg').PoolClient> }
+    fixture.query = async (sql: string, params?: unknown[]) => {
+      const result = await database.query(sql, params)
+      return { rows: result.rows, rowCount: Math.max(result.affectedRows ?? 0, result.rows.length) }
+    }
+    // moveTableParty uses db.connect() for a real transaction (begin/commit/rollback) — PGlite's
+    // query() already runs everything in its own implicit transaction per call, so a fixture
+    // "client" whose query() delegates straight to the same database is sufficient here; multiple
+    // statements between explicit begin/commit still see each other's effects because PGlite is
+    // a single embedded instance, not a real connection pool.
+    fixture.connect = async () => ({ query: fixture.query, release: () => undefined }) as unknown as import('pg').PoolClient
+
+    const seatTicket = async (tableId: string) => {
+      const orderId = randomUUID()
+      await database.query(`insert into public.pos_orders(id,store_id,receipt_number,currency,store_name_snapshot,timezone_snapshot,
+        subtotal_cents,discount_cents,tax_cents,total_cents,catalog_version,client_generated_at,order_type,table_id)
+        values ($1,$2,$3,'USD','One','UTC',500,0,0,500,1,now(),'dine_in',$4)`, [orderId, store, `MOVE-${orderId.slice(0, 8)}`, tableId])
+      const itemId = randomUUID()
+      await database.query(`insert into public.pos_order_items(id,store_id,order_id,product_id,snapshot_name,snapshot_sku,
+        snapshot_price_cents,snapshot_tax_bps,catalog_version,quantity,subtotal_cents,discount_applied_cents,taxable_cents,tax_cents,total_cents)
+        values ($1,$2,$3,$4,'Test item','SKU-1',500,0,1,1,500,0,500,0,500)`, [itemId, store, orderId, product])
+      const ticketId = randomUUID()
+      await database.query(`insert into public.kitchen_tickets(id,store_id,order_id,table_id,status) values ($1,$2,$3,$4,'preparing')`, [ticketId, store, orderId, tableId])
+      await database.query(`insert into public.kitchen_ticket_items(id,store_id,ticket_id,order_item_id,status) values ($1,$2,$3,$4,'preparing')`, [randomUUID(), store, ticketId, itemId])
+      return ticketId
+    }
+
+    // --- Transfer: occupied A -> available B ---
+    await applyTableStatusTransition(store, tableA, 'available', 'seated', waiter)
+    await applyTableStatusTransition(store, tableA, 'seated', 'ordering')
+    const ticketA = await seatTicket(tableA)
+
+    const transferred = await moveTableParty(store, tableA, tableB, 'transfer')
+    assert.deepEqual(transferred, { freedTableId: tableA, occupiedTableId: tableB })
+    const afterTransfer = await database.query('select status, assigned_waiter_id from public.restaurant_tables where id=$1', [tableB])
+    assert.equal(afterTransfer.rows[0].status, 'ordering')
+    assert.equal(afterTransfer.rows[0].assigned_waiter_id, waiter)
+    const sourceAfterTransfer = await database.query('select status, assigned_waiter_id from public.restaurant_tables where id=$1', [tableA])
+    assert.equal(sourceAfterTransfer.rows[0].status, 'available')
+    assert.equal(sourceAfterTransfer.rows[0].assigned_waiter_id, null)
+    const movedTicket = await database.query('select table_id from public.kitchen_tickets where id=$1', [ticketA])
+    assert.equal(movedTicket.rows[0].table_id, tableB)
+
+    // Transfer into an occupied table must be rejected — B is now 'ordering', not 'available'.
+    await applyTableStatusTransition(store, tableA, 'available', 'seated')
+    await assert.rejects(moveTableParty(store, tableA, tableB, 'transfer'), /not available to transfer into/)
+
+    // Transfer from a table with no active party (A is only 'seated', no ticket) must be rejected.
+    await applyTableStatusTransition(store, tableA, 'seated', 'available')
+    await assert.rejects(moveTableParty(store, tableA, tableC, 'transfer'), /has no active party to transfer/)
+
+    // --- Merge: two occupied tables (B, now C) combine into B ---
+    await applyTableStatusTransition(store, tableC, 'available', 'seated')
+    await applyTableStatusTransition(store, tableC, 'seated', 'ordering')
+    const ticketC = await seatTicket(tableC)
+
+    const merged = await moveTableParty(store, tableC, tableB, 'merge')
+    assert.deepEqual(merged, { freedTableId: tableC, occupiedTableId: tableB })
+    const bAfterMerge = await database.query('select status from public.restaurant_tables where id=$1', [tableB])
+    assert.equal(bAfterMerge.rows[0].status, 'ordering', "the merge target's own status is untouched")
+    const cAfterMerge = await database.query('select status from public.restaurant_tables where id=$1', [tableC])
+    assert.equal(cAfterMerge.rows[0].status, 'available')
+    const mergedTicket = await database.query('select table_id from public.kitchen_tickets where id=$1', [ticketC])
+    assert.equal(mergedTicket.rows[0].table_id, tableB)
+    // Both tickets — the transferred one and the merged one — now sit on B.
+    const ticketsOnB = await database.query('select count(*)::int as n from public.kitchen_tickets where table_id=$1', [tableB])
+    assert.equal(ticketsOnB.rows[0].n, 2)
+
+    // Merging into a table with no active party must be rejected — tableA is 'available' here
+    // (freed earlier), so seat tableC again to have a genuinely occupied source for this check.
+    await applyTableStatusTransition(store, tableC, 'available', 'seated')
+    await assert.rejects(moveTableParty(store, tableC, tableA, 'merge'), /has no active party to merge into/)
   } finally {
     await database.close()
   }
