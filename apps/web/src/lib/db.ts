@@ -8,6 +8,7 @@
  * Add new versions in separate upgrade() calls; never mutate existing ones.
  */
 import Dexie, { type EntityTable, type Table } from 'dexie'
+import type { OrderType } from '../../../../packages/domain/src/order-type'
 
 // ---------------------------------------------------------------------------
 // Type definitions
@@ -92,6 +93,11 @@ export interface LocalOrder {
   employee_id?: string | null         // cashier who rang up the sale, when checked out on a terminal
   manager_id?: string | null          // approving manager's employee id, when any line needed approval
   manager_approved_at?: string | null // ISO 8601, when any line needed approval
+  // Restaurant POS Transformation Blueprint (docs/09), Day 2. Absent on older records means
+  // 'dine_in'/null, matching the server column defaults — same "absent means default" convention
+  // as every other optional field on this record.
+  order_type?: OrderType
+  table_id?: string | null
   refunded_at?: string | null         // ISO 8601; set locally right after POST /orders/:id/refund succeeds
   refunded_amount_cents?: number | null // integer cents; the whole-order amount reversed
 }

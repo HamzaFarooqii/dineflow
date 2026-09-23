@@ -124,6 +124,33 @@ test('rejects a discount above cashier authority without manager evidence, accep
   assert.equal(result.order.manager_approved_at, '2026-09-17T10:00:00.000Z')
 })
 
+test('defaults order_type to dine_in for a payload with none, so an outbox sale queued before this field existed still syncs', () => {
+  const result = validateOperation(validOperation())
+  assert.equal(result.order.order_type, 'dine_in')
+  assert.equal(result.order.table_id, null)
+})
+test('threads a valid order_type/table_id through and rejects an invalid order_type', () => {
+  const tableId = '22222222-2222-4222-8222-222222222222'
+  const withTable = validOperation()
+  withTable.order.order_type = 'dine_in'
+  withTable.order.table_id = tableId
+  const result = validateOperation(withTable)
+  assert.equal(result.order.order_type, 'dine_in')
+  assert.equal(result.order.table_id, tableId)
+  const takeaway = validOperation()
+  takeaway.order.order_type = 'takeaway'
+  assert.equal(validateOperation(takeaway).order.order_type, 'takeaway')
+  const invalid = validOperation()
+  invalid.order.order_type = 'dine-in'
+  assert.throws(() => validateOperation(invalid), /Order type is invalid/)
+})
+test('rejects a table_id on a non-dine-in order', () => {
+  const operation = validOperation()
+  operation.order.order_type = 'takeaway'
+  operation.order.table_id = '22222222-2222-4222-8222-222222222222'
+  assert.throws(() => validateOperation(operation), /table can only be set for a dine-in order/)
+})
+
 test('rejects mismatched discount-derived totals and incomplete manager evidence', () => {
   const tampered = validOperation()
   tampered.items[0].discount_kind = 'fixed'

@@ -22,7 +22,8 @@ test('a live cashier session overrides a forged employee_id; a device-only push 
       '202609150001_terminal_employee_access.sql', '202609150002_terminal_device_sessions.sql',
       '202609150003_team_profile_visibility.sql', '202609160001_customers_and_sale_attachment.sql',
       '202609170001_change_feed_product_entity.sql', '202609170002_cart_discounts.sql',
-      '202609180001_terminal_name_uniqueness.sql', '202609180002_pos_orders_report_read_access.sql']) {
+      '202609180001_terminal_name_uniqueness.sql', '202609180002_pos_orders_report_read_access.sql',
+      '202609210001_restaurant_foundation.sql', '202609230001_kitchen_display_system.sql']) {
       await database.exec((await readFile(root + `supabase/migrations/${name}`, 'utf8')).replace('create extension if not exists pgcrypto;', ''))
     }
     const owner = randomUUID(), store = randomUUID(), device = randomUUID()

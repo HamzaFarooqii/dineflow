@@ -1,0 +1,23 @@
+.kitchen-page{padding:28px 20px;max-width:1200px;font-family:'Archivo',sans-serif}
+.kitchen-page h1{font:600 clamp(26px,2.6vw,32px)/1.15 'Archivo',sans-serif;letter-spacing:-.02em;margin:4px 0 8px;color:var(--mise-ink)}
+.kitchen-page>p:not(.kicker){color:var(--mise-ink-secondary);margin:0 0 24px;font-size:14px}
+.kitchen-empty{color:var(--mise-ink-muted);font-size:14px;padding:24px 0}
+
+.kitchen-station-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px}
+.kitchen-station-tabs button{min-height:44px;padding:0 16px;border:1px solid var(--mise-border-strong);border-radius:var(--mise-r2);background:var(--mise-surface);color:var(--mise-ink-secondary);font:500 13px 'Archivo',sans-serif;transition:background .15s ease,border-color .15s ease,color .15s ease}
+.kitchen-station-tabs button:hover{background:var(--mise-surface-sunken)}
+.kitchen-station-tabs button.active{background:var(--mise-ink);border-color:var(--mise-ink);color:var(--mise-ink-inverse)}
+
+.kitchen-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
+
+.kitchen-ticket-card{display:grid;gap:10px;padding:16px;border:1px solid var(--mise-border-hairline);border-radius:var(--mise-r3);background:var(--mise-surface)}
+.kitchen-ticket-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.kitchen-ticket-ref{font:600 15px 'Archivo',sans-serif;color:var(--mise-ink)}
+.kitchen-ticket-elapsed{font:500 12px 'IBM Plex Mono',monospace;color:var(--mise-ink-muted)}
+.kitchen-ticket-meta{margin:-6px 0 0;font-size:11px;color:var(--mise-ink-muted);font-family:'IBM Plex Mono',monospace}
+
+.kitchen-ticket-items{display:grid;gap:8px;margin:0;padding:0;list-style:none}
+.kitchen-ticket-item{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding-top:8px;border-top:1px solid var(--mise-border-hairline)}
+.kitchen-ticket-item:first-child{padding-top:0;border-top:0}
+.kitchen-item-name{flex:1;min-width:0;font-size:13px;color:var(--mise-ink)}
+.kitchen-item-name small{display:block;color:var(--mise-ink-muted);font-size:11px}

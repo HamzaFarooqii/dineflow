@@ -91,6 +91,14 @@ export interface PosStore {
   orderType: OrderType
   setOrderType: (orderType: OrderType) => void
 
+  // The table this check is for, when opened from the Floor screen's "Add order" button
+  // (Bisma's Day 2 work) — the one shared touch-point between the two Day 2 branches, kept to
+  // this single field on purpose. Only meaningful while orderType is 'dine_in'; checkout.ts reads
+  // both together and never sends a table_id for a non-dine-in order. Cleared on clearCart, same
+  // as orderType.
+  activeTableId: string | null
+  setActiveTableId: (tableId: string | null) => void
+
   // Line discounts (FEAT-CART-02) and the manager evidence that authorizes them (FEAT-AUTH-02).
   // Any cart mutation above clears managerApproval; setLineDiscount does too, since it changes the signature.
   setLineDiscount: (productId: string, discount: LineDiscount) => void
@@ -127,6 +135,9 @@ export const usePosStore = create<PosStore>((set, get) => ({
 
   orderType: 'dine_in',
   setOrderType: orderType => set({ orderType }),
+
+  activeTableId: null,
+  setActiveTableId: tableId => set({ activeTableId: tableId }),
 
   addItem: (product) =>
     set((state) => {
@@ -170,7 +181,7 @@ export const usePosStore = create<PosStore>((set, get) => ({
       }
     }),
 
-  clearCart: () => set({ items: [], selectedCustomer: null, managerApproval: null, orderType: 'dine_in' }),
+  clearCart: () => set({ items: [], selectedCustomer: null, managerApproval: null, orderType: 'dine_in', activeTableId: null }),
 
   setLineDiscount: (productId, discount) =>
     set((state) => ({

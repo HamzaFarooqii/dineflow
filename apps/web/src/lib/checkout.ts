@@ -1,6 +1,6 @@
 import { calculateDiscountedLine, sumDiscountedLines, boundedInteger, discountNeedsManagerApproval, MAX_CENTS } from '../../../../packages/domain/src/money'
 import { posDb, type LocalOrder, type LocalOrderItem, type LocalPayment, type OutboxEntry } from './db'
-import type { CartItem } from './pos-store'
+import { usePosStore, type CartItem } from './pos-store'
 
 // Evidence that a manager authorized a discount above the cashier's independent 20% authority.
 export interface ManagerApprovalEvidence { managerId: string; approvedAt: string }
@@ -23,6 +23,12 @@ export async function completeLocalSale(items: CartItem[], storeId: string, meth
   const operationId = crypto.randomUUID()
   const now = new Date().toISOString()
   let receiptNumber = ''
+  // Read directly off the store rather than taking new parameters here, so this checkout path
+  // stays untouched by the register/payment screens (Restaurant POS Transformation Blueprint,
+  // docs/09, Day 2) — orderType and activeTableId are cart-scoped the same way discount/approval
+  // state already is. table_id only ever travels with a dine-in order.
+  const { orderType, activeTableId } = usePosStore.getState()
+  const tableId = orderType === 'dine_in' ? activeTableId : null
   await posDb.transaction('rw', [posDb.orders, posDb.order_items, posDb.payments,
     posDb.outbox, posDb.stock_adjustments, posDb.sync_metadata], async () => {
       const prefixRow = await posDb.sync_metadata.get(`receipt_prefix:${storeId}`)
@@ -36,7 +42,8 @@ export async function completeLocalSale(items: CartItem[], storeId: string, meth
         catalog_version: config.catalog_version, client_generated_at: now, sync_status: 'pending',
         currency: config.currency, store_name_snapshot: config.name, timezone_snapshot: config.timezone,
         accepted_checkpoint: null, failure_reason: customer && customer.sync_status !== 'synced' ? 'Waiting for customer upload.' : null,
-        customer_id: customerId, employee_id: employeeId, manager_id: approval?.managerId ?? null, manager_approved_at: approval?.approvedAt ?? null }
+        customer_id: customerId, employee_id: employeeId, manager_id: approval?.managerId ?? null, manager_approved_at: approval?.approvedAt ?? null,
+        order_type: orderType, table_id: tableId }
       const orderItems: LocalOrderItem[] = items.map((item, index) => ({ id: crypto.randomUUID(),
         order_id: operationId, product_id: item.productId, snapshot_name: item.name, snapshot_sku: item.sku,
         snapshot_price_cents: item.unitPriceCents, snapshot_tax_bps: item.taxRateBps, catalog_version: item.catalogVersion, quantity: item.quantity,
