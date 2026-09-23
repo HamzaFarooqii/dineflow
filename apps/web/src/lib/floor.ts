@@ -32,6 +32,42 @@ export async function fetchFloorPlan(storeId: string, terminal = false): Promise
   return { areas: body.areas ?? [], tables: body.tables ?? [], employees: body.employees ?? [] }
 }
 
+// --- Floor structure CRUD (manager/owner only — no terminal variant, see floor.ts's comment) ---
+
+async function floorRequest<T>(path: string, method: string, storeId: string, body?: Record<string, unknown>): Promise<T> {
+  const query = new URLSearchParams({ store_id: storeId })
+  const response = await fetch(`${configuredApiUrl()}/floor${path}?${query}`, {
+    method,
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await accessToken()}` },
+    body: body ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(15_000),
+  })
+  if (response.status === 204) return undefined as T
+  const parsed = await response.json().catch(() => ({})) as T & { message?: string }
+  if (!response.ok) throw new Error((parsed as { message?: string }).message ?? `Request failed (${response.status}).`)
+  return parsed
+}
+
+export async function createFloorArea(storeId: string, name: string, sortOrder = 0): Promise<FloorArea> {
+  return floorRequest<FloorArea>('/areas', 'POST', storeId, { name, sort_order: sortOrder })
+}
+export async function updateFloorArea(storeId: string, areaId: string, patch: { name?: string; sort_order?: number; active?: boolean }): Promise<FloorArea> {
+  return floorRequest<FloorArea>(`/areas/${areaId}`, 'PATCH', storeId, patch)
+}
+export async function deleteFloorArea(storeId: string, areaId: string): Promise<void> {
+  await floorRequest<void>(`/areas/${areaId}`, 'DELETE', storeId)
+}
+export async function createRestaurantTable(storeId: string, floorAreaId: string, label: string, seats: number): Promise<RestaurantTable> {
+  return floorRequest<RestaurantTable>('/tables', 'POST', storeId, { floor_area_id: floorAreaId, label, seats })
+}
+export async function updateRestaurantTable(storeId: string, tableId: string, patch: { label?: string; seats?: number; floor_area_id?: string; active?: boolean }): Promise<RestaurantTable> {
+  return floorRequest<RestaurantTable>(`/tables/${tableId}`, 'PATCH', storeId, patch)
+}
+export async function deleteRestaurantTable(storeId: string, tableId: string): Promise<void> {
+  await floorRequest<void>(`/tables/${tableId}`, 'DELETE', storeId)
+}
+
 export class TableStatusConflictError extends Error {}
 
 // Every call site passes `expectedStatus` as the status currently shown on the client's copy of
@@ -63,4 +99,13 @@ export async function updateTableStatus(
     throw new Error(body.message ?? `Table status could not be updated (${response.status}).`)
   }
   return body as RestaurantTable
+}
+
+export interface TablePartyMoveResult { freed_table_id: string; occupied_table_id: string }
+
+export async function transferTableParty(storeId: string, sourceTableId: string, targetTableId: string): Promise<TablePartyMoveResult> {
+  return floorRequest<TablePartyMoveResult>(`/tables/${sourceTableId}/transfer`, 'PATCH', storeId, { target_table_id: targetTableId })
+}
+export async function mergeTableParty(storeId: string, primaryTableId: string, otherTableId: string): Promise<TablePartyMoveResult> {
+  return floorRequest<TablePartyMoveResult>(`/tables/${primaryTableId}/merge`, 'PATCH', storeId, { other_table_id: otherTableId })
 }
