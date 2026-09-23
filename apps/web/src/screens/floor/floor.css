@@ -35,3 +35,10 @@
 .floor-detail dd{margin:0;font-size:13px;font-weight:600;color:var(--mise-ink)}
 .floor-detail-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .floor-detail-actions button{min-height:44px;border:1px solid var(--mise-border-strong);border-radius:var(--mise-r2);background:var(--mise-surface);color:var(--mise-ink-disabled);font:500 13px 'Archivo',sans-serif;cursor:not-allowed}
+.floor-detail-actions button:not(:disabled){color:var(--mise-ink);cursor:pointer;transition:background .15s ease,border-color .15s ease}
+.floor-detail-actions button:not(:disabled):hover{background:var(--mise-canvas);border-color:var(--mise-ink)}
+
+.floor-waiter-select{display:grid;gap:6px;margin:0 0 16px;font-size:12px;color:var(--mise-ink-muted)}
+.floor-waiter-select select{min-height:40px;padding:0 10px;border:1px solid var(--mise-border-strong);border-radius:var(--mise-r2);background:var(--mise-surface);color:var(--mise-ink);font:500 13px 'Archivo',sans-serif}
+
+.form-notice .text-action{margin-left:8px}
