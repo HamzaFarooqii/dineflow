@@ -1,12 +1,16 @@
 import { formatCents } from '../../../../packages/domain/src/money'
+import { ORDER_TYPE_LABELS } from '../../../../packages/domain/src/order-type'
 import { saleDate, type SavedReceipt } from './data'
 
 export function SaleReceipt({ receipt, duplicate }: { receipt: SavedReceipt; duplicate: boolean }) {
-  const { order, items, payment } = receipt
+  const { order, items, payment, customer } = receipt
   const money = (value: number) => formatCents(value, order.currency)
   return <article className="sale-receipt" aria-label="Saved guest check">
     <header><h2>{order.store_name_snapshot}</h2><p className="receipt-kind">{duplicate ? 'DUPLICATE CHECK' : 'GUEST CHECK'}</p>
-      <p>Check <strong>{order.receipt_number}</strong></p><p><time dateTime={order.client_generated_at}>{saleDate(order)}</time><br />{order.timezone_snapshot}</p></header>
+      <p>Check <strong>{order.receipt_number}</strong>{order.order_type && <span className="receipt-order-type"> · {ORDER_TYPE_LABELS[order.order_type]}</span>}</p>
+      <p><time dateTime={order.client_generated_at}>{saleDate(order)}</time><br />{order.timezone_snapshot}</p></header>
+    <dl className="receipt-guest"><div><dt>Guest</dt><dd>{customer?.name ?? 'Guest not on file'}</dd></div>
+      <div><dt>Phone</dt><dd>{customer?.phone_normalized ? `+${customer.phone_normalized}` : '—'}</dd></div></dl>
     <div className="receipt-items">{items.map(item => <section className="receipt-line" key={item.id}>
       <strong>{item.snapshot_name}</strong><small>SKU: {item.snapshot_sku}</small>
       <div><span>{item.quantity} × {money(item.snapshot_price_cents)}</span><b>{money(item.subtotal_cents)}</b></div>

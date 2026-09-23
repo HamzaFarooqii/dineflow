@@ -4,7 +4,7 @@ import type { CartItem } from '../../lib/pos-store'
 // The reusable current-order line (Blueprint Section 3). A pure, controlled extraction of the
 // register's cart-line markup — all discount/quantity state still lives in RegisterScreen; this
 // component only renders it, so behavior is unchanged from before the extraction.
-export function RestaurantOrderItem({ item, currency, flagged, approvalValid, discountEditorOpen, discountKind, discountInput, discountError,
+export function RestaurantOrderItem({ item, currency, flagged, approvalValid, discountEditorOpen, discountKind, discountInput, discountError, availableStock,
   onIncrement, onDecrement, onRemove, onOpenDiscountEditor, onSetDiscountKind, onSetDiscountInput, onRemoveDiscount, onCancelDiscountEditor, onApplyDiscount, onSetNote }: {
   item: CartItem
   currency: string
@@ -14,6 +14,9 @@ export function RestaurantOrderItem({ item, currency, flagged, approvalValid, di
   discountKind: 'percent' | 'fixed'
   discountInput: string
   discountError: string
+  // Undefined means "stock unknown for this product" (never warn); a number is the last-synced
+  // count — see RegisterScreen's oversoldLines comment for why this warns rather than blocks.
+  availableStock?: number
   onIncrement: () => void
   onDecrement: () => void
   onRemove: () => void
@@ -26,11 +29,13 @@ export function RestaurantOrderItem({ item, currency, flagged, approvalValid, di
   onSetNote: (notes: string) => void
 }) {
   const line = calculateDiscountedLine(item.unitPriceCents, item.quantity, item.taxRateBps, item.discount)
+  const oversold = availableStock !== undefined && item.quantity > availableStock
   return <div className="cart-line-wrap">
     <div className="cart-line"><span><strong>{item.name}</strong><small>{formatCents(item.unitPriceCents, currency)} each</small></span>
       <div className="quantity"><button type="button" aria-label={`Remove one ${item.name}`} onClick={onDecrement}>−</button><b>{item.quantity}</b>
         <button type="button" aria-label={`Add one ${item.name}`} onClick={onIncrement}>+</button></div>
       <button type="button" aria-label={`Remove ${item.name}`} onClick={onRemove}>×</button></div>
+    {oversold && <p className="cart-line-stock-warning" role="alert">Only {availableStock} in stock — this line orders {item.quantity - (availableStock ?? 0)} more than available.</p>}
     <div className="cart-line-note-row">
       <input type="text" maxLength={200} value={item.notes ?? ''} placeholder="Note for the kitchen (e.g. no onions)"
         aria-label={`Note for ${item.name}`} onChange={event => onSetNote(event.target.value)} />
