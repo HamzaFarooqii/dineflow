@@ -76,6 +76,13 @@ export interface PosStore {
   storeName: string
   setStoreContext: (storeId: string, storeName: string) => void
 
+  // The restaurant table the current register cart belongs to, set by the Floor screen's "Add
+  // order" action (Day 2 table lifecycle). Cleared when its table finishes the dirty -> available
+  // cleaning cycle, when the floor records bill settlement, or when the store context actually
+  // changes. A future payment integration can trigger that settlement transition automatically.
+  activeTableId: string | null
+  setActiveTableId: (tableId: string | null) => void
+
   // Cart
   items: CartItem[]
   addItem: (product: Omit<CartItem, 'quantity' | 'discount'>) => void
@@ -119,7 +126,11 @@ export const usePosStore = create<PosStore>((set, get) => ({
     storeId, storeName,
     items: state.storeId && state.storeId !== storeId ? [] : state.items,
     selectedCustomer: state.storeId && state.storeId !== storeId ? null : state.selectedCustomer,
+    activeTableId: state.storeId && state.storeId !== storeId ? null : state.activeTableId,
   })),
+
+  activeTableId: null,
+  setActiveTableId: tableId => set({ activeTableId: tableId }),
 
   items: [],
   selectedCustomer: null,
