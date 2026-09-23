@@ -42,6 +42,7 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
   const [discountError, setDiscountError] = useState('')
   const [approvalOpen, setApprovalOpen] = useState(false)
   const [approvalReason, setApprovalReason] = useState('')
+  const [oversoldAcknowledged, setOversoldAcknowledged] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
   const cart = usePosStore(state => state.items)
   const addItem = usePosStore(state => state.addItem)
@@ -168,6 +169,16 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
   const approvalValid = terminal ? approvalIsCurrent(managerApproval, cart, permissionVersion) : true
   const needsApproval = terminal && approvalNeededIds.length > 0 && !approvalValid
 
+  // A cashier can still complete this sale even if it oversells — pos_stock is allowed to go
+  // negative by design (loadOversold reports it for reconciliation) because the local stock
+  // count can be stale, especially offline, and blocking a paying guest is worse than a rare
+  // oversell. This is a confirmation gate, not a hard block: the cashier must see and
+  // acknowledge it, but isn't stuck if the count turns out to be wrong.
+  const oversoldLines = useMemo(() => cart.filter(item => item.quantity > (stock[item.productId] ?? Infinity)), [cart, stock])
+  const oversoldKey = oversoldLines.map(item => `${item.productId}:${item.quantity}`).join('|')
+  useEffect(() => { setOversoldAcknowledged(false) }, [oversoldKey])
+  const needsOversoldAcknowledgement = oversoldLines.length > 0 && !oversoldAcknowledged
+
   function addProductToCart(product: LocalProduct) {
     if (product.tax_rate_id && taxRates[product.tax_rate_id] === undefined) { setError(`${product.name} needs a tax rate that has not synced to this browser yet.`); return }
     setError('')
@@ -227,7 +238,14 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
     setApprovalOpen(true)
   }
 
-  const proceedBlocked = !cart.length || Boolean(cartError) || !storeId || needsApproval
+  // A guest must be attached to every check — created or picked from the directory — so a bill
+  // always has a name and phone number on it. Gated on customerAuthorized, not just "no
+  // customer yet": on the main (non-terminal) register, customer access requires being online
+  // (it checks store_memberships live), so requiring one unconditionally would strand an
+  // offline checkout with no way to satisfy it — that would break this app's core offline-first
+  // guarantee. A cashier terminal is always customerAuthorized, so this is unconditional there.
+  const needsCustomer = customerAuthorized && !selectedCustomer
+  const proceedBlocked = !cart.length || Boolean(cartError) || !storeId || needsApproval || needsOversoldAcknowledgement || needsCustomer
 
   return <section className="register-page" aria-label="Register">
     <div className="catalog">
@@ -252,10 +270,10 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
         {ORDER_TYPES.map(type => <button key={type} type="button" role="radio" aria-checked={orderType === type}
           className={orderType === type ? 'active' : ''} onClick={() => setOrderType(type)}>{ORDER_TYPE_LABELS[type]}</button>)}
       </div>
-      <div className="crm-cart-customer">{selectedCustomer && customerAuthorized ? <><strong>{selectedCustomer.name}</strong><small>{selectedCustomer.phone_normalized ? `+${selectedCustomer.phone_normalized}` : 'No phone'} · {selectedCustomer.sync_status === 'synced' ? 'Saved' : 'Pending sync'}</small><div className="crm-cart-customer-actions"><button type="button" className="text-action" onClick={() => setCustomerOpen(true)}>Change customer</button><button type="button" className="text-action" onClick={() => selectCustomer(null)}>Remove</button></div></> : <><button type="button" className="text-action" disabled={!storeId || !customerAuthorized} onClick={() => setCustomerOpen(true)}>Add customer</button>{storeId && !customerAuthorized && <small>Customer access requires validated management membership.</small>}</>}</div>
+      <div className={`crm-cart-customer ${needsCustomer ? 'crm-cart-customer-required' : ''}`}>{selectedCustomer && customerAuthorized ? <><strong>{selectedCustomer.name}</strong><small>{selectedCustomer.phone_normalized ? `+${selectedCustomer.phone_normalized}` : 'No phone'} · {selectedCustomer.sync_status === 'synced' ? 'Saved' : 'Pending sync'}</small><div className="crm-cart-customer-actions"><button type="button" className="text-action" onClick={() => setCustomerOpen(true)}>Change customer</button><button type="button" className="text-action" onClick={() => selectCustomer(null)}>Remove</button></div></> : <><button type="button" className={customerAuthorized ? 'secondary-cta' : 'text-action'} disabled={!storeId || !customerAuthorized} onClick={() => setCustomerOpen(true)}>{customerAuthorized ? 'Select or add a guest (required)' : 'Add customer'}</button>{storeId && !customerAuthorized && <small>Customer access requires validated management membership.</small>}</>}</div>
       {customerSyncWarning && <p className="crm-sync-note" role="status">{customerSyncWarning}</p>}
       {!cart.length && <p className="empty-cart">Add a dish to start this check.</p>}
-      {cart.map(item => <RestaurantOrderItem key={item.productId} item={item} currency={currency}
+      {cart.map(item => <RestaurantOrderItem key={item.productId} item={item} currency={currency} availableStock={stock[item.productId]}
         flagged={approvalNeededIds.includes(item.productId)} approvalValid={approvalValid}
         discountEditorOpen={discountEditorFor === item.productId} discountKind={discountKind} discountInput={discountInput} discountError={discountError}
         onIncrement={() => increment(item.productId)} onDecrement={() => decrement(item.productId)} onRemove={() => remove(item.productId)}
@@ -270,11 +288,16 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
         <span>A discount above 20% needs manager approval before checkout.</span>
         <button type="button" className="secondary-cta" onClick={openApprovalModal}>Get manager approval</button>
       </div>}
+      {oversoldLines.length > 0 && <div className="manager-approval-banner" role="alert">
+        <span>{oversoldLines.length === 1 ? `${oversoldLines[0].name} orders more than the ${stock[oversoldLines[0].productId] ?? 0} in stock.` : `${oversoldLines.length} items order more than what's in stock.`}{' '}This can still be sold — stock may be out of date — but confirm before continuing.</span>
+        {!oversoldAcknowledged && <button type="button" className="secondary-cta" onClick={() => setOversoldAcknowledged(true)}>Proceed anyway</button>}
+      </div>}
       <div className="totals"><span>Subtotal <b>{formatCents(total.subtotalCents, currency)}</b></span>
         {total.discountCents > 0 && <span className="totals-discount">Discount <b>−{formatCents(total.discountCents, currency)}</b></span>}
         <span>Tax <b>{formatCents(total.taxCents, currency)}</b></span>
         <strong>Total <b>{formatCents(total.totalCents, currency)}</b></strong></div>
       {cartError && <p className="form-notice error" role="alert">{cartError}</p>}
+      {!cartError && Boolean(cart.length) && needsCustomer && <p className="form-notice error" role="alert">Select or add a guest before proceeding to payment.</p>}
       <Link className={`cta ${proceedBlocked ? 'cta-disabled' : ''}`} to={!proceedBlocked ? terminal ? '/pos/payment' : '/payment' : terminal ? '/pos/register' : '/register'}
         aria-disabled={proceedBlocked}>Proceed to payment <b aria-hidden="true">→</b></Link>
     </aside>

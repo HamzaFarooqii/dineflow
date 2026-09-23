@@ -84,6 +84,14 @@ html{font-family:'Archivo',sans-serif;color:var(--mise-ink);background:var(--mis
 .cta{display:inline-flex;align-items:center;justify-content:center;gap:12px;min-height:48px;padding:0 22px;border:1px solid var(--mise-action);border-radius:var(--mise-r3);background:var(--mise-action);color:var(--mise-ink-inverse);text-decoration:none;font:600 15px 'Archivo',sans-serif;min-width:176px;transition:background .15s ease,border-color .15s ease,color .15s ease}
 .cta:hover{background:var(--mise-action-hover);border-color:var(--mise-action-hover)}
 .cta b{font-size:16px;font-weight:600}
+/* Secondary button (docs/DESIGN_SYSTEM.md's Components table) — outlined, used everywhere from
+   discount/customer actions to Floor's new management controls. Previously referenced by class
+   name in a dozen screens but never actually given base styling outside one narrow selector
+   (.discount-actions .secondary-cta); this is that missing base rule. */
+.secondary-cta{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 18px;border:1px solid var(--mise-border-strong);border-radius:var(--mise-r3);background:var(--mise-surface);color:var(--mise-ink);text-decoration:none;font:600 13px 'Archivo',sans-serif;transition:background .15s ease,border-color .15s ease,color .15s ease}
+.secondary-cta:hover:not(:disabled){background:var(--mise-surface-sunken);border-color:var(--mise-ink-muted)}
+.secondary-cta:disabled{color:var(--mise-ink-disabled);cursor:not-allowed}
+.secondary-cta.active{background:var(--mise-ink);border-color:var(--mise-ink);color:var(--mise-ink-inverse)}
 /* ── MISE: marketing header + hero ───────────────────────────────────────── */
 .landing{background:var(--mise-canvas);font-family:'Archivo',sans-serif}
 .site-header{height:76px;padding:0 clamp(20px,4vw,56px);display:flex;align-items:center;gap:40px;background:var(--mise-canvas);border-bottom:1px solid var(--mise-border-hairline);position:absolute;top:0;width:100%;z-index:5}
@@ -346,6 +354,7 @@ html{font-family:'Archivo',sans-serif;color:var(--mise-ink);background:var(--mis
 .cart-line-net{font:600 13px 'IBM Plex Mono',monospace;color:var(--mise-ink)}
 .cart-line-approval-flag{margin:2px 0 0;color:var(--mise-warning);font-size:11px;font-weight:600}
 .cart-line-approval-flag.approved{color:var(--mise-success)}
+.cart-line-stock-warning{margin:2px 0 4px;padding:4px 8px;border-radius:var(--mise-r1);background:var(--mise-warning-fill);color:var(--mise-warning);font-size:11px;font-weight:600}
 .discount-popover{margin-top:8px;padding:12px;border:1px solid var(--mise-border-hairline);border-radius:var(--mise-r3);background:var(--mise-surface);box-shadow:var(--mise-e2);display:grid;gap:10px}
 .discount-toggle{display:inline-flex;border:1px solid var(--mise-border-strong);border-radius:var(--mise-r2);overflow:hidden;width:max-content}
 .discount-toggle button{min-width:44px;min-height:40px;border:0;background:var(--mise-surface);color:var(--mise-ink-secondary);font:600 14px 'Archivo',sans-serif}
