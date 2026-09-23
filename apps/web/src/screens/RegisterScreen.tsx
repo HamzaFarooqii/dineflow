@@ -50,6 +50,7 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
   const remove = usePosStore(state => state.removeItem)
   const clear = usePosStore(state => state.clearCart)
   const setLineDiscount = usePosStore(state => state.setLineDiscount)
+  const setItemNote = usePosStore(state => state.setItemNote)
   const managerApproval = usePosStore(state => state.managerApproval)
   const setManagerApproval = usePosStore(state => state.setManagerApproval)
   const selectedCustomer = usePosStore(state => state.selectedCustomer)
@@ -263,7 +264,8 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
         onSetDiscountInput={setDiscountInput}
         onRemoveDiscount={() => { setLineDiscount(item.productId, null); setDiscountEditorFor(null) }}
         onCancelDiscountEditor={() => setDiscountEditorFor(null)}
-        onApplyDiscount={() => applyDiscount(item)} />)}
+        onApplyDiscount={() => applyDiscount(item)}
+        onSetNote={note => setItemNote(item.productId, note)} />)}
       {needsApproval && <div className="manager-approval-banner" role="alert">
         <span>A discount above 20% needs manager approval before checkout.</span>
         <button type="button" className="secondary-cta" onClick={openApprovalModal}>Get manager approval</button>

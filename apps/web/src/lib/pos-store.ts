@@ -26,6 +26,11 @@ export interface CartItem {
   catalogVersion: number
   quantity: number
   discount: LineDiscount
+  // A free-text kitchen note ("no onions", "extra spicy"). Local/cart state only, same
+  // convention as orderType below — no order_items column exists yet to persist it against,
+  // and it deliberately isn't part of cartSignature since it doesn't affect money math or
+  // require re-approval. Wiring it into checkout is Day 2, once kitchen tickets exist to carry it.
+  notes?: string
 }
 
 export interface CartTotals {
@@ -83,6 +88,7 @@ export interface PosStore {
   incrementItem: (productId: string) => void
   decrementItem: (productId: string) => void
   clearCart: () => void
+  setItemNote: (productId: string, notes: string) => void
   selectedCustomer: LocalCustomer | null
   selectCustomer: (customer: LocalCustomer | null) => void
 
@@ -171,6 +177,11 @@ export const usePosStore = create<PosStore>((set, get) => ({
     }),
 
   clearCart: () => set({ items: [], selectedCustomer: null, managerApproval: null, orderType: 'dine_in' }),
+
+  // Notes don't affect totals or approval — no managerApproval invalidation needed here, unlike
+  // every money-affecting mutation above.
+  setItemNote: (productId, notes) =>
+    set((state) => ({ items: state.items.map((i) => i.productId === productId ? { ...i, notes } : i) })),
 
   setLineDiscount: (productId, discount) =>
     set((state) => ({

@@ -105,6 +105,30 @@ The new `pos_products` columns (`station_id`, `course`, `kitchen_name`, `is_avai
 5. Do not touch: `floor_areas`/`restaurant_tables`/`kitchen_stations` tables, the `/floor` or
    `/kitchen` routes, `CustomerScreen.tsx`, `ReportingScreens.tsx`.
 
+### 3a. Ahmed — Day 1 audit follow-up
+
+A second pass against the full Day 1 brief (not just this section's checklist) found a few gaps
+in the otherwise-complete `a4d5ea0` implementation, all local/UI-only and additive:
+
+- **Order-line notes.** `CartItem` gained an optional `notes` field and `usePosStore` a
+  `setItemNote` action — a free-text kitchen note per line, rendered in `RestaurantOrderItem`.
+  Local/cart state only, same convention as `orderType`; deliberately excluded from
+  `cartSignature` since it doesn't affect money math. Not yet threaded into checkout — no
+  `order_items` column exists to persist it against (Day 2, once kitchen tickets exist).
+- **Modifiers placeholder.** `RestaurantOrderItem` now renders a visibly-disabled "+ Modifiers"
+  affordance per line — structure only, no modifier-group data model exists on `pos_products`
+  yet, so it deliberately does nothing rather than fabricate options.
+- **Availability surfaced on the back-of-house menu screens.** `DishAvailability` is now also
+  rendered in `ProductCatalogScreen` and `CashierProductsScreen`'s table rows (previously only
+  the register's `MenuItemCard` showed it), reusing the same component rather than a new badge.
+- **Consciously deferred, not implemented:** dish short description and variants (both listed
+  as "UI concepts" in the original brief) have no backing columns on `pos_products` — adding
+  them means a migration, which needs Lead sign-off per Section 1/8 and isn't justified by Day 1
+  alone. Left for whichever day introduces that schema.
+
+Verified: `apps/web` tsc + full vitest-style suite (21/21) + production build; `apps/api` build +
+`test:orders` (14/14); `packages/domain` (9/9) — all pass unchanged/clean.
+
 ## 4. Bisma — Day 1: Front of House + Restaurant Floor
 
 Branch: `feature/day1-bisma-front-of-house` (from `develop`).
