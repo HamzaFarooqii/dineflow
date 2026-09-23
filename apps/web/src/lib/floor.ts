@@ -11,6 +11,11 @@ export interface RestaurantTable {
   status: TableStatus
   assigned_waiter_id: string | null
   assigned_waiter_name: string | null
+  // The table's most recent non-refunded order — not a live running tab. pos_orders rows only
+  // exist after checkout completes, so a table that's currently `ordering` has neither of these
+  // yet (both null) until the register payment finishes. See floor.ts's getFloorPlan comment.
+  current_order_id: string | null
+  current_order_total_cents: string | null
 }
 export interface FloorEmployee { id: string; name: string; role: 'cashier' | 'manager' }
 export interface FloorPlan { areas: FloorArea[]; tables: RestaurantTable[]; employees: FloorEmployee[] }
