@@ -98,17 +98,34 @@ re-triggered it even though the signed-in user hadn't changed.
     full existing suite. One process note, not a code issue: the PR was opened against `main`
     again (same mistake as Day 2's PRs #2/#3) — retargeted to `develop` before merging.
 
-### ⏳ Still to do today (blocked on Bisma)
+### ✅ Bisma's PR reviewed and merged
 
-12. **Schema review of Bisma's migration**, once it exists — same checklist as above.
-13. **Consumption-wiring integration** — blocked until Bisma's `ingredients`/`stock_movements`
-    migration is live. Once it is: wire `kitchen.ts`'s item-served transition (the same code
-    path that now calls `applyTableStatusTransition`) to also insert `stock_movements` rows for
-    the served item's recipe ingredients, using Ahmed's now-merged `recipes`/`recipe_ingredients`
-    data. This reaches into both new modules at once, so it stays a Lead task.
-12. **Review Ahmed's and Bisma's PRs** against the checklists in their sections below, and
-    merge them (Ahmed's first — Bisma's migration has an FK into his `recipes` table). Neither
-    has started as of this writing — nothing to review yet.
+12. **Schema review — done.** All four of Bisma's migrations (`202609240002`-`004`, plus her
+    `stock-movement-reason.ts` domain contract) use the composite `(store_id, id)` tenant-scoping
+    convention correctly for every FK except one: `ingredients.manager_id`/
+    `created_by_employee_id` and `stock_movements`' matching columns reference bare
+    `terminal_employees(id)` instead of the established `(store_id, id)` composite form (the
+    convention `202609230002`'s comment exists specifically to explain). Not exploitable through
+    the API — `requireTerminalWriter` independently re-checks `store_id` before trusting
+    `manager_id` — but it's a schema-level gap worth closing in a small follow-up migration.
+    Confirmed live against the database directly (not just trusted from the PR description).
+13. **PR review — done, merged into `develop`** (commit `d2b2365`). Every "do not touch" boundary
+    respected (zero diff, verified). Went beyond the brief: cashier-terminal writes at
+    `/pos/inventory` gated behind a manager's PIN, reusing the existing offline discount-approval
+    flow safely (PIN never reaches the server). 30/30 API tests, 32/32 web tests, both builds
+    clean. Two real gaps found during review and handled:
+    - No `GET /ingredients/:id/batches` endpoint existed, so the batch list reset to empty on
+      every reselect/reload despite the data being safely in the database — fixed as a fast
+      follow-up, pushed as `feature/hamza/day3-inventory-batch-history`, awaiting your merge.
+    - 3 of the 4 new migrations' SHA-256 checksums in `APPLIED.md` didn't match their committed
+      file content (likely recorded before a later edit, never recomputed) — recomputed and
+      fixed directly on `develop`. The schema itself was independently confirmed correct against
+      the live database, so this was a ledger-accuracy issue, not a wrong-migration risk.
+14. **Consumption-wiring integration** — Bisma's schema is now live, so this is unblocked. Wire
+    `kitchen.ts`'s item-served transition (the same code path that already calls
+    `applyTableStatusTransition`) to also insert `stock_movements` rows for the served item's
+    recipe ingredients, using Ahmed's `recipes`/`recipe_ingredients` data. Reaches into both new
+    modules at once, so it stays a Lead task. **Not started yet.**
 
 ---
 
@@ -352,9 +369,18 @@ consumes stock automatically yet — that's Hamza's follow-up once your migratio
 - [x] Schema review of Ahmed's migration — done, correct.
 - [x] Review and merge Ahmed's PR — done (`3f9e171`), retargeted from `main` to `develop` first.
 - [x] Session UX fixes (Reports nav flash, tab-refocus Loading flash) — merged (PR #8).
-- [ ] Schema review of Bisma's migration, once it exists.
-- [ ] Consumption-wiring hook in `kitchen.ts`, once Bisma's schema is live.
-- [ ] Review and merge Bisma's PR, once it exists.
+- [x] Schema review of Bisma's migration — done, correct (one minor non-blocking gap noted above).
+- [x] Review and merge Bisma's PR — done (`d2b2365`).
+- [x] Fast-follow: batch list now persists across reselect/reload — pushed
+      (`feature/hamza/day3-inventory-batch-history`), awaiting your merge.
+- [x] Fast-follow: fixed 3 stale migration checksums in `APPLIED.md` — committed directly to
+      `develop` (docs-only).
+- [ ] **Consumption-wiring hook in `kitchen.ts`** — unblocked now that Bisma's schema is live, but
+      not started yet. This is the last piece of Day 3's core "Dish → Recipe → Ingredients →
+      Inventory" chain: served kitchen items don't yet decrement ingredient stock.
+- [ ] Optional follow-up (non-blocking): fix the bare `terminal_employees(id)` FK on
+      `ingredients`/`stock_movements` to the composite `(store_id, id)` form, matching every other
+      table's convention.
 - [ ] Deliberately dropped: full Ticket CRUD (create/edit ticket contents from scratch) — see
       the reasoning above; not tracked as outstanding, it's an intentional scope decision.
 
@@ -362,10 +388,11 @@ consumes stock automatically yet — that's Hamza's follow-up once your migratio
 - [x] `units` + `recipes` schema, applied and recorded in `APPLIED.md`.
 - [x] Recipe builder UI + costing display, plus a Recipe drawer for existing dishes.
 
-**Bisma** (not started as of this writing):
-- [ ] `ingredients` + `ingredient_batches` + `stock_movements` + `recipe_ingredients` schema,
-      applied and recorded in `APPLIED.md`.
-- [ ] Ingredient inventory screen: list, batches, ledger, wastage.
+**Bisma — done:**
+- [x] `ingredients` + `ingredient_batches` + `stock_movements` + `recipe_ingredients` schema,
+      applied and recorded in `APPLIED.md`, confirmed live in the database.
+- [x] Ingredient inventory screen: list, batches, ledger, wastage — plus cashier-terminal support
+      with manager-PIN-gated writes, beyond what was asked.
 
 **Documentation:**
 - [ ] `docs/MODULE_STATUS.md` and `docs/FIVE_DAY_PLAN.md` given a final pass once Ahmed's and
