@@ -1,17 +1,23 @@
-import { useEffect, useState, type FormEvent } from 'react'
-import { createIngredient, fetchIngredients, fetchStockMovements, recordIngredientBatch, type Ingredient, type IngredientBatch, type StockMovement } from '../../lib/inventory'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
+import {
+  createIngredient, fetchIngredients, fetchStockMovements, recordIngredientBatch,
+  type Ingredient, type IngredientBatch, type StockMovement,
+} from '../../lib/inventory'
 import { loadRecipeData } from '../menu/recipe-api'
 import type { RecipeUnit } from '../menu/recipe-draft'
 import { posDb } from '../../lib/db'
 import { requireSupabase } from '../../lib/supabase'
+import { currentAccess, type TerminalCache } from '../../terminal-auth/cache'
+import { ManagerApprovalModal, type ManagerApprovalEvidence } from '../../terminal-auth/ManagerApprovalModal'
 import { IngredientList } from './IngredientList'
 import { BatchList } from './BatchList'
 import { StockLedger } from './StockLedger'
 import { WastageForm } from './WastageForm'
 import './inventory.css'
 
-export function InventoryScreen() {
+export function InventoryScreen({ terminal = false }: { terminal?: boolean }) {
   const [storeId, setStoreId] = useState('')
+  const [terminalCache, setTerminalCache] = useState<TerminalCache | undefined>()
   const [ingredients, setIngredients] = useState<Ingredient[]>([])
   const [units, setUnits] = useState<RecipeUnit[]>([])
   const [selected, setSelected] = useState<Ingredient | null>(null)
@@ -34,22 +40,47 @@ export function InventoryScreen() {
   const [batchCost, setBatchCost] = useState('')
   const [batchExpiry, setBatchExpiry] = useState('')
 
+  // A cashier terminal never writes inventory on its own authority — every mutation (add
+  // ingredient, receive batch, wastage) is deferred behind a manager's PIN, reusing the exact
+  // ManagerApprovalModal/evidence flow RegisterScreen uses for over-authority discounts. The
+  // pending write is stashed in a ref (not state) so the modal's onApprove can invoke it without
+  // a stale closure.
+  const [approvalOpen, setApprovalOpen] = useState(false)
+  const [approvalReason, setApprovalReason] = useState('')
+  const pendingWrite = useRef<((approval: ManagerApprovalEvidence) => Promise<void>) | null>(null)
+
+  async function withApproval(reason: string, action: (approval: ManagerApprovalEvidence | null) => Promise<void>) {
+    if (!terminal) { await action(null); return }
+    pendingWrite.current = action
+    setApprovalReason(reason)
+    setApprovalOpen(true)
+  }
+
   useEffect(() => {
     let active = true
     const load = async () => {
       try {
         if (!navigator.onLine) throw new Error('Connect to load inventory.')
-        const client = requireSupabase()
-        const { data: { user }, error: userError } = await client.auth.getUser()
-        if (userError || !user) throw new Error('Sign in to view inventory.')
-        const { data, error: membershipError } = await client.from('store_memberships').select('store_id')
-          .eq('user_id', user.id).eq('active', true).limit(1)
-        if (membershipError) throw membershipError
-        const id = data?.[0]?.store_id
-        if (!id) throw new Error('Store access is unavailable.')
+        let id: string
+        if (terminal) {
+          const terminalAccess = await currentAccess()
+          if (!terminalAccess?.policy.valid) throw new Error('Unlock this terminal before opening inventory.')
+          id = terminalAccess.cache.device.store_id
+          if (active) setTerminalCache(terminalAccess.cache)
+        } else {
+          const client = requireSupabase()
+          const { data: { user }, error: userError } = await client.auth.getUser()
+          if (userError || !user) throw new Error('Sign in to view inventory.')
+          const { data, error: membershipError } = await client.from('store_memberships').select('store_id')
+            .eq('user_id', user.id).eq('active', true).limit(1)
+          if (membershipError) throw membershipError
+          const membershipStoreId = data?.[0]?.store_id
+          if (!membershipStoreId) throw new Error('Store access is unavailable.')
+          id = membershipStoreId
+        }
         await posDb.store_config.get(id)
         if (active) setStoreId(id)
-        const [list, recipeData] = await Promise.all([fetchIngredients(id), loadRecipeData(id)])
+        const [list, recipeData] = await Promise.all([fetchIngredients(id, terminal), loadRecipeData(id)])
         if (active) { setIngredients(list); setUnits(recipeData.units); if (!newUnitId) setNewUnitId(recipeData.units[0]?.id ?? '') }
       } catch (reason) {
         if (active) setError(reason instanceof Error ? reason.message : 'Could not load inventory.')
@@ -58,7 +89,7 @@ export function InventoryScreen() {
     void load()
     return () => { active = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [terminal])
 
   async function selectIngredient(ingredient: Ingredient) {
     setSelected(ingredient)
@@ -67,7 +98,7 @@ export function InventoryScreen() {
     setMovements([])
     setDetailBusy(true)
     try {
-      const page = await fetchStockMovements(storeId, ingredient.id)
+      const page = await fetchStockMovements(storeId, ingredient.id, terminal)
       setMovements(page.movements)
     } catch (reason) {
       setDetailError(reason instanceof Error ? reason.message : 'Could not load this ingredient.')
@@ -80,7 +111,7 @@ export function InventoryScreen() {
   }
 
   async function refreshMovements(ingredientId: string) {
-    const page = await fetchStockMovements(storeId, ingredientId)
+    const page = await fetchStockMovements(storeId, ingredientId, terminal)
     setMovements(page.movements)
   }
 
@@ -96,14 +127,17 @@ export function InventoryScreen() {
       setAddError('Reorder threshold must be a positive number, or left blank.')
       return
     }
-    setAddBusy(true); setAddError('')
-    try {
-      const created = await createIngredient(storeId, { name: newName.trim(), unit_id: newUnitId, cost_per_unit_cents: costPerUnitCents, reorder_threshold: reorderThreshold })
-      setIngredients(current => [...current, created].sort((a, b) => a.name.localeCompare(b.name)))
-      setNewName(''); setNewCost(''); setNewReorderThreshold(''); setAddOpen(false)
-    } catch (reason) {
-      setAddError(reason instanceof Error ? reason.message : 'Could not add this ingredient.')
-    } finally { setAddBusy(false) }
+    setAddError('')
+    await withApproval('Authorize adding this ingredient', async approval => {
+      setAddBusy(true)
+      try {
+        const created = await createIngredient(storeId, { name: newName.trim(), unit_id: newUnitId, cost_per_unit_cents: costPerUnitCents, reorder_threshold: reorderThreshold }, terminal, approval)
+        setIngredients(current => [...current, created].sort((a, b) => a.name.localeCompare(b.name)))
+        setNewName(''); setNewCost(''); setNewReorderThreshold(''); setAddOpen(false)
+      } catch (reason) {
+        setAddError(reason instanceof Error ? reason.message : 'Could not add this ingredient.')
+      } finally { setAddBusy(false) }
+    })
   }
 
   async function handleAddBatch(event: FormEvent) {
@@ -115,20 +149,24 @@ export function InventoryScreen() {
       setDetailError('Enter a positive quantity and a valid cost per unit.')
       return
     }
-    setDetailBusy(true); setDetailError('')
-    try {
-      const result = await recordIngredientBatch(storeId, selected.id, {
-        quantity,
-        cost_per_unit_cents: costPerUnitCents,
-        expires_at: batchExpiry || null,
-      })
-      setBatches(current => [result.batch, ...current])
-      applyUpdatedIngredient(result.ingredient)
-      await refreshMovements(selected.id)
-      setBatchQuantity(''); setBatchCost(''); setBatchExpiry('')
-    } catch (reason) {
-      setDetailError(reason instanceof Error ? reason.message : 'Could not record this batch.')
-    } finally { setDetailBusy(false) }
+    setDetailError('')
+    const ingredientId = selected.id
+    await withApproval('Authorize receiving this batch', async approval => {
+      setDetailBusy(true)
+      try {
+        const result = await recordIngredientBatch(storeId, ingredientId, {
+          quantity,
+          cost_per_unit_cents: costPerUnitCents,
+          expires_at: batchExpiry || null,
+        }, terminal, approval)
+        setBatches(current => [result.batch, ...current])
+        applyUpdatedIngredient(result.ingredient)
+        await refreshMovements(ingredientId)
+        setBatchQuantity(''); setBatchCost(''); setBatchExpiry('')
+      } catch (reason) {
+        setDetailError(reason instanceof Error ? reason.message : 'Could not record this batch.')
+      } finally { setDetailBusy(false) }
+    })
   }
 
   async function handleWastageRecorded(updated: Ingredient) {
@@ -175,11 +213,24 @@ export function InventoryScreen() {
         <BatchList batches={batches} />
 
         <h3>Record wastage</h3>
-        <WastageForm storeId={storeId} ingredient={selected} onRecorded={updated => void handleWastageRecorded(updated)} />
+        <WastageForm storeId={storeId} ingredient={selected} terminal={terminal} requestApproval={withApproval} onRecorded={updated => void handleWastageRecorded(updated)} />
 
         <h3>Stock movements</h3>
         <StockLedger movements={movements} />
       </div>}
     </div>}
+    {approvalOpen && terminal && terminalCache && <ManagerApprovalModal
+      cache={terminalCache}
+      title="Manager approval required"
+      reason={approvalReason}
+      actionLabel="Approve"
+      onClose={() => { setApprovalOpen(false); pendingWrite.current = null }}
+      onApprove={evidence => {
+        setApprovalOpen(false)
+        const action = pendingWrite.current
+        pendingWrite.current = null
+        if (action) void action(evidence)
+      }}
+    />}
   </section>
 }

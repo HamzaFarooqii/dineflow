@@ -11,6 +11,7 @@ const navigation = [
   { label: 'Products', to: '/pos/products', icon: '○' },
   { label: 'Orders', to: '/pos/orders', icon: '○' },
   { label: 'Customers', to: '/pos/customers', icon: '♧' },
+  { label: 'Inventory', to: '/pos/inventory', icon: '▣' },
   { label: 'Settings', to: '/pos/settings', icon: '○' },
 ]
 
