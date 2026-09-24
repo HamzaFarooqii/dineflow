@@ -38,6 +38,7 @@ schema no longer matches history, and it needs manual reconciliation, not a sile
 | 202609240001_units_and_recipes.sql | `acdb4910c376397b101dd0bfd126af395ec31aa4386904dae835370c0714a666` | yes | `public.recipes` table exists |
 | 202609240002_ingredient_inventory.sql | `c16ade598292163692284ffd926dac528e2e64f917cbcb5a9f0399102c097692` | yes | `public.ingredients`, `public.ingredient_batches`, `public.stock_movements`, `public.recipe_ingredients` tables exist, each with a member-read RLS policy |
 | 202609240003_inventory_audit_columns.sql | `210b2dbc41992e388b5bf53cf910ef9bde9f4f0700044f996190d0570a7fcc82` | yes | `ingredients.created_by_user_id` and `stock_movements.created_by_user_id` columns exist |
+| 202609240004_inventory_terminal_audit.sql | `94f29dd5fd4b35c6f22a63fc03dbd2e86acf2e8425cbf012968755c32657e04b` | yes | `ingredients.manager_id` and `stock_movements.manager_id` columns exist |
 
 Note: `202609230002_table_waiter_assignment.sql` was renamed from `..._0001_...` (Lead
 integration fixup, PR #4) — it and Ahmed's kitchen-display migration were both authored the
