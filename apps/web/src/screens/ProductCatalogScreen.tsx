@@ -9,13 +9,35 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { liveQuery } from 'dexie'
 import { formatCents, parseCents } from '../../../../packages/domain/src/money'
+import { foodCostBps, formatFoodCostPercent } from '../../../../packages/domain/src/recipe-cost'
 import { posDb, type LocalCategory, type LocalProduct, type LocalTaxRate } from '../lib/db'
 import { activeStoreId, accessToken, configuredApiUrl, loadCatalog } from '../lib/catalog'
 import { requireSupabase } from '../lib/supabase'
 import { DishAvailability } from './menu/DishAvailability'
+import { RecipeEditor } from './menu/RecipeEditor'
+import { createUnit, loadRecipeData, saveRecipe, type RecipeData } from './menu/recipe-api'
+import {
+  EMPTY_RECIPE_DRAFT,
+  costSavedRecipe,
+  draftFromRecipe,
+  isDraftBlank,
+  validateDraft,
+  type RecipeDraft,
+  type RecipeDraftErrors,
+  type SavedRecipe,
+  type UnitKind,
+} from './menu/recipe-draft'
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 import './product-catalog.css'
+
+function priceCentsOrNull(display: string): number | null {
+  try {
+    return parseCents(display)
+  } catch {
+    return null // not a valid amount yet — the price field shows its own error on submit
+  }
+}
 
 type StockMap = Record<string, number>
 
@@ -91,6 +113,16 @@ export function ProductCatalogScreen() {
   const [imageError, setImageError] = useState('')
   const firstRef = useRef<HTMLInputElement>(null)
   const barcodeRef = useRef<HTMLInputElement>(null)
+
+  // Recipe section — shared by the add-dish drawer and the per-dish recipe drawer (never open
+  // at the same time, so one draft serves both).
+  const [recipeData, setRecipeData] = useState<RecipeData | null>(null)
+  const [recipeDataErr, setRecipeDataErr] = useState('')
+  const [recipeDraft, setRecipeDraft] = useState<RecipeDraft>(EMPTY_RECIPE_DRAFT)
+  const [recipeErrs, setRecipeErrs] = useState<RecipeDraftErrors>({})
+  const [recipeProduct, setRecipeProduct] = useState<LocalProduct | null>(null)
+  const [recipeBusy, setRecipeBusy] = useState(false)
+  const [recipeSubmitErr, setRecipeSubmitErr] = useState('')
 
   const handleImagePick = (file: File | null) => {
     setImageError('')
@@ -182,6 +214,78 @@ export function ProductCatalogScreen() {
       .finally(() => setRefreshing(false))
   }, [storeId, products])
 
+  // Recipe data is back-office only and fetched live (not cached in Dexie).
+  const reloadRecipeData = async (id: string) => {
+    setRecipeDataErr('')
+    if (!navigator.onLine) {
+      setRecipeDataErr('Connect to load recipes and ingredient costs.')
+      return
+    }
+    try {
+      setRecipeData(await loadRecipeData(id))
+    } catch (e) {
+      setRecipeDataErr(e instanceof Error ? e.message : 'Could not load recipes.')
+    }
+  }
+  useEffect(() => {
+    if (storeId) void reloadRecipeData(storeId)
+  }, [storeId])
+
+  const recipeByProduct = useMemo(() => {
+    const m: Record<string, SavedRecipe> = {}
+    for (const r of recipeData?.recipes ?? []) m[r.product_id] = r
+    return m
+  }, [recipeData])
+
+  const storeSavedRecipe = (saved: SavedRecipe) =>
+    setRecipeData((d) => d && { ...d, recipes: [...d.recipes.filter((r) => r.product_id !== saved.product_id), saved] })
+
+  const handleCreateUnit = async (unit: { name: string; abbreviation: string; kind: UnitKind }) => {
+    const created = await createUnit(storeId, unit)
+    setRecipeData((d) => d && { ...d, units: [...d.units, created].sort((a, b) => a.name.localeCompare(b.name)) })
+    return created
+  }
+
+  const updateRecipeDraft = (draft: RecipeDraft) => {
+    setRecipeDraft(draft)
+    setRecipeErrs({})
+  }
+
+  const openRecipe = (product: LocalProduct) => {
+    setRecipeProduct(product)
+    setRecipeDraft(draftFromRecipe(recipeByProduct[product.id]))
+    setRecipeErrs({})
+    setRecipeSubmitErr('')
+  }
+  const closeRecipe = () => {
+    if (recipeBusy) return
+    setRecipeProduct(null)
+    setRecipeDraft(EMPTY_RECIPE_DRAFT)
+    setRecipeErrs({})
+  }
+
+  const handleRecipeSubmit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    if (!recipeProduct || !recipeData) return
+    const result = validateDraft(recipeDraft, recipeData.ingredients)
+    if (!result.ok) {
+      setRecipeErrs(result.errors)
+      return
+    }
+    setRecipeBusy(true)
+    setRecipeSubmitErr('')
+    try {
+      storeSavedRecipe(await saveRecipe(storeId, recipeProduct.id, result.payload))
+      setNotice(`Recipe for "${recipeProduct.name}" saved.`)
+      setRecipeProduct(null)
+      setRecipeDraft(EMPTY_RECIPE_DRAFT)
+    } catch (err) {
+      setRecipeSubmitErr(err instanceof Error ? err.message : 'Could not save the recipe.')
+    } finally {
+      setRecipeBusy(false)
+    }
+  }
+
   // Auto-focus first input when drawer opens
   useEffect(() => {
     if (drawerOpen) {
@@ -265,8 +369,12 @@ export function ProductCatalogScreen() {
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const fieldErrs = validate()
-    if (Object.keys(fieldErrs).length) {
+    // An untouched recipe section is simply skipped; a started one must be valid before the
+    // dish is created, so a bad recipe can't leave a half-saved dish behind.
+    const recipeResult = isDraftBlank(recipeDraft) || !recipeData ? null : validateDraft(recipeDraft, recipeData.ingredients)
+    if (Object.keys(fieldErrs).length || (recipeResult && !recipeResult.ok)) {
       setErrs(fieldErrs)
+      if (recipeResult && !recipeResult.ok) setRecipeErrs(recipeResult.errors)
       return
     }
     setBusy(true)
@@ -355,12 +463,27 @@ export function ProductCatalogScreen() {
         }
       })
 
-      setNotice(`"${data.product.name}" is on the menu and ready on the register.`)
+      // The dish itself is saved at this point; a recipe failure is reported, not rolled back.
+      let recipeFailure = ''
+      if (recipeResult?.ok) {
+        try {
+          storeSavedRecipe(await saveRecipe(storeId, data.product.id, recipeResult.payload))
+        } catch (err) {
+          recipeFailure = err instanceof Error ? err.message : 'Unknown error.'
+        }
+      }
+      if (recipeFailure) {
+        setLoadErr(`"${data.product.name}" was added, but its recipe was not saved: ${recipeFailure} Open its recipe from the menu list to try again.`)
+      } else {
+        setNotice(`"${data.product.name}" is on the menu and ready on the register.`)
+      }
       setDrawerOpen(false)
       setForm(EMPTY)
       setErrs({})
       setImageFile(null)
       setImageError('')
+      setRecipeDraft(EMPTY_RECIPE_DRAFT)
+      setRecipeErrs({})
     } catch (err) {
       setSubmitErr(err instanceof Error ? err.message : 'Could not add the dish.')
     } finally {
@@ -392,6 +515,8 @@ export function ProductCatalogScreen() {
       setErrs({})
       setImageFile(null)
       setImageError('')
+      setRecipeDraft(EMPTY_RECIPE_DRAFT)
+      setRecipeErrs({})
     }
   }
 
@@ -639,6 +764,28 @@ export function ProductCatalogScreen() {
                   </div>
                   <div className="pc-cell-price" role="cell">
                     {formatCents(product.unit_price_cents, currency)}
+                    {recipeData && (() => {
+                      const recipe = recipeByProduct[product.id]
+                      if (!recipe) {
+                        return (
+                          <button type="button" className="recipe-row-link" onClick={() => openRecipe(product)}>
+                            + Add recipe
+                          </button>
+                        )
+                      }
+                      const cost = costSavedRecipe(recipe, recipeData.ingredients)
+                      const pct = formatFoodCostPercent(foodCostBps(cost.portionCostCents, product.unit_price_cents))
+                      return (
+                        <button
+                          type="button"
+                          className="recipe-row-link"
+                          onClick={() => openRecipe(product)}
+                          aria-label={`Edit recipe for ${product.name}, food cost ${pct}`}
+                        >
+                          Food cost {pct}{cost.complete ? '' : ' (partial)'}
+                        </button>
+                      )
+                    })()}
                   </div>
                   <div className="pc-cell-stock-wrap" role="cell">
                     <span className={`pc-stock-pill ${stockCls}`}>
@@ -881,6 +1028,24 @@ export function ProductCatalogScreen() {
                 </div>
               </div>
 
+              {/* Group 3b: Recipe — optional; food-cost % sits next to where the price is set */}
+              <div className="pc-group">
+                <p className="pc-group-label">
+                  Recipe <span className="pc-opt">optional</span>
+                </p>
+                <RecipeEditor
+                  draft={recipeDraft}
+                  onChange={updateRecipeDraft}
+                  errors={recipeErrs}
+                  data={recipeData}
+                  dataError={recipeDataErr}
+                  menuPriceCents={priceCentsOrNull(form.priceDisplay)}
+                  currency={currency}
+                  disabled={busy}
+                  onCreateUnit={handleCreateUnit}
+                />
+              </div>
+
               {/* Group 4: Dish Photo */}
               <div className="pc-group">
                 <p className="pc-group-label">Dish Photo</p>
@@ -914,6 +1079,72 @@ export function ProductCatalogScreen() {
                 Cancel
               </button>
             </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Recipe drawer for an existing dish — same drawer pattern as "Add dish" ── */}
+      {recipeProduct && (
+        <div
+          className="pc-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Recipe for ${recipeProduct.name}`}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeRecipe()
+          }}
+        >
+          <div className="pc-drawer">
+            <div className="pc-drawer-head">
+              <div className="pc-drawer-head-copy">
+                <p className="pc-drawer-eyebrow">Recipe &amp; costing</p>
+                <h2 className="pc-drawer-title">{recipeProduct.name}</h2>
+              </div>
+              <button type="button" className="pc-drawer-close" onClick={closeRecipe} aria-label="Close">
+                ✕
+              </button>
+            </div>
+
+            <form className="pc-drawer-form" onSubmit={(e) => void handleRecipeSubmit(e)}>
+              <div className="pc-drawer-body">
+                {recipeSubmitErr && (
+                  <div className="pc-alert error" role="alert">
+                    <span>{recipeSubmitErr}</span>
+                    <button type="button" className="pc-alert-close" onClick={() => setRecipeSubmitErr('')} aria-label="Dismiss">
+                      ✕
+                    </button>
+                  </div>
+                )}
+                <div className="pc-group">
+                  <p className="pc-group-label">Recipe</p>
+                  <div className="pc-field">
+                    <p className="recipe-lines-label">Menu price</p>
+                    <span className="pc-cell-price" style={{ textAlign: 'left' }}>
+                      {formatCents(recipeProduct.unit_price_cents, currency)}
+                    </span>
+                  </div>
+                  <RecipeEditor
+                    draft={recipeDraft}
+                    onChange={updateRecipeDraft}
+                    errors={recipeErrs}
+                    data={recipeData}
+                    dataError={recipeDataErr}
+                    menuPriceCents={recipeProduct.unit_price_cents}
+                    currency={currency}
+                    disabled={recipeBusy}
+                    onCreateUnit={handleCreateUnit}
+                  />
+                </div>
+              </div>
+              <div className="pc-drawer-foot">
+                <button type="submit" className="pc-submit" disabled={recipeBusy || !recipeData}>
+                  {recipeBusy ? 'Saving recipe…' : 'Save recipe'}
+                </button>
+                <button type="button" className="pc-cancel" onClick={closeRecipe} disabled={recipeBusy}>
+                  Cancel
+                </button>
+              </div>
             </form>
           </div>
         </div>

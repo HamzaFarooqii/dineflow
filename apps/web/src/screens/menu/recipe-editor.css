@@ -1,0 +1,92 @@
+/* Recipe section of the product editor — MISE tokens only (docs/DESIGN_SYSTEM.md). Inputs and
+   selects inherit .pc-field styling from product-catalog.css. */
+
+.pc-field.recipe-new-unit { gap: var(--mise-space-8); }
+.recipe-new-unit-row { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: var(--mise-space-8); }
+.recipe-new-unit-actions { display: flex; justify-content: flex-end; gap: var(--mise-space-8); }
+
+.recipe-lines { display: grid; gap: var(--mise-space-12); }
+.recipe-lines-label {
+  margin: 0;
+  font: 600 12px 'Archivo', sans-serif;
+  color: var(--mise-ink);
+}
+.recipe-add-line { justify-self: start; }
+
+.recipe-line {
+  display: grid;
+  gap: var(--mise-space-8);
+  padding: var(--mise-space-12);
+  border: 1px solid var(--mise-border-hairline);
+  border-radius: var(--mise-r2);
+  background: var(--mise-canvas);
+}
+.pc-field.recipe-line-top { display: grid; grid-template-columns: 1fr 44px; gap: var(--mise-space-8); }
+.pc-field.recipe-line-bottom { display: grid; grid-template-columns: 1fr 1.4fr auto; gap: var(--mise-space-8); align-items: center; }
+.pc-field.recipe-line-bottom input {
+  font-family: 'IBM Plex Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+.recipe-line-cost {
+  min-width: 64px;
+  text-align: right;
+  font: 500 13px 'IBM Plex Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--mise-ink);
+}
+.recipe-line-remove {
+  width: 44px;
+  min-height: 44px;
+  border: 1px solid var(--mise-border-strong);
+  border-radius: var(--mise-r2);
+  background: var(--mise-surface);
+  color: var(--mise-ink-secondary);
+  font: 600 16px 'Archivo', sans-serif;
+  cursor: pointer;
+}
+.recipe-line-remove:hover:not(:disabled) { background: var(--mise-surface-sunken); color: var(--mise-ink); }
+.recipe-line-remove:disabled { color: var(--mise-ink-disabled); cursor: not-allowed; }
+
+.recipe-cost-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--mise-space-8);
+  margin: 0;
+  padding-top: var(--mise-space-12);
+  border-top: 1px solid var(--mise-border-hairline);
+}
+.recipe-cost-summary div { display: grid; gap: var(--mise-space-2); }
+.recipe-cost-summary dt {
+  font: 600 10px 'Archivo', sans-serif;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--mise-ink-muted);
+}
+.recipe-cost-summary dd {
+  margin: 0;
+  font: 600 16px 'IBM Plex Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--mise-ink);
+}
+
+/* Menu list: food-cost / add-recipe link under each dish's price. */
+.recipe-row-link {
+  display: block;
+  margin-left: auto;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: 600 11px 'Archivo', sans-serif;
+  color: var(--mise-ink-secondary);
+  text-align: right;
+  cursor: pointer;
+}
+.recipe-row-link:hover { color: var(--mise-saffron-deep); }
+
+@media (max-width: 480px) {
+  .recipe-new-unit-row { grid-template-columns: 1fr; }
+  .pc-field.recipe-line-bottom { grid-template-columns: 1fr 1fr; }
+  .recipe-line-cost { grid-column: 1 / -1; }
+  .recipe-cost-summary { grid-template-columns: 1fr; }
+}
