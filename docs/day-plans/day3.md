@@ -30,14 +30,13 @@ Both were genuine Day 2 gaps, now closed:
 
 Full detail in commits `3896502`/`400a352` on `develop` and `docs/MODULE_STATUS.md`.
 
-### 📦 Pushed, awaiting merge into `develop` (two more branches, from manual QA)
+### ✅ Also merged into `develop` (manual-QA follow-ups + session UX fixes)
 
 Manual testing after the above surfaced four more real gaps, plus two features (Table CRUD,
-Transfer/Merge) that had been sitting as placeholders since Day 1. Per the git-ownership rule,
-these are pushed and tested but **not self-merged** — they're branches for you to review/merge
-the same way Ahmed's and Bisma's PRs will be.
+Transfer/Merge) that had been sitting as placeholders since Day 1. Reviewed and merged via
+PR #5/#6, same as every Hamza branch:
 
-**`feature/hamza/day3-checkout-integrity`** (commit `0fdf468`):
+**`feature/hamza/day3-checkout-integrity`** (commit `0fdf468`, merged PR #5):
 3. **Stock check, not a silent oversell.** A cart line exceeding its last-synced stock now
    shows an inline warning and a summary banner requiring explicit "Proceed anyway" before
    checkout — re-required if the oversold quantity changes again. A confirmation gate, not a
@@ -54,7 +53,7 @@ the same way Ahmed's and Bisma's PRs will be.
    `queued` — a paid order is definitionally ready for the kitchen, so the manual "Fire" click
    on every brand-new ticket was pure friction.
 
-**`feature/hamza/day3-floor-crud`** (commit `7b8cc04`):
+**`feature/hamza/day3-floor-crud`** (commit `7b8cc04`, merged PR #6):
 7. **Full CRUD for floor areas and tables** (create/edit/delete), behind a new "Edit floor"
    toggle on the Floor screen so day-to-day service view stays exactly as clean as before.
    Deletes are soft and refuse to orphan or interrupt anything in use.
@@ -71,6 +70,16 @@ scratch) — a kitchen ticket is derived 1:1 from a paid order
 (`unique(store_id, order_id)` on `kitchen_tickets`), so standalone creation would duplicate
 what checkout already does and break that invariant. Dropped per your instruction rather than
 guessed at.
+
+**`feature/hamza/day3-session-ux-fixes`** (commit `01708d9`, merged PR #8) — two UI bugs found
+during manual QA, both traced to the same root cause: an effect keyed on the whole Supabase
+`session` object instead of a stable id, so a background token refresh on tab refocus
+re-triggered it even though the signed-in user hadn't changed.
+- The onboarding-check effect now depends on `session?.user.id`, so refocusing a tab no longer
+  flashes the app back to a `Loading…` screen.
+- The Reports nav item's visibility check now also reads the existing
+  `posDb.sync_metadata` financial-access cache as an instant first pass, so it no longer
+  disappears and reappears on every page load while the real permission check is in flight.
 
 ### ✅ Ahmed's PR reviewed and merged
 
@@ -334,15 +343,15 @@ consumes stock automatically yet — that's Hamza's follow-up once your migratio
 **Hamza:**
 - [x] Table order total on the Floor screen — merged.
 - [x] Ticket-served → table sync, automatic + manager override — merged.
-- [x] Stock-oversell warning at checkout — pushed (`feature/hamza/day3-checkout-integrity`),
-      awaiting your merge.
-- [x] Mandatory guest selection at checkout — pushed, same branch.
-- [x] Bill shows guest name/phone/order type — pushed, same branch.
-- [x] Kitchen tickets auto-fire to `preparing` — pushed, same branch.
-- [x] Floor area/table CRUD — merged.
-- [x] Transfer and Merge, actually implemented — merged.
+- [x] Stock-oversell warning at checkout — merged (PR #5).
+- [x] Mandatory guest selection at checkout — merged, same PR.
+- [x] Bill shows guest name/phone/order type — merged, same PR.
+- [x] Kitchen tickets auto-fire to `preparing` — merged, same PR.
+- [x] Floor area/table CRUD — merged (PR #6).
+- [x] Transfer and Merge, actually implemented — merged, same PR.
 - [x] Schema review of Ahmed's migration — done, correct.
 - [x] Review and merge Ahmed's PR — done (`3f9e171`), retargeted from `main` to `develop` first.
+- [x] Session UX fixes (Reports nav flash, tab-refocus Loading flash) — merged (PR #8).
 - [ ] Schema review of Bisma's migration, once it exists.
 - [ ] Consumption-wiring hook in `kitchen.ts`, once Bisma's schema is live.
 - [ ] Review and merge Bisma's PR, once it exists.
