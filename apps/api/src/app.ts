@@ -7,7 +7,7 @@ import { reportsRouter } from './routes/reports.js'
 import { auditRouter } from './routes/audit.js'
 import { floorRouter, terminalFloorRouter } from './routes/floor.js'
 import { kitchenRouter, terminalKitchenRouter } from './routes/kitchen.js'
-import { inventoryRouter } from './routes/inventory.js'
+import { inventoryRouter, terminalInventoryRouter } from './routes/inventory.js'
 import { terminalAuthRouter, type TerminalAuthOptions } from './terminal-auth/routes.js'
 
 export function createApp(options: TerminalAuthOptions) {
@@ -30,5 +30,6 @@ export function createApp(options: TerminalAuthOptions) {
   app.use('/pos/customers', terminalCustomersRouter)
   app.use('/pos/floor', terminalFloorRouter)
   app.use('/pos/kitchen', terminalKitchenRouter)
+  app.use('/pos/inventory', terminalInventoryRouter)
   return app
 }
