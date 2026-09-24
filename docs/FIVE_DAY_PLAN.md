@@ -65,35 +65,45 @@ real screen.
 
 Core relationship: **Customer → Visit → Spend → Loyalty → Reward → Repeat Visit.**
 
-### Hamza — Lead + developer
-1. **Loyalty schema + the one real design decision:** point redemption must reuse the existing
-   `LineDiscount`/manager-approval mechanism in `pos-store.ts`, not add a parallel discount
-   path. Land `loyalty_accounts`, `loyalty_point_ledger`, `loyalty_tiers`, `reward_rules`
-   before Ahmed's branch starts.
-2. **Developer task:** staff-role review — decide whether "waiter" needs to become a real
-   distinct role (vs. today's "any active employee") now that loyalty recognition and floor
-   assignment both reference employees. Small, contained; document the decision either way in
-   `docs/MODULE_STATUS.md` rather than leaving it ambiguous.
-3. Review Ahmed's and Bisma's PRs. Merge order: Bisma (promotions + guest CRM, independent of
-   Ahmed) → Ahmed (loyalty checkout — touches checkout-critical code; run the existing
-   checkout/discount suite explicitly, not just new tests).
+Full work division, exact migration SQL, file ownership and workflow steps:
+**`docs/day-plans/day4.md`.** Rebalanced to give each person four real features — the earlier
+sketch here gave Ahmed one task against two or three each for Hamza and Bisma. Summary:
 
-### Ahmed — Loyalty at Checkout
-Award points on order completion (idempotent), redeem points through the existing discount
-path. **Branch:** `feature/ahmed/day4-loyalty-checkout`. Individual brief written the same way
-as Day 3's once Day 3 is merged — not drafted yet, per `RULES.md`'s "don't plan too far ahead
-of repository reality."
+### Hamza — Lead + developer (4 features)
+1. **Loyalty schema + the one real design decision:** point redemption and promotions both
+   become a `LineDiscount` through the existing manager-approval mechanism in `pos-store.ts`, not
+   a parallel discount path. Lands `loyalty_tiers`, `loyalty_accounts`, `loyalty_point_ledger`,
+   `reward_rules` before Ahmed's branch starts.
+2. **Loyalty + Promotions checkout wiring:** award points idempotently on order completion in
+   `orders.ts`; apply redemption/promotions as a `LineDiscount` in `RegisterScreen.tsx`/
+   `pos-store.ts` through the existing approval gate. Reaches into both Ahmed's and Bisma's new
+   modules at once, so stays a Lead task, same reasoning as Day 3's consumption-wiring hook.
+3. **Staff-role review** — decide whether "waiter" needs to become a real distinct role now that
+   loyalty recognition and floor assignment both reference employees. Document the decision
+   either way in `MODULE_STATUS.md`.
+4. Review and merge Bisma's PR, then Ahmed's PR (order matters: Hamza's own task 2 and Bisma's
+   task 4 both need Ahmed's module live first). Keep `day4.md`/`MODULE_STATUS.md` current.
 
-### Bisma — Promotions + Guest CRM
-Promotions CRUD screen (`promotions` table, independent migration), guest profile (visit
-history/lifetime spend — this was originally going to be pulled into Day 3 under a 4-person
-plan; reverted to Day 4 since a 3-person team doesn't have the spare capacity to parallelize
-across day boundaries without displacing Day 3's own scope), and a loyalty-tier badge on
-`TableCard` once a known guest is attached. **Branch:** `feature/bisma/day4-promotions-crm`.
+### Ahmed — Loyalty Module (4 features)
+Domain math (points earned, tier lookup, redemption value — pure functions in
+`packages/domain/src/loyalty.ts`), the `/loyalty` API (balance, ledger, tiers, reward-rules
+reads), reward-rules CRUD, and the account-enrollment decision plus balance/tier display in
+`CustomerScreen.tsx` and the guest picker. Does not touch checkout code — Hamza wires this module
+in. **Branch:** `feature/ahmed/day4-loyalty`.
+
+### Bisma — Promotions + Guest CRM (4 features)
+Promotions schema (shaped to mirror `LineDiscount` directly) + CRUD screen, promotion
+eligibility/discount-calculation domain logic (`packages/domain/src/promotions.ts`, consumed by
+Hamza's checkout wiring, not called by her own code), guest CRM profile (visit history/lifetime
+spend aggregated from `pos_orders`, not duplicated), and a loyalty-tier badge on the guest picker
+once a known guest with a tier is attached — sequenced after Ahmed's PR merges, same dependency
+shape as her Day 3 `ingredients` migration waiting on his `units`/`recipes`. **Branch:**
+`feature/bisma/day4-promotions-crm`.
 
 ### Day 4 Definition of Done
 A returning guest can earn and redeem loyalty points through the existing approval-safe
-discount flow; promotions can be created; a guest's profile shows real visit/spend history.
+discount flow; promotions can be created and applied the same way; a guest's profile shows real
+visit/spend history and their loyalty tier wherever they're attached.
 
 ---
 
