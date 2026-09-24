@@ -7,6 +7,15 @@ export function isLowStock(ingredient: Ingredient): boolean {
   return Number(ingredient.current_stock) <= Number(ingredient.reorder_threshold)
 }
 
+// Kitchen consumption (kitchen.ts's consumeRecipeIngredients) deliberately lets current_stock go
+// negative rather than blocking a dish that's already been served — the same oversell reasoning
+// pos_stock already documents. That only works as a real reconciliation strategy if it's visible:
+// unlike isLowStock, this doesn't depend on a reorder_threshold being configured, so an ingredient
+// with no threshold set still flags once it's actually out.
+export function isOutOfStock(ingredient: Ingredient): boolean {
+  return Number(ingredient.current_stock) <= 0
+}
+
 export function IngredientList({ ingredients, selectedId, onSelect }: { ingredients: Ingredient[]; selectedId: string | null; onSelect: (ingredient: Ingredient) => void }) {
   return <div className="inventory-list">
     {ingredients.map(ingredient => <button
@@ -17,7 +26,9 @@ export function IngredientList({ ingredients, selectedId, onSelect }: { ingredie
     >
       <span className="inventory-list-item-top">
         <span className="inventory-list-item-name">{ingredient.name}</span>
-        {isLowStock(ingredient) && <span className="floor-status floor-status-warning">Low stock</span>}
+        {isOutOfStock(ingredient)
+          ? <span className="floor-status floor-status-danger">Out of stock</span>
+          : isLowStock(ingredient) && <span className="floor-status floor-status-warning">Low stock</span>}
       </span>
       <span className="inventory-list-item-meta">
         {ingredient.current_stock} on hand
