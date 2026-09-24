@@ -121,11 +121,26 @@ re-triggered it even though the signed-in user hadn't changed.
       file content (likely recorded before a later edit, never recomputed) — recomputed and
       fixed directly on `develop`. The schema itself was independently confirmed correct against
       the live database, so this was a ledger-accuracy issue, not a wrong-migration risk.
-14. **Consumption-wiring integration** — Bisma's schema is now live, so this is unblocked. Wire
-    `kitchen.ts`'s item-served transition (the same code path that already calls
-    `applyTableStatusTransition`) to also insert `stock_movements` rows for the served item's
-    recipe ingredients, using Ahmed's `recipes`/`recipe_ingredients` data. Reaches into both new
-    modules at once, so it stays a Lead task. **Not started yet.**
+14. **Consumption-wiring integration — done, pushed** (`feature/hamza/day3-inventory-consumption`,
+    awaiting your merge). `kitchen.ts`'s item-served transition now inserts `stock_movements`
+    rows for the served item's recipe ingredients (quantity scaled by the order line's quantity
+    sold ÷ the recipe's yield), inside the same transaction as the status update.
+    - **Insufficient-stock policy, researched not guessed:** stock is allowed to go negative
+      rather than blocking the serve — by the time an item is marked served the food is already
+      prepared and handed to the guest, so refusing at that point corrupts the record without
+      undoing anything. This matches how real restaurant POS/inventory tools (Toast, Square,
+      MarketMan) treat it, and mirrors `pos_stock`'s existing oversell reasoning in this codebase.
+    - Added `isOutOfStock` (current_stock ≤ 0) as a distinct, always-visible "Out of stock" tag
+      on the inventory screen — the negative-stock reconciliation signal is only useful if it's
+      actually visible, and the existing low-stock badge only fires when a reorder threshold is
+      configured.
+    - A product with no recipe is skipped (not every dish has one); a recipe line whose unit
+      doesn't match its ingredient's stored unit is skipped rather than guessed at (mirrors
+      `recipe-cost.ts`'s `unit_mismatch` handling); consumption is guarded against being recorded
+      twice for the same kitchen ticket item.
+    - 5 new PGlite tests (`kitchen.test.ts`) covering the decrement math, negative-stock
+      behavior, idempotency, the unit-mismatch skip, and the no-recipe no-op; 2 new unit tests
+      for `isOutOfStock`.
 
 ---
 
@@ -375,12 +390,17 @@ consumes stock automatically yet — that's Hamza's follow-up once your migratio
       (`feature/hamza/day3-inventory-batch-history`), awaiting your merge.
 - [x] Fast-follow: fixed 3 stale migration checksums in `APPLIED.md` — committed directly to
       `develop` (docs-only).
-- [ ] **Consumption-wiring hook in `kitchen.ts`** — unblocked now that Bisma's schema is live, but
-      not started yet. This is the last piece of Day 3's core "Dish → Recipe → Ingredients →
-      Inventory" chain: served kitchen items don't yet decrement ingredient stock.
+- [x] **Consumption-wiring hook in `kitchen.ts`** — done, pushed
+      (`feature/hamza/day3-inventory-consumption`), awaiting your merge. Closes Day 3's core
+      "Dish → Recipe → Ingredients → Inventory" chain: served kitchen items now decrement
+      ingredient stock, allowed to go negative rather than blocking service (researched against
+      how real restaurant POS systems handle this), with a new always-visible "Out of stock" tag
+      making that reconciliation signal actually usable.
 - [ ] Optional follow-up (non-blocking): fix the bare `terminal_employees(id)` FK on
       `ingredients`/`stock_movements` to the composite `(store_id, id)` form, matching every other
       table's convention.
+- [ ] Optional follow-up (non-blocking, deferred by your choice): edit/deactivate controls for
+      ingredients in the Inventory UI — the API supports both, nothing calls them yet.
 - [ ] Deliberately dropped: full Ticket CRUD (create/edit ticket contents from scratch) — see
       the reasoning above; not tracked as outstanding, it's an intentional scope decision.
 
