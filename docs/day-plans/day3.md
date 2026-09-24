@@ -72,16 +72,31 @@ scratch) — a kitchen ticket is derived 1:1 from a paid order
 what checkout already does and break that invariant. Dropped per your instruction rather than
 guessed at.
 
-### ⏳ Still to do today (blocked on Ahmed and Bisma)
+### ✅ Ahmed's PR reviewed and merged
 
-10. **Schema review.** Before Ahmed or Bisma applies their migration (below), review it for:
-    the composite `(store_id, id)` tenant-scoping convention (`docs/ARCHITECTURE.md` §1.4),
-    additive-only changes, and no overlap with the existing `pos_stock` table.
-11. **Consumption-wiring integration** — blocked until both Ahmed's `recipes` and Bisma's
-    `ingredients`/`stock_movements` migrations are live. Once they are: wire `kitchen.ts`'s
-    item-served transition (the same code path that now calls `applyTableStatusTransition`) to
-    also insert `stock_movements` rows for the served item's recipe ingredients. This reaches
-    into both new modules at once, so it stays a Lead task, not Ahmed's or Bisma's.
+10. **Schema review — done.** Ahmed's `units`/`recipes` migration (`202609240001`) uses the
+    composite `(store_id, id)` tenant-scoping convention correctly, is additive-only, and
+    doesn't touch `pos_stock`. Applied to the live database and recorded in `APPLIED.md` before
+    the PR was even opened.
+11. **PR review — done, merged into `develop`** (commit `3f9e171`). Every "do not touch"
+    boundary was respected; every task in his brief was complete — migration, pure costing math
+    in `packages/domain` (reused by the UI and API, ready for Day 5's food-cost report), the
+    `/catalog` recipe/unit endpoints (correctly probing for Bisma's not-yet-existing
+    `ingredients`/`recipe_ingredients` tables via `to_regclass` instead of assuming), and the
+    recipe builder UI — plus a per-dish Recipe drawer for *existing* dishes that wasn't
+    explicitly asked for but was clearly needed (the product editor had no edit path for one).
+    Tests across all three layers (7 new domain, 4 new API, 4 new web) all pass, on top of the
+    full existing suite. One process note, not a code issue: the PR was opened against `main`
+    again (same mistake as Day 2's PRs #2/#3) — retargeted to `develop` before merging.
+
+### ⏳ Still to do today (blocked on Bisma)
+
+12. **Schema review of Bisma's migration**, once it exists — same checklist as above.
+13. **Consumption-wiring integration** — blocked until Bisma's `ingredients`/`stock_movements`
+    migration is live. Once it is: wire `kitchen.ts`'s item-served transition (the same code
+    path that now calls `applyTableStatusTransition`) to also insert `stock_movements` rows for
+    the served item's recipe ingredients, using Ahmed's now-merged `recipes`/`recipe_ingredients`
+    data. This reaches into both new modules at once, so it stays a Lead task.
 12. **Review Ahmed's and Bisma's PRs** against the checklists in their sections below, and
     merge them (Ahmed's first — Bisma's migration has an FK into his `recipes` table). Neither
     has started as of this writing — nothing to review yet.
@@ -203,9 +218,8 @@ Same as Ahmed's above: `fetch` → `checkout develop` → `pull` → `checkout -
 feature/bisma/day3-ingredient-inventory` → push → commit in small steps → PR to `develop` →
 Hamza reviews and merges, you don't merge your own PR.
 
-**Dependency:** your `ingredients`/`recipe_ingredients` migration has a foreign key into
-`recipes`, which Ahmed is creating today. **Wait for Ahmed to confirm his `units`/`recipes`
-migration is applied before you run yours** — don't guess at timing.
+**Dependency — cleared.** Ahmed's `units`/`recipes` migration (`202609240001`) is applied and
+merged into `develop`. You can apply yours now.
 
 ### 1. Migration — write now, apply once Ahmed confirms his is live
 
@@ -325,18 +339,19 @@ consumes stock automatically yet — that's Hamza's follow-up once your migratio
 - [x] Mandatory guest selection at checkout — pushed, same branch.
 - [x] Bill shows guest name/phone/order type — pushed, same branch.
 - [x] Kitchen tickets auto-fire to `preparing` — pushed, same branch.
-- [x] Floor area/table CRUD — pushed (`feature/hamza/day3-floor-crud`), awaiting your merge.
-- [x] Transfer and Merge, actually implemented — pushed, same branch.
-- [ ] Merge both of the above branches into `develop` (yours to do, per the git-ownership rule).
-- [ ] Schema review of Ahmed's and Bisma's migrations, once either exists.
-- [ ] Consumption-wiring hook in `kitchen.ts`, once both schemas are live.
-- [ ] Review and merge Ahmed's PR, then Bisma's, once they exist.
+- [x] Floor area/table CRUD — merged.
+- [x] Transfer and Merge, actually implemented — merged.
+- [x] Schema review of Ahmed's migration — done, correct.
+- [x] Review and merge Ahmed's PR — done (`3f9e171`), retargeted from `main` to `develop` first.
+- [ ] Schema review of Bisma's migration, once it exists.
+- [ ] Consumption-wiring hook in `kitchen.ts`, once Bisma's schema is live.
+- [ ] Review and merge Bisma's PR, once it exists.
 - [ ] Deliberately dropped: full Ticket CRUD (create/edit ticket contents from scratch) — see
       the reasoning above; not tracked as outstanding, it's an intentional scope decision.
 
-**Ahmed** (not started as of this writing):
-- [ ] `units` + `recipes` schema, applied and recorded in `APPLIED.md`.
-- [ ] Recipe builder UI + costing display.
+**Ahmed — done:**
+- [x] `units` + `recipes` schema, applied and recorded in `APPLIED.md`.
+- [x] Recipe builder UI + costing display, plus a Recipe drawer for existing dishes.
 
 **Bisma** (not started as of this writing):
 - [ ] `ingredients` + `ingredient_batches` + `stock_movements` + `recipe_ingredients` schema,
