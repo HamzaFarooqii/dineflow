@@ -39,7 +39,8 @@ create table public.ingredient_batches (
 -- 3. Stock movements — append-only ledger of every change to an ingredient's stock. batch_id is
 -- nullable: wastage/adjustment entries aren't necessarily tied to a specific batch. Postgres'
 -- default MATCH SIMPLE FK semantics mean a null batch_id always satisfies the FK below,
--- regardless of store_id, which is what's wanted here.
+-- regardless of store_id, which is what's wanted here. note is a free-text field for a manual
+-- wastage entry's reason (the inventory screen's wastage form) — optional everywhere else.
 create table public.stock_movements (
   id uuid primary key default gen_random_uuid(),
   store_id uuid not null references public.stores(id),
@@ -47,6 +48,7 @@ create table public.stock_movements (
   batch_id uuid,
   delta numeric not null,
   reason text not null check (reason in ('purchase', 'consumption', 'wastage', 'adjustment')),
+  note text check (note is null or length(trim(note)) <= 500),
   kitchen_ticket_item_id uuid,
   created_at timestamptz not null default now(),
   foreign key (store_id, ingredient_id) references public.ingredients(store_id, id),
