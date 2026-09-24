@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import {
-  createIngredient, fetchIngredients, fetchStockMovements, recordIngredientBatch,
+  createIngredient, fetchIngredientBatches, fetchIngredients, fetchStockMovements, recordIngredientBatch,
   type Ingredient, type IngredientBatch, type StockMovement,
 } from '../../lib/inventory'
 import { loadRecipeData } from '../menu/recipe-api'
@@ -120,7 +120,11 @@ export function InventoryScreen({ terminal = false }: { terminal?: boolean }) {
     setBatchQuantity(''); setBatchCost(''); setBatchExpiry('')
     setDetailBusy(true)
     try {
-      const page = await fetchStockMovements(storeId, ingredient.id, terminal)
+      const [batchList, page] = await Promise.all([
+        fetchIngredientBatches(storeId, ingredient.id, terminal),
+        fetchStockMovements(storeId, ingredient.id, terminal),
+      ])
+      setBatches(batchList)
       setMovements(page.movements)
     } catch (reason) {
       setDetailError(reason instanceof Error ? reason.message : 'Could not load this ingredient.')

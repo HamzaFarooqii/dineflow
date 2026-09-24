@@ -286,6 +286,30 @@ async function recordBatch(req: Request, res: Response, terminal = false) {
   } finally { client.release() }
 }
 
+// Batches received so far, most recent first. Without this the UI's batch list (and its expiry
+// highlighting) could only ever show what was added in the current browser session — it never
+// survived a reselect or a reload, even though the rows were safely in the database all along.
+async function listBatches(req: Request, res: Response, terminal = false) {
+  try {
+    const storeId = storeIdParam(req)
+    if (terminal) {
+      const session = await requireCashierTerminal(req, db)
+      if (session.storeId !== storeId) throw new ApiError(403, 'cross_store_reference', 'This terminal belongs to a different store.')
+    } else {
+      await requireStoreMember(req, storeId)
+    }
+    const ingredientId = idParam(req)
+    const result = await db.query<BatchRow>(
+      `select id, store_id, ingredient_id, quantity::text as quantity, received_at, expires_at, cost_per_unit_cents
+       from public.ingredient_batches
+       where store_id = $1 and ingredient_id = $2
+       order by received_at desc, id desc`,
+      [storeId, ingredientId],
+    )
+    res.json({ batches: result.rows })
+  } catch (reason) { sendApiError(res, reason) }
+}
+
 // --- Stock movement ledger ---------------------------------------------------------------------
 
 interface MovementsCursor { time: string; id: string }
@@ -392,6 +416,7 @@ inventoryRouter.post('/ingredients', (req, res) => createIngredient(req, res))
 inventoryRouter.patch('/ingredients/:id', (req, res) => updateIngredient(req, res))
 inventoryRouter.patch('/ingredients/:id/deactivate', (req, res) => deactivateIngredient(req, res))
 inventoryRouter.post('/ingredients/:id/batches', (req, res) => recordBatch(req, res))
+inventoryRouter.get('/ingredients/:id/batches', (req, res) => listBatches(req, res))
 inventoryRouter.get('/ingredients/:id/movements', (req, res) => listMovements(req, res))
 inventoryRouter.post('/ingredients/:id/wastage', (req, res) => recordWastage(req, res))
 
@@ -400,5 +425,6 @@ terminalInventoryRouter.post('/ingredients', (req, res) => createIngredient(req,
 terminalInventoryRouter.patch('/ingredients/:id', (req, res) => updateIngredient(req, res, true))
 terminalInventoryRouter.patch('/ingredients/:id/deactivate', (req, res) => deactivateIngredient(req, res, true))
 terminalInventoryRouter.post('/ingredients/:id/batches', (req, res) => recordBatch(req, res, true))
+terminalInventoryRouter.get('/ingredients/:id/batches', (req, res) => listBatches(req, res, true))
 terminalInventoryRouter.get('/ingredients/:id/movements', (req, res) => listMovements(req, res, true))
 terminalInventoryRouter.post('/ingredients/:id/wastage', (req, res) => recordWastage(req, res, true))
