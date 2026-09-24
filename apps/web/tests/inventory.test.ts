@@ -7,6 +7,7 @@ import type { Ingredient } from '../src/lib/inventory'
 const ingredient = (currentStock: string, reorderThreshold: string | null): Ingredient => ({
   id: 'i1', store_id: 's1', name: 'Flour', unit_id: 'u1', cost_per_unit_cents: 100,
   current_stock: currentStock, reorder_threshold: reorderThreshold, active: true,
+  created_by_user_id: null, created_by_name: null,
 })
 
 test('an ingredient with no reorder threshold is never low stock', () => {

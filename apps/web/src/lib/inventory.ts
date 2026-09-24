@@ -10,6 +10,8 @@ export interface Ingredient {
   current_stock: string
   reorder_threshold: string | null
   active: boolean
+  created_by_user_id: string | null
+  created_by_name: string | null
 }
 
 export interface IngredientBatch {
@@ -32,6 +34,8 @@ export interface StockMovement {
   note: string | null
   kitchen_ticket_item_id: string | null
   created_at: string
+  created_by_user_id: string | null
+  created_by_name: string | null
 }
 
 export interface StockMovementsPage { movements: StockMovement[]; next_cursor: string | null }

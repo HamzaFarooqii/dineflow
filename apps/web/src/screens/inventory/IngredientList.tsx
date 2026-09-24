@@ -22,6 +22,7 @@ export function IngredientList({ ingredients, selectedId, onSelect }: { ingredie
       <span className="inventory-list-item-meta">
         {ingredient.current_stock} on hand
         {ingredient.reorder_threshold !== null && <> · reorder at {ingredient.reorder_threshold}</>}
+        {ingredient.created_by_name && <> · added by {ingredient.created_by_name}</>}
       </span>
     </button>)}
     {ingredients.length === 0 && <p className="floor-empty">No ingredients yet.</p>}
