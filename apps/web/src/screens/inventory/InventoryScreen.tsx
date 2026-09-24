@@ -117,6 +117,7 @@ export function InventoryScreen({ terminal = false }: { terminal?: boolean }) {
     setDetailError('')
     setBatches([])
     setMovements([])
+    setBatchQuantity(''); setBatchCost(''); setBatchExpiry('')
     setDetailBusy(true)
     try {
       const page = await fetchStockMovements(storeId, ingredient.id, terminal)
@@ -239,7 +240,7 @@ export function InventoryScreen({ terminal = false }: { terminal?: boolean }) {
         <BatchList batches={batches} />
 
         <h3>Record wastage</h3>
-        <WastageForm storeId={storeId} ingredient={selected} terminal={terminal} requestApproval={withApproval} onRecorded={updated => void handleWastageRecorded(updated)} />
+        <WastageForm key={selected.id} storeId={storeId} ingredient={selected} terminal={terminal} requestApproval={withApproval} onRecorded={updated => void handleWastageRecorded(updated)} />
 
         <h3>Stock movements</h3>
         <StockLedger movements={movements} />
