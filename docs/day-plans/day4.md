@@ -307,12 +307,16 @@ Promotions aren't applied at checkout yet — that's Hamza's checkout-wiring tas
 ## Day 4 completion checklist (nothing missed)
 
 **Hamza:**
-- [ ] Loyalty schema (`loyalty_tiers`, `loyalty_accounts`, `loyalty_point_ledger`,
-      `reward_rules`) — applied and recorded in `APPLIED.md` before Ahmed branches.
-- [ ] Loyalty + Promotions checkout wiring — points earned idempotently on order completion;
-      redemption and promotions apply as a `LineDiscount` through the existing manager-approval
-      gate.
-- [ ] Staff role review — decision made and documented, migration landed if warranted.
+- [x] Loyalty schema (`loyalty_tiers`, `loyalty_accounts`, `loyalty_point_ledger`,
+      `reward_rules`) — applied, recorded in `APPLIED.md`, 4 schema-integrity tests passing.
+      Pushed on `feature/hamza/day4-loyalty-foundation`, awaiting your merge. Ahmed can branch
+      once it's merged.
+- [ ] Loyalty + Promotions checkout wiring — **blocked, not started.** This task calls Ahmed's
+      `pointsEarned()`/`redemptionValue()` domain functions and Bisma's `promotionToLineDiscount()`
+      function, neither of which exist yet. Picks up once both PRs are merged.
+- [x] Staff role review — **decision: no distinct "waiter" role this sprint.** Reasoning recorded
+      in `MODULE_STATUS.md`'s Staff row — "waiter" was never a login/permission role to begin
+      with, and Day 4's loyalty feature doesn't create a real need for one either.
 - [ ] Review and merge Bisma's PR, then Ahmed's PR.
 - [ ] `day4.md` and `MODULE_STATUS.md` updated to true end-of-day state.
 

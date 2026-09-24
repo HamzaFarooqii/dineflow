@@ -39,6 +39,7 @@ schema no longer matches history, and it needs manual reconciliation, not a sile
 | 202609240002_ingredient_inventory.sql | `17c2c65a6b00c643eae8ee68c695d7dfcd6b2170fb12e4cf6c147b3484e7c3c0` | yes | `public.ingredients`, `public.ingredient_batches`, `public.stock_movements`, `public.recipe_ingredients` tables exist, each with a member-read RLS policy |
 | 202609240003_inventory_audit_columns.sql | `8debe1aa8904bbf777cdfb6c6e81ced0b3b028060a5e2249f6b9a1e8a1d16e7e` | yes | `ingredients.created_by_user_id` and `stock_movements.created_by_user_id` columns exist |
 | 202609240004_inventory_terminal_audit.sql | `a3f05e1ba073c4f0383111d8cdada1d5792c312276eb31346e109ec6e9d679a7` | yes | `ingredients.manager_id` and `stock_movements.manager_id` columns exist |
+| 202609250001_loyalty_foundation.sql | `d193d4d27a2644ec12a1c0bbf097aa11bb24654da7bd4a472ed3d28c5504a911` | yes | `public.loyalty_tiers`, `public.loyalty_accounts`, `public.loyalty_point_ledger`, `public.reward_rules` tables exist, each with a member-read RLS policy |
 
 Note: `202609230002_table_waiter_assignment.sql` was renamed from `..._0001_...` (Lead
 integration fixup, PR #4) — it and Ahmed's kitchen-display migration were both authored the
