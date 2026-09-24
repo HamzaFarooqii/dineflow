@@ -12,9 +12,11 @@ export interface ManagerApprovalEvidence { managerId: string; managerName: strin
 
 // Elegant, focus-trapped overlay reusing the CashierLogin PIN keypad style so a manager can
 // authorize a discount above the cashier's 20% independent authority (FEAT-AUTH-02), entirely offline.
-export function ManagerApprovalModal({ cache, reason, onApprove, onClose }: {
+export function ManagerApprovalModal({ cache, title = 'Authorize this discount', reason, actionLabel = 'Approve discount', onApprove, onClose }: {
   cache: TerminalCache
+  title?: string
   reason: string
+  actionLabel?: string
   onApprove: (evidence: ManagerApprovalEvidence) => void
   onClose: () => void
 }) {
@@ -81,7 +83,7 @@ export function ManagerApprovalModal({ cache, reason, onApprove, onClose }: {
 
   return <div className="manager-approval-overlay" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
     <section ref={dialog} className="manager-approval-dialog cashier-card" role="dialog" aria-modal="true" aria-labelledby="manager-approval-title">
-      <div className="manager-approval-head"><div><p className="kicker">MANAGER APPROVAL</p><h1 id="manager-approval-title">Authorize this discount</h1></div>
+      <div className="manager-approval-head"><div><p className="kicker">MANAGER APPROVAL</p><h1 id="manager-approval-title">{title}</h1></div>
         <button ref={closeButton} type="button" className="text-action" onClick={onClose}>Close</button></div>
       <p className="manager-approval-reason">{reason}</p>
       {!withinWindow && <p className="form-notice error" role="alert">Manager approval requires online validation within the last 72 hours. Connect this terminal and refresh terminal access, then try again.</p>}
@@ -103,7 +105,7 @@ export function ManagerApprovalModal({ cache, reason, onApprove, onClose }: {
         </div>
         {locked && <p className="form-notice error" role="alert">Too many attempts. Try again in {secondsLeft} second{secondsLeft === 1 ? '' : 's'}.</p>}
         {error && !locked && <p className="form-notice error" role="alert">{error}</p>}
-        <button className="cta cashier-unlock-button" type="button" disabled={!canSubmit} onClick={() => void submit()}>{busy ? 'Verifying…' : 'Approve discount'}</button>
+        <button className="cta cashier-unlock-button" type="button" disabled={!canSubmit} onClick={() => void submit()}>{busy ? 'Verifying…' : actionLabel}</button>
       </>}
     </section>
   </div>
