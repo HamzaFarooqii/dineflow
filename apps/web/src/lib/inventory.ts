@@ -96,6 +96,18 @@ export async function recordIngredientBatch(storeId: string, ingredientId: strin
   return inventoryRequest(`/ingredients/${ingredientId}/batches`, 'POST', storeId, terminal, { ...input, ...(terminal ? managerEvidenceBody(approval) : {}) })
 }
 
+export async function fetchIngredientBatches(storeId: string, ingredientId: string, terminal = false): Promise<IngredientBatch[]> {
+  const query = new URLSearchParams({ store_id: storeId })
+  const response = await fetch(`${configuredApiUrl()}${terminal ? '/pos/inventory' : '/inventory'}/ingredients/${ingredientId}/batches?${query}`, {
+    credentials: terminal ? 'include' : 'same-origin',
+    headers: terminal ? {} : { Authorization: `Bearer ${await accessToken()}` },
+    signal: AbortSignal.timeout(15_000),
+  })
+  const body = await response.json().catch(() => ({})) as { batches?: IngredientBatch[]; message?: string }
+  if (!response.ok) throw new Error(body.message ?? `Batches could not be loaded (${response.status}).`)
+  return body.batches ?? []
+}
+
 export async function fetchStockMovements(storeId: string, ingredientId: string, terminal = false, before?: string | null, limit = 50): Promise<StockMovementsPage> {
   const query = new URLSearchParams({ store_id: storeId, limit: String(limit) })
   if (before) query.set('before', before)
