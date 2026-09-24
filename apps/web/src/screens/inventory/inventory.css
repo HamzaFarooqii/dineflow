@@ -1,0 +1,22 @@
+.inventory-layout{display:grid;grid-template-columns:280px 1fr;gap:20px;align-items:start}
+.inventory-list{display:grid;gap:8px}
+.inventory-list-item{display:grid;gap:4px;justify-items:start;text-align:left;padding:12px 14px;border:1px solid var(--mise-border-hairline);border-radius:var(--mise-r3);background:var(--mise-surface);transition:background .15s ease,border-color .15s ease}
+.inventory-list-item:hover{background:var(--mise-canvas);border-color:var(--mise-border-strong)}
+.inventory-list-item.active{border-color:var(--mise-ink);background:var(--mise-canvas)}
+.inventory-list-item-top{display:flex;align-items:center;justify-content:space-between;width:100%;gap:8px}
+.inventory-list-item-name{font:600 14px 'Archivo',sans-serif;color:var(--mise-ink)}
+.inventory-list-item-meta{font-size:12px;color:var(--mise-ink-secondary)}
+
+.inventory-detail{display:grid;gap:8px}
+.inventory-detail h2{font:600 20px 'Archivo',sans-serif;margin:0 0 8px;color:var(--mise-ink)}
+.inventory-detail h3{font:600 13px 'Archivo',sans-serif;margin:16px 0 4px;color:var(--mise-ink-secondary);text-transform:uppercase;letter-spacing:.04em}
+
+.inventory-table{width:100%;border-collapse:collapse;font-size:13px}
+.inventory-table th{text-align:left;padding:8px 10px;color:var(--mise-ink-muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--mise-border-strong)}
+.inventory-table td{padding:8px 10px;border-bottom:1px solid var(--mise-border-hairline);color:var(--mise-ink)}
+
+.inventory-wastage-form{margin-bottom:0}
+
+@media (max-width:768px){
+  .inventory-layout{grid-template-columns:1fr}
+}
