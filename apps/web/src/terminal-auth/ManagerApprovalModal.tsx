@@ -21,7 +21,10 @@ export function ManagerApprovalModal({ cache, title = 'Authorize this discount',
   onClose: () => void
 }) {
   const managers = cache.employees.filter(row => row.role === 'manager')
-  const [managerId, setManagerId] = useState(managers.length === 1 ? managers[0].id : '')
+  // Always start unselected, even with a single manager on this terminal — approving an action
+  // requires that manager to actively choose themselves from the list, not just enter a PIN
+  // against whatever the form happened to preselect.
+  const [managerId, setManagerId] = useState('')
   const [pin, setPin] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
