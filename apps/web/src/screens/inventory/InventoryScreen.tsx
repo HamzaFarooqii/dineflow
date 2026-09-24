@@ -7,7 +7,7 @@ import { loadRecipeData } from '../menu/recipe-api'
 import type { RecipeUnit } from '../menu/recipe-draft'
 import { posDb } from '../../lib/db'
 import { requireSupabase } from '../../lib/supabase'
-import { currentAccess, type TerminalCache } from '../../terminal-auth/cache'
+import { currentAccess, refreshTerminal, type TerminalCache } from '../../terminal-auth/cache'
 import { ManagerApprovalModal, type ManagerApprovalEvidence } from '../../terminal-auth/ManagerApprovalModal'
 import { IngredientList } from './IngredientList'
 import { BatchList } from './BatchList'
@@ -48,12 +48,28 @@ export function InventoryScreen({ terminal = false }: { terminal?: boolean }) {
   const [approvalOpen, setApprovalOpen] = useState(false)
   const [approvalReason, setApprovalReason] = useState('')
   const pendingWrite = useRef<((approval: ManagerApprovalEvidence) => Promise<void>) | null>(null)
+  const [accessRefreshBusy, setAccessRefreshBusy] = useState(false)
+  const [accessRefreshError, setAccessRefreshError] = useState('')
 
   async function withApproval(reason: string, action: (approval: ManagerApprovalEvidence | null) => Promise<void>) {
     if (!terminal) { await action(null); return }
     pendingWrite.current = action
     setApprovalReason(reason)
     setApprovalOpen(true)
+  }
+
+  // Manual escape hatch for "no manager is provisioned on this terminal" — pulls the current
+  // employee list (including any manager added since this terminal last logged in) without
+  // sending the cashier back to /pos/login.
+  async function handleRefreshAccess() {
+    if (!navigator.onLine) { setAccessRefreshError('Connect to refresh terminal access.'); return }
+    setAccessRefreshBusy(true); setAccessRefreshError('')
+    try {
+      const refreshed = await refreshTerminal()
+      setTerminalCache(refreshed)
+    } catch (reason) {
+      setAccessRefreshError(reason instanceof Error ? reason.message : 'Could not refresh terminal access.')
+    } finally { setAccessRefreshBusy(false) }
   }
 
   useEffect(() => {
@@ -63,6 +79,11 @@ export function InventoryScreen({ terminal = false }: { terminal?: boolean }) {
         if (!navigator.onLine) throw new Error('Connect to load inventory.')
         let id: string
         if (terminal) {
+          // Best-effort: pull the latest employee/manager list (e.g. a manager added after this
+          // terminal last logged in) before reading the cache, mirroring CashierLogin's boot
+          // refresh. Never fatal — an offline or failed refresh just falls back to whatever is
+          // already cached, same as before this existed.
+          await refreshTerminal().catch(() => undefined)
           const terminalAccess = await currentAccess()
           if (!terminalAccess?.policy.valid) throw new Error('Unlock this terminal before opening inventory.')
           id = terminalAccess.cache.device.store_id
@@ -177,8 +198,13 @@ export function InventoryScreen({ terminal = false }: { terminal?: boolean }) {
   return <section className="floor-page inventory-page">
     <div className="floor-page-head">
       <div><p className="kicker">STOCK & INGREDIENTS</p><h1>Inventory</h1><p>Track ingredients, batches, and stock movements.</p></div>
-      <button type="button" className={addOpen ? 'secondary-cta active' : 'secondary-cta'} onClick={() => setAddOpen(value => !value)}>{addOpen ? 'Cancel' : '+ Add ingredient'}</button>
+      <div className="inventory-head-actions">
+        {terminal && <button type="button" className="text-action" disabled={accessRefreshBusy} onClick={() => void handleRefreshAccess()}
+          title="Pull the latest employee/manager list, e.g. after a manager was just added">{accessRefreshBusy ? 'Refreshing…' : 'Refresh access'}</button>}
+        <button type="button" className={addOpen ? 'secondary-cta active' : 'secondary-cta'} onClick={() => setAddOpen(value => !value)}>{addOpen ? 'Cancel' : '+ Add ingredient'}</button>
+      </div>
     </div>
+    {accessRefreshError && <p className="form-notice error" role="alert">{accessRefreshError}</p>}
     {error && <p className="form-notice error" role="alert">{error}</p>}
     {loading && !error && <p role="status">Loading inventory…</p>}
     {!loading && !error && addOpen && <form className="floor-inline-form" onSubmit={event => void handleAddIngredient(event)}>

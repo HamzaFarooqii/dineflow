@@ -1,3 +1,5 @@
+.inventory-head-actions{display:flex;align-items:center;gap:12px}
+
 .inventory-layout{display:grid;grid-template-columns:280px 1fr;gap:20px;align-items:start}
 .inventory-list{display:grid;gap:8px}
 .inventory-list-item{display:grid;gap:4px;justify-items:start;text-align:left;padding:12px 14px;border:1px solid var(--mise-border-hairline);border-radius:var(--mise-r3);background:var(--mise-surface);transition:background .15s ease,border-color .15s ease}
