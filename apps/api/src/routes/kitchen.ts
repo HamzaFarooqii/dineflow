@@ -104,8 +104,8 @@ async function patchItem(req: Request, res: Response) {
     const client = await db.connect()
     try {
       await client.query('begin')
-      const current = await client.query<{ status: KitchenTicketStatus }>(
-        'select status from public.kitchen_ticket_items where store_id=$1 and ticket_id=$2 and id=$3 for update',
+      const current = await client.query<{ status: KitchenTicketStatus; order_item_id: string }>(
+        'select status, order_item_id from public.kitchen_ticket_items where store_id=$1 and ticket_id=$2 and id=$3 for update',
         [storeId, ticketId, itemId],
       )
       if (!current.rows[0]) throw new ApiError(404, 'not_found', 'Ticket item not found.')
@@ -119,6 +119,15 @@ async function patchItem(req: Request, res: Response) {
         `update public.kitchen_ticket_items set status=$1${timestampColumn ? `, ${timestampColumn}=now()` : ''} where store_id=$2 and id=$3`,
         [to, storeId, itemId],
       )
+      if (to === 'served') {
+        const orderItem = await client.query<{ product_id: string; quantity: number }>(
+          'select product_id, quantity from public.pos_order_items where id=$1',
+          [current.rows[0].order_item_id],
+        )
+        if (orderItem.rows[0]) {
+          await consumeRecipeIngredients(client, storeId, itemId, orderItem.rows[0].product_id, orderItem.rows[0].quantity)
+        }
+      }
       const siblings = await client.query<{ status: KitchenTicketStatus }>(
         'select status from public.kitchen_ticket_items where store_id=$1 and ticket_id=$2',
         [storeId, ticketId],
@@ -146,6 +155,64 @@ async function patchItem(req: Request, res: Response) {
     } catch (reason) { await client.query('rollback'); throw reason }
     finally { client.release() }
   } catch (reason) { sendApiError(res, reason) }
+}
+
+// Consumption wiring: a served item decrements the ingredients its recipe calls for. Runs inside
+// patchItem's own transaction (not best-effort/outside it like the table-status sync below) —
+// unlike that sync, which is a UI convenience on a different aggregate with its own reconciliation
+// path, stock accuracy is a first-class correctness concern here, same as every other write that
+// touches ingredients.current_stock in inventory.ts.
+//
+// Stock is deliberately allowed to go negative: by the time an item is marked served, the dish
+// has already been prepared and handed to the guest, so refusing to record consumption (or
+// blocking the serve) would be operationally backwards -- the same "never block a completed
+// action over a stock count that might already be stale" reasoning pos_stock's oversell already
+// documents. A negative current_stock is a signal for reconciliation, surfaced as an "Out of
+// stock" tag on the inventory screen, not an error to raise here.
+//
+// A recipe line whose unit doesn't match its ingredient's stored unit is skipped, not guessed at
+// -- mirrors packages/domain/src/recipe-cost.ts's unit_mismatch handling exactly. A product with
+// no recipe at all is skipped entirely; not every dish has one.
+export async function consumeRecipeIngredients(client: import('pg').PoolClient, storeId: string, kitchenTicketItemId: string, productId: string, quantitySold: number): Promise<void> {
+  const recipe = await client.query<{ id: string; yield_quantity: string }>(
+    'select id, yield_quantity from public.recipes where store_id=$1 and product_id=$2',
+    [storeId, productId],
+  )
+  const recipeRow = recipe.rows[0]
+  if (!recipeRow) return
+  const yieldQuantity = Number(recipeRow.yield_quantity)
+
+  const lines = await client.query<{ ingredient_id: string; line_quantity: string; line_unit_id: string; ingredient_unit_id: string }>(
+    `select ri.ingredient_id, ri.quantity::text as line_quantity, ri.unit_id as line_unit_id, i.unit_id as ingredient_unit_id
+     from public.recipe_ingredients ri
+     join public.ingredients i on i.store_id = ri.store_id and i.id = ri.ingredient_id
+     where ri.store_id = $1 and ri.recipe_id = $2`,
+    [storeId, recipeRow.id],
+  )
+
+  for (const line of lines.rows) {
+    if (line.line_unit_id !== line.ingredient_unit_id) continue
+
+    // Defensive: the served transition is one-way (KITCHEN_TICKET_ITEM_TRANSITIONS['served'] is
+    // empty) so this item can't be re-served, but a duplicate consumption row is cheap to guard
+    // against directly rather than relying solely on that.
+    const already = await client.query(
+      `select 1 from public.stock_movements where kitchen_ticket_item_id=$1 and ingredient_id=$2 and reason='consumption'`,
+      [kitchenTicketItemId, line.ingredient_id],
+    )
+    if (already.rowCount) continue
+
+    const consumeQuantity = (Number(line.line_quantity) / yieldQuantity) * quantitySold
+    await client.query(
+      `insert into public.stock_movements (store_id, ingredient_id, delta, reason, kitchen_ticket_item_id)
+       values ($1,$2,$3,'consumption',$4)`,
+      [storeId, line.ingredient_id, -consumeQuantity, kitchenTicketItemId],
+    )
+    await client.query(
+      `update public.ingredients set current_stock = current_stock - $1 where store_id=$2 and id=$3`,
+      [consumeQuantity, storeId, line.ingredient_id],
+    )
+  }
 }
 
 kitchenRouter.get('/tickets', (req, res) => getTickets(req, res))

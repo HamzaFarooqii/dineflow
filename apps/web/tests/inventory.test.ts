@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { isLowStock } from '../src/screens/inventory/IngredientList'
+import { isLowStock, isOutOfStock } from '../src/screens/inventory/IngredientList'
 import { expiryTone } from '../src/screens/inventory/BatchList'
 import type { Ingredient } from '../src/lib/inventory'
 
@@ -21,6 +21,15 @@ test('an ingredient at or below its reorder threshold is low stock', () => {
 
 test('an ingredient above its reorder threshold is not low stock', () => {
   assert.equal(isLowStock(ingredient('10', '5')), false)
+})
+
+test('an ingredient at zero or negative stock is out of stock, even with no reorder threshold set', () => {
+  assert.equal(isOutOfStock(ingredient('0', null)), true)
+  assert.equal(isOutOfStock(ingredient('-2', null)), true)
+})
+
+test('an ingredient with positive stock is not out of stock', () => {
+  assert.equal(isOutOfStock(ingredient('1', null)), false)
 })
 
 test('a batch with no expiry date has no tone', () => {
