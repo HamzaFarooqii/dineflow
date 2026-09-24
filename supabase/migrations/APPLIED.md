@@ -35,6 +35,7 @@ schema no longer matches history, and it needs manual reconciliation, not a sile
 | 202609200001_service_role_only_rls_policies.sql | `c5d91c60277e769cfd13c295a781ab5a0302082967d696bafd4bb7839d5731b1` | yes | policy `pos_change_feed_service_role_only` exists |
 | 202609230001_kitchen_display_system.sql | `bb9c97448b609f9de0c0443c30aaaca4d1e839d5de613dbc1428ab9ae58b1f55` | yes | `public.kitchen_tickets` table exists |
 | 202609230002_table_waiter_assignment.sql | `610f377741fbd81103396563ddc1dd34e8972f57e5e7a286686423940a5f900e` | yes | `restaurant_tables.assigned_waiter_id` column exists |
+| 202609240001_units_and_recipes.sql | `acdb4910c376397b101dd0bfd126af395ec31aa4386904dae835370c0714a666` | yes | `public.recipes` table exists |
 
 Note: `202609230002_table_waiter_assignment.sql` was renamed from `..._0001_...` (Lead
 integration fixup, PR #4) — it and Ahmed's kitchen-display migration were both authored the

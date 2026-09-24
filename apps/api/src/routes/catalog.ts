@@ -263,8 +263,215 @@ async function createProduct(req: import('express').Request, res: import('expres
   }
 }
 
+// ---------------------------------------------------------------------------
+// Recipes + units (Day 3). Recipes are back-office data only — terminals never need them, so
+// none of this goes through the sync feed. Ingredient lines live in Bisma's recipe_ingredients
+// table; until that migration is applied every endpoint here still works, just with no lines
+// and no ingredients (ingredients_ready: false tells the UI why).
+// ---------------------------------------------------------------------------
+type Queryable = { query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[]; rowCount: number | null }> }
+
+const UNIT_KINDS = ['mass', 'volume', 'count'] as const
+type UnitKind = typeof UNIT_KINDS[number]
+const MAX_RECIPE_QUANTITY = 1_000_000
+const MAX_RECIPE_LINES = 100
+
+export interface UnitInput { name: string; abbreviation: string; kind: UnitKind }
+export interface RecipeLineInput { ingredient_id: string; quantity: number; unit_id: string }
+export interface RecipeInput { yield_quantity: number; yield_unit_id: string; lines: RecipeLineInput[] }
+
+function storeIdFrom(value: unknown): string {
+  const storeId = String(value ?? '')
+  if (!UUID_RE.test(storeId)) throw new ApiError(400, 'validation_failed', 'A valid store_id UUID is required.')
+  return storeId
+}
+
+function recipeQuantity(value: unknown, label: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0 || value > MAX_RECIPE_QUANTITY) {
+    throw new ApiError(422, 'validation_failed', `${label} must be a number greater than 0 and at most ${MAX_RECIPE_QUANTITY.toLocaleString('en-US')}.`)
+  }
+  return value
+}
+
+export function parseUnitBody(body: Record<string, unknown>): UnitInput {
+  const name = typeof body.name === 'string' ? body.name.trim() : ''
+  if (!name || name.length > 40) throw new ApiError(422, 'validation_failed', 'Unit name is required and must be 1–40 characters.')
+  const abbreviation = typeof body.abbreviation === 'string' ? body.abbreviation.trim() : ''
+  if (!abbreviation || abbreviation.length > 10) throw new ApiError(422, 'validation_failed', 'Unit abbreviation is required and must be 1–10 characters.')
+  const kind = body.kind as UnitKind
+  if (!UNIT_KINDS.includes(kind)) throw new ApiError(422, 'validation_failed', 'Unit kind must be mass, volume, or count.')
+  return { name, abbreviation, kind }
+}
+
+export function parseRecipeBody(body: Record<string, unknown>): RecipeInput {
+  const yieldQuantity = recipeQuantity(body.yield_quantity, 'Recipe yield')
+  const yieldUnitId = String(body.yield_unit_id ?? '')
+  if (!UUID_RE.test(yieldUnitId)) throw new ApiError(422, 'validation_failed', 'Choose a yield unit for the recipe.')
+  if (!Array.isArray(body.lines)) throw new ApiError(422, 'validation_failed', 'lines must be an array.')
+  if (body.lines.length > MAX_RECIPE_LINES) throw new ApiError(422, 'validation_failed', `A recipe can have at most ${MAX_RECIPE_LINES} ingredient lines.`)
+  const seen = new Set<string>()
+  const lines = body.lines.map((raw, index): RecipeLineInput => {
+    const line = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>
+    const ingredientId = String(line.ingredient_id ?? '')
+    const unitId = String(line.unit_id ?? '')
+    if (!UUID_RE.test(ingredientId)) throw new ApiError(422, 'validation_failed', `Line ${index + 1}: choose an ingredient.`)
+    if (!UUID_RE.test(unitId)) throw new ApiError(422, 'validation_failed', `Line ${index + 1}: choose a unit.`)
+    if (seen.has(ingredientId)) throw new ApiError(422, 'validation_failed', `Line ${index + 1}: this ingredient is already on the recipe — combine the quantities into one line.`)
+    seen.add(ingredientId)
+    return { ingredient_id: ingredientId, quantity: recipeQuantity(line.quantity, `Line ${index + 1} quantity`), unit_id: unitId }
+  })
+  return { yield_quantity: yieldQuantity, yield_unit_id: yieldUnitId, lines }
+}
+
+/** Bisma's ingredients/recipe_ingredients migration lands after this one — probe, don't assume. */
+async function ingredientsReady(client: Queryable): Promise<boolean> {
+  const result = await client.query(`select to_regclass('public.ingredients') is not null and to_regclass('public.recipe_ingredients') is not null as ready`)
+  return (result.rows[0] as { ready: boolean }).ready
+}
+
+export interface RecipeRow {
+  id: string; product_id: string; yield_quantity: number; yield_unit_id: string
+  lines: { id: string; ingredient_id: string; quantity: number; unit_id: string }[]
+}
+
+async function loadRecipes(client: Queryable, storeId: string, ready: boolean, productId?: string): Promise<RecipeRow[]> {
+  const recipes = await client.query(
+    `select id, product_id, yield_quantity::float8 as yield_quantity, yield_unit_id from public.recipes
+     where store_id=$1 and ($2::uuid is null or product_id=$2::uuid)`,
+    [storeId, productId ?? null],
+  )
+  const byId = new Map((recipes.rows as Omit<RecipeRow, 'lines'>[]).map(row => [row.id, { ...row, lines: [] as RecipeRow['lines'] }]))
+  if (ready && byId.size) {
+    const lines = await client.query(
+      `select id, recipe_id, ingredient_id, quantity::float8 as quantity, unit_id from public.recipe_ingredients
+       where store_id=$1 and recipe_id = any($2::uuid[]) order by id`,
+      [storeId, [...byId.keys()]],
+    )
+    for (const line of lines.rows as (RecipeRow['lines'][number] & { recipe_id: string })[]) {
+      const { recipe_id: recipeId, ...rest } = line
+      byId.get(recipeId)?.lines.push(rest)
+    }
+  }
+  return [...byId.values()]
+}
+
+/**
+ * Creates or replaces a product's recipe and all of its ingredient lines in one transaction —
+ * a full replace-on-save, never incremental line edits. Every referenced product, unit, and
+ * ingredient is checked against storeId before writing (the composite FKs are the final guard).
+ */
+export async function saveRecipe(storeId: string, productId: string, input: RecipeInput): Promise<RecipeRow> {
+  const client = await db.connect()
+  try {
+    await client.query('begin')
+    const product = await client.query('select 1 from public.pos_products where store_id=$1 and id=$2', [storeId, productId])
+    if (!product.rowCount) throw new ApiError(404, 'not_found', 'That dish does not exist in this store.')
+
+    const unitIds = [...new Set([input.yield_unit_id, ...input.lines.map(line => line.unit_id)])]
+    const units = await client.query('select id from public.units where store_id=$1 and id = any($2::uuid[])', [storeId, unitIds])
+    const knownUnits = new Set((units.rows as { id: string }[]).map(row => row.id))
+    if (!knownUnits.has(input.yield_unit_id)) throw new ApiError(422, 'validation_failed', 'The yield unit does not belong to this store.')
+    if (unitIds.some(id => !knownUnits.has(id))) throw new ApiError(422, 'validation_failed', 'A recipe line uses a unit that does not belong to this store.')
+
+    const ready = await ingredientsReady(client)
+    if (input.lines.length && !ready) {
+      throw new ApiError(409, 'ingredients_unavailable', 'Ingredient inventory is not set up yet, so ingredient lines cannot be saved. Save the yield only for now.')
+    }
+    if (input.lines.length) {
+      const ingredients = await client.query(
+        'select id, unit_id from public.ingredients where store_id=$1 and id = any($2::uuid[])',
+        [storeId, input.lines.map(line => line.ingredient_id)],
+      )
+      const ingredientUnit = new Map((ingredients.rows as { id: string; unit_id: string }[]).map(row => [row.id, row.unit_id]))
+      input.lines.forEach((line, index) => {
+        const unit = ingredientUnit.get(line.ingredient_id)
+        if (!unit) throw new ApiError(422, 'validation_failed', `Line ${index + 1}: that ingredient does not belong to this store.`)
+        // Costing (packages/domain/src/recipe-cost.ts) has no unit conversion yet; a mismatched
+        // line could only ever be mis-costed or mis-consumed, so refuse it at the source.
+        if (unit !== line.unit_id) throw new ApiError(422, 'unit_mismatch', `Line ${index + 1}: use the ingredient's own unit — unit conversion is not supported yet.`)
+      })
+    }
+
+    const recipe = await client.query(
+      `insert into public.recipes (store_id, product_id, yield_quantity, yield_unit_id) values ($1,$2,$3,$4)
+       on conflict (store_id, product_id) do update set yield_quantity=excluded.yield_quantity, yield_unit_id=excluded.yield_unit_id
+       returning id`,
+      [storeId, productId, input.yield_quantity, input.yield_unit_id],
+    )
+    const recipeId = (recipe.rows[0] as { id: string }).id
+    if (ready) {
+      await client.query('delete from public.recipe_ingredients where store_id=$1 and recipe_id=$2', [storeId, recipeId])
+      for (const line of input.lines) {
+        await client.query(
+          'insert into public.recipe_ingredients (store_id, recipe_id, ingredient_id, quantity, unit_id) values ($1,$2,$3,$4,$5)',
+          [storeId, recipeId, line.ingredient_id, line.quantity, line.unit_id],
+        )
+      }
+    }
+    const [saved] = await loadRecipes(client, storeId, ready, productId)
+    await client.query('commit')
+    return saved
+  } catch (reason) {
+    await client.query('rollback')
+    throw reason
+  } finally {
+    client.release()
+  }
+}
+
+// GET /catalog/recipes — everything the recipe editor needs for a store, in one read.
+async function listRecipeData(req: import('express').Request, res: import('express').Response) {
+  try {
+    const storeId = storeIdFrom(req.query.store_id)
+    await requireStoreMember(req, storeId)
+    const ready = await ingredientsReady(db)
+    const units = await db.query('select id, name, abbreviation, kind from public.units where store_id=$1 order by name', [storeId])
+    const ingredients = ready
+      ? await db.query('select id, name, unit_id, cost_per_unit_cents, active from public.ingredients where store_id=$1 order by name', [storeId])
+      : { rows: [] }
+    res.json({ ingredients_ready: ready, units: units.rows, ingredients: ingredients.rows, recipes: await loadRecipes(db, storeId, ready) })
+  } catch (reason) { sendApiError(res, reason) }
+}
+
+// POST /catalog/units — owner/manager adds a unit of measure.
+async function createUnit(req: import('express').Request, res: import('express').Response) {
+  try {
+    const body = req.body as Record<string, unknown>
+    const storeId = storeIdFrom(body.store_id)
+    await requireStoreManager(req, storeId)
+    const unit = parseUnitBody(body)
+    try {
+      const result = await db.query(
+        'insert into public.units (store_id, name, abbreviation, kind) values ($1,$2,$3,$4) returning id, name, abbreviation, kind',
+        [storeId, unit.name, unit.abbreviation, unit.kind],
+      )
+      res.status(201).json({ unit: result.rows[0] })
+    } catch (insertReason) {
+      if (typeof insertReason === 'object' && insertReason !== null && 'code' in insertReason && (insertReason as { code: string }).code === '23505') {
+        throw new ApiError(409, 'unit_conflict', 'A unit with this name already exists in this store.')
+      }
+      throw insertReason
+    }
+  } catch (reason) { sendApiError(res, reason) }
+}
+
+// PUT /catalog/products/:productId/recipe — owner/manager saves a dish's whole recipe.
+async function putRecipe(req: import('express').Request, res: import('express').Response) {
+  try {
+    const body = req.body as Record<string, unknown>
+    const storeId = storeIdFrom(body.store_id)
+    const productId = String(req.params.productId ?? '')
+    if (!UUID_RE.test(productId)) throw new ApiError(400, 'validation_failed', 'A valid product ID is required.')
+    await requireStoreManager(req, storeId)
+    res.json({ recipe: await saveRecipe(storeId, productId, parseRecipeBody(body)) })
+  } catch (reason) { sendApiError(res, reason) }
+}
+
 export const catalogRouter = Router()
 export const terminalCatalogRouter = Router()
 catalogRouter.get('/snapshot', (req, res) => void snapshot(req, res))
 catalogRouter.post('/products', (req, res) => void createProduct(req, res))
+catalogRouter.get('/recipes', (req, res) => void listRecipeData(req, res))
+catalogRouter.post('/units', (req, res) => void createUnit(req, res))
+catalogRouter.put('/products/:productId/recipe', (req, res) => void putRecipe(req, res))
 terminalCatalogRouter.get('/snapshot', (req, res) => void snapshot(req, res, true))
