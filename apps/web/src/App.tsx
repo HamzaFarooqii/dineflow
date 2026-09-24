@@ -16,6 +16,7 @@ import { CashierPosLayout } from './terminal-auth/CashierPosLayout'
 import { CashierDashboardScreen, OwnerDashboardScreen, ReportsScreen } from './screens/ReportingScreens'
 import { ActivityScreen } from './screens/ActivityScreen'
 import { resolveFinancialAccess } from './lib/management-access'
+import { posDb } from './lib/db'
 import { ConnectionAndSync } from './components/ConnectionAndSync'
 import { StoreSwitcher } from './components/StoreSwitcher'
 import { ProductCatalogScreen } from './screens/ProductCatalogScreen'
@@ -72,7 +73,13 @@ function SessionProvider({ children }: { children: ReactNode }) {
       .then(result => { if (active) setNeedsOnboarding(Boolean(result)) }, () => { if (active) setNeedsOnboarding(false) })
       .then(() => { if (active) setOnboardingLoading(false) })
     return () => { active = false }
-  }, [session])
+    // Deliberately session?.user.id, not session itself: Supabase's client refreshes the access
+    // token in the background on tab refocus, firing onAuthStateChange with a new session object
+    // for the same user every time — depending on the whole object re-ran this whole check (and
+    // ProtectedRoute shows "Loading…" while onboardingLoading is true) on every tab switch, not
+    // just on an actual sign-in/sign-out/account change. The catalog-refresh effect below already
+    // gets this right; this one didn't.
+  }, [session?.user.id])
   useEffect(() => {
     if (!session || !navigator.onLine) return
     // Dexie persists across browser restarts for offline checkout. Rehydrate the account's
@@ -112,12 +119,22 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const go = useNavigate()
   const [signingOut, setSigningOut] = useState(false)
   const [canReport, setCanReport] = useState<boolean>()
+  const { session } = useSession()
   const terminal = useTerminalStatus()
   useEffect(() => {
     let active = true
+    const userId = session?.user.id
+    // management-access.ts's resolveFinancialAccess only ever writes this cache key after a
+    // successful check, and deletes it on a failed one — so its mere presence is a reliable
+    // "yes" from last time. Reading it first gives the sidebar an immediate, informed answer
+    // instead of hiding Reports and popping it back in on every reload while the network round
+    // trip below is in flight (canReport otherwise starts undefined, which reads as false here).
+    void (userId ? posDb.sync_metadata.get(`financial_access:${userId}`) : Promise.resolve(undefined))
+      .then(cached => { if (active && cached) setCanReport(true) })
+      .catch(() => undefined)
     void resolveFinancialAccess().then(() => { if (active) setCanReport(true) }).catch(() => { if (active) setCanReport(false) })
     return () => { active = false }
-  }, [])
+  }, [session?.user.id])
   const visibleNav = nav.filter(([, label]) => label !== 'Reports' || canReport)
   const signOut = async () => {
     setSigningOut(true)
