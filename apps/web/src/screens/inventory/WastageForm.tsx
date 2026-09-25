@@ -3,6 +3,7 @@ import { recordWastage, WastageValidationError, type Ingredient, type Ingredient
 import { formatQuantity } from '../../../../../packages/domain/src/inventory-quantity'
 import type { RecipeUnit } from '../menu/recipe-draft'
 import type { ManagerApprovalEvidence } from '../../terminal-auth/ManagerApprovalModal'
+import { SelectField } from '../../components/SelectField'
 
 // A curated category list, not a new schema concept: the chosen reason (plus any extra detail)
 // is folded into stock_movements.note, exactly the free-text field this schema already has for
@@ -61,20 +62,16 @@ export function WastageForm({ storeId, ingredient, unit, batches, terminal = fal
         <span aria-hidden="true">{unit?.abbreviation ?? 'unit'}</span>
       </div>
     </label>
-    <label>Reason
-      <select value={reason} onChange={event => setReason(event.target.value as typeof WASTAGE_REASONS[number])} disabled={busy}>
-        {WASTAGE_REASONS.map(option => <option key={option} value={option}>{option}</option>)}
-      </select>
-    </label>
+    <SelectField label="Reason" value={reason} onChange={event => setReason(event.target.value as typeof WASTAGE_REASONS[number])} disabled={busy}>
+      {WASTAGE_REASONS.map(option => <option key={option} value={option}>{option}</option>)}
+    </SelectField>
     <label>Note (optional)<input type="text" maxLength={450} value={detail} onChange={event => setDetail(event.target.value)} disabled={busy} /></label>
-    <label>Batch
-      <select value={batchId} onChange={event => setBatchId(event.target.value)} disabled={busy}>
-        <option value="">Auto (soonest-expiring batch)</option>
-        {availableBatches.map(batch => <option key={batch.id} value={batch.id}>
-          Received {new Date(batch.received_at).toLocaleDateString()} — {unit ? formatQuantity(batch.remaining_quantity, unit) : batch.remaining_quantity} remaining
-        </option>)}
-      </select>
-    </label>
+    <SelectField label="Batch" value={batchId} onChange={event => setBatchId(event.target.value)} disabled={busy}>
+      <option value="">Auto (soonest-expiring batch)</option>
+      {availableBatches.map(batch => <option key={batch.id} value={batch.id}>
+        Received {new Date(batch.received_at).toLocaleDateString()} — {unit ? formatQuantity(batch.remaining_quantity, unit) : batch.remaining_quantity} remaining
+      </option>)}
+    </SelectField>
     <div className="floor-inline-form-actions">
       <button type="submit" className="secondary-cta" disabled={busy || !quantity}>{busy ? 'Recording…' : 'Record Wastage'}</button>
     </div>

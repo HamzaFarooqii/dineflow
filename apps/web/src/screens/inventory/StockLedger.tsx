@@ -4,6 +4,7 @@ import { formatQuantity } from '../../../../../packages/domain/src/inventory-qua
 import type { RecipeUnit } from '../menu/recipe-draft'
 import type { StockMovement } from '../../lib/inventory'
 import { batchLabel } from './BatchList'
+import { StatusBadge } from '../../components/StatusBadge'
 
 type MovementFilter = 'all' | StockMovementReason
 const FILTERS: { value: MovementFilter; label: string }[] = [
@@ -55,7 +56,7 @@ export function StockLedger({ movements, currentStock, unit }: { movements: Stoc
           const sign = delta > 0 ? '+' : ''
           return <tr key={movement.id}>
             <td data-label="When">{new Date(movement.created_at).toLocaleString()}</td>
-            <td data-label="Activity"><span className={`floor-status floor-status-${STOCK_MOVEMENT_REASON_TONE[movement.reason]}`}>{STOCK_MOVEMENT_REASON_LABELS[movement.reason]}</span></td>
+            <td data-label="Activity"><StatusBadge tone={STOCK_MOVEMENT_REASON_TONE[movement.reason]}>{STOCK_MOVEMENT_REASON_LABELS[movement.reason]}</StatusBadge></td>
             <td data-label="Change">{unit ? `${sign}${formatQuantity(movement.delta, unit)}` : `${sign}${movement.delta}`}</td>
             <td data-label="Stock">{unit ? `${formatQuantity(previousStock, unit)} → ${formatQuantity(newStock, unit)}` : `${previousStock} → ${newStock}`}</td>
             <td data-label="Batch">{movement.batch_id ? batchLabel(movement.batch_id) : '—'}</td>

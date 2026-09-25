@@ -18,6 +18,7 @@ import { BatchList } from './BatchList'
 import { WastageForm } from './WastageForm'
 import { StockLedger } from './StockLedger'
 import { UnitSelector } from './UnitSelector'
+import { PageHeader } from '../../components/PageHeader'
 import './inventory.css'
 
 export function InventoryScreen({ terminal = false }: { terminal?: boolean }) {
@@ -208,11 +209,13 @@ export function InventoryScreen({ terminal = false }: { terminal?: boolean }) {
   }
 
   return <section className="floor-page inventory-page">
-    <div className="floor-page-head">
-      <div><p className="kicker">STOCK & INGREDIENTS</p><h1>Inventory</h1><p>Track ingredients, batches, and stock movements.</p></div>
-      {terminal && <button type="button" className="text-action" disabled={accessRefreshBusy} onClick={() => void handleRefreshAccess()}
+    <PageHeader
+      kicker="STOCK & INGREDIENTS"
+      title="Inventory"
+      subtitle="Track ingredients, batches, and stock movements."
+      actions={terminal && <button type="button" className="text-action" disabled={accessRefreshBusy} onClick={() => void handleRefreshAccess()}
         title="Pull the latest employee/manager list, e.g. after a manager was just added">{accessRefreshBusy ? 'Refreshing…' : 'Refresh access'}</button>}
-    </div>
+    />
     {accessRefreshError && <p className="form-notice error" role="alert">{accessRefreshError}</p>}
     {error && <p className="form-notice error" role="alert">{error}</p>}
     {loading && !error && <p role="status">Loading inventory…</p>}

@@ -1,6 +1,7 @@
 import { formatCents } from '../../../../../packages/domain/src/money'
 import { TABLE_STATUS_LABELS, TABLE_STATUS_TONE } from '../../../../../packages/domain/src/table-status'
 import type { RestaurantTable } from '../../lib/floor'
+import { StatusBadge } from '../../components/StatusBadge'
 
 // The reusable restaurant table primitive (Blueprint Section 4). Duration stays "—" — no
 // open-ticket layer exists yet to source elapsed-time-since-seated from. The trailing amount is
@@ -13,7 +14,7 @@ export function TableCard({ table, areaName, currency, onSelect }: { table: Rest
   return <button type="button" className="table-card" onClick={onSelect}>
     <span className="table-card-top">
       <span className="table-card-label">{table.label}</span>
-      <span className={`floor-status floor-status-${TABLE_STATUS_TONE[table.status]}`}>{TABLE_STATUS_LABELS[table.status]}</span>
+      <StatusBadge tone={TABLE_STATUS_TONE[table.status]}>{TABLE_STATUS_LABELS[table.status]}</StatusBadge>
     </span>
     <span className="table-card-seats">{table.seats} {table.seats === 1 ? 'guest' : 'guests'}</span>
     <span className="table-card-area">{areaName}</span>

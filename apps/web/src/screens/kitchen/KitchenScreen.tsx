@@ -3,6 +3,7 @@ import { ORDER_TYPE_LABELS, type OrderType } from '../../../../../packages/domai
 import { advanceKitchenTicketItem, fetchKitchenTickets, type KitchenTicket } from '../../lib/kitchen'
 import { requireSupabase } from '../../lib/supabase'
 import { KitchenTicketCard } from './KitchenTicketCard'
+import { PageHeader } from '../../components/PageHeader'
 import './kitchen.css'
 
 // Same fetch cadence as RegisterScreen's outbox-push polling (15s) — the KDS needs new tickets
@@ -72,9 +73,7 @@ export function KitchenScreen() {
   }
 
   return <section className="kitchen-page">
-    <p className="kicker">KITCHEN DISPLAY</p>
-    <h1>Kitchen</h1>
-    <p>Every ticket firing for this restaurant, grouped by station.</p>
+    <PageHeader kicker="KITCHEN DISPLAY" title="Kitchen" subtitle="Every ticket firing for this restaurant, grouped by station." />
     {error && <p className="form-notice error" role="alert">{error}</p>}
     {loading && !error && <p role="status">Loading the kitchen board…</p>}
     {!loading && !error && tickets.length === 0 && <p className="kitchen-empty">No tickets are firing right now.</p>}

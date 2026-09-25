@@ -1,4 +1,5 @@
 import { Search } from '../../components/icons'
+import { SelectField } from '../../components/SelectField'
 
 export type InventoryFilter = 'all' | 'in_stock' | 'low_stock' | 'out_of_stock' | 'expiring_soon'
 export type InventorySort = 'name' | 'stock_level' | 'recently_updated' | 'expiry'
@@ -29,14 +30,12 @@ export function InventoryToolbar({ search, onSearchChange, filter, onFilterChang
       <label className="search" htmlFor="inventory-search"><Search aria-hidden="true" size={16} />
         <input id="inventory-search" type="search" placeholder="Search inventory by name" value={search} onChange={event => onSearchChange(event.target.value)} />
       </label>
-      <label className="inventory-sort-select">Sort
-        <select value={sort} onChange={event => onSortChange(event.target.value as InventorySort)}>
-          <option value="name">Name</option>
-          <option value="stock_level">Stock level</option>
-          <option value="recently_updated">Recently updated</option>
-          <option value="expiry">Nearest expiry</option>
-        </select>
-      </label>
+      <SelectField className="inventory-sort-select" aria-label="Sort" value={sort} onChange={event => onSortChange(event.target.value as InventorySort)}>
+        <option value="name">Name</option>
+        <option value="stock_level">Stock level</option>
+        <option value="recently_updated">Recently updated</option>
+        <option value="expiry">Nearest expiry</option>
+      </SelectField>
       <button type="button" className={addOpen ? 'secondary-cta active' : 'secondary-cta'} onClick={onAddIngredient}>{addOpen ? 'Cancel' : '+ Add ingredient'}</button>
     </div>
     <div className="floor-area-tabs">

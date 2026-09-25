@@ -3,6 +3,7 @@ import { formatCents } from '../../../../../packages/domain/src/money'
 import { formatQuantity } from '../../../../../packages/domain/src/inventory-quantity'
 import type { RecipeUnit } from '../menu/recipe-draft'
 import type { IngredientBatch } from '../../lib/inventory'
+import { StatusBadge } from '../../components/StatusBadge'
 
 // Short, human-scannable identifier -- a batch has no natural "number" of its own, so this reads
 // the first 8 characters of its id the same way order receipts already shorten identifiers
@@ -44,7 +45,7 @@ export function BatchList({ batches, unit, currency }: { batches: IngredientBatc
           <td data-label="Expires">{expiryCopy(batch.expires_at)}</td>
           <td data-label="Received by">{batch.received_by_name ?? '—'}</td>
           <td data-label="Reference">{batch.reference ?? '—'}</td>
-          <td data-label="Status"><span className={`floor-status floor-status-${BATCH_STATUS_TONE[status]}`}>{BATCH_STATUS_LABELS[status]}</span></td>
+          <td data-label="Status"><StatusBadge tone={BATCH_STATUS_TONE[status]}>{BATCH_STATUS_LABELS[status]}</StatusBadge></td>
         </tr>
       })}
       {batches.length === 0 && <tr><td colSpan={10} className="floor-empty">No batches received yet. Receive your first stock delivery to start tracking inventory.</td></tr>}

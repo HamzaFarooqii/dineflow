@@ -8,6 +8,10 @@ import { posDb } from '../../lib/db'
 import { requireSupabase } from '../../lib/supabase'
 import { usePosStore } from '../../lib/pos-store'
 import { TableCard } from './TableCard'
+import { PageHeader } from '../../components/PageHeader'
+import { StatusBadge } from '../../components/StatusBadge'
+import { SelectField } from '../../components/SelectField'
+import { X } from '../../components/icons'
 import './floor.css'
 
 const SEAT_FROM: TableStatus = 'available'
@@ -273,10 +277,12 @@ export function FloorScreen() {
     : []
 
   return <section className="floor-page">
-    <div className="floor-page-head">
-      <div><p className="kicker">RESTAURANT FLOOR</p><h1>Floor & Tables</h1><p>Every table across your dining areas, at a glance.</p></div>
-      <button type="button" className={editMode ? 'secondary-cta active' : 'secondary-cta'} onClick={() => setEditMode(value => !value)}>{editMode ? 'Done editing' : 'Edit floor'}</button>
-    </div>
+    <PageHeader
+      kicker="RESTAURANT FLOOR"
+      title="Floor & Tables"
+      subtitle="Every table across your dining areas, at a glance."
+      actions={<button type="button" className={editMode ? 'secondary-cta active' : 'secondary-cta'} onClick={() => setEditMode(value => !value)}>{editMode ? 'Done editing' : 'Edit floor'}</button>}
+    />
     {error && <p className="form-notice error" role="alert">{error}</p>}
     {loading && !error && <p role="status">Loading the floor…</p>}
     {!loading && !error && areas.length === 0 && tables.length === 0 && !editMode &&
@@ -286,7 +292,7 @@ export function FloorScreen() {
         <button type="button" className={selectedArea === 'all' ? 'active' : ''} onClick={() => setSelectedArea('all')}>All areas</button>
         {areas.map(area => <span className="floor-area-tab-wrap" key={area.id}>
           <button type="button" className={selectedArea === area.id ? 'active' : ''} onClick={() => setSelectedArea(area.id)}>{area.name}</button>
-          {editMode && <button type="button" className="floor-area-delete" aria-label={`Delete ${area.name}`} title="Delete area" disabled={areaActionBusy} onClick={() => void handleDeleteArea(area)}>×</button>}
+          {editMode && <button type="button" className="floor-area-delete" aria-label={`Delete ${area.name}`} title="Delete area" disabled={areaActionBusy} onClick={() => void handleDeleteArea(area)}><X aria-hidden="true" size={14} /></button>}
         </span>)}
       </div>
       {editMode && <form className="floor-inline-form" onSubmit={event => void handleAddArea(event)}>
@@ -303,9 +309,9 @@ export function FloorScreen() {
       {editMode && newTableOpen && <form className="floor-inline-form floor-new-table-form" onSubmit={event => void handleAddTable(event)}>
         <label>Label<input type="text" maxLength={40} placeholder="T1" value={newTableLabel} onChange={event => setNewTableLabel(event.target.value)} /></label>
         <label>Seats<input type="number" min={1} value={newTableSeats} onChange={event => setNewTableSeats(event.target.value)} /></label>
-        <label>Area<select value={newTableAreaId} onChange={event => setNewTableAreaId(event.target.value)}>
+        <SelectField label="Area" value={newTableAreaId} onChange={event => setNewTableAreaId(event.target.value)}>
           {areas.map(area => <option key={area.id} value={area.id}>{area.name}</option>)}
-        </select></label>
+        </SelectField>
         <div className="floor-inline-form-actions">
           <button type="button" className="text-action" onClick={() => setNewTableOpen(false)}>Cancel</button>
           <button type="submit" className="secondary-cta" disabled={tableActionBusy}>{tableActionBusy ? 'Adding…' : 'Add table'}</button>
@@ -318,16 +324,16 @@ export function FloorScreen() {
       {!editTableOpen ? <dl>
         <div><dt>Area</dt><dd>{areaName(selectedTable.floor_area_id)}</dd></div>
         <div><dt>Seats</dt><dd>{selectedTable.seats}</dd></div>
-        <div><dt>Status</dt><dd><span className={`floor-status floor-status-${TABLE_STATUS_TONE[selectedTable.status]}`}>{TABLE_STATUS_LABELS[selectedTable.status]}</span></dd></div>
+        <div><dt>Status</dt><dd><StatusBadge tone={TABLE_STATUS_TONE[selectedTable.status]}>{TABLE_STATUS_LABELS[selectedTable.status]}</StatusBadge></dd></div>
         <div><dt>Waiter</dt><dd>{selectedTable.assigned_waiter_name ?? '—'}</dd></div>
         <div><dt>Last order</dt><dd>{selectedTable.current_order_total_cents && currency
           ? formatCents(Number(selectedTable.current_order_total_cents), currency) : '—'}</dd></div>
       </dl> : <div className="floor-inline-form floor-edit-table-form">
         <label>Label<input type="text" maxLength={40} value={editTableLabel} onChange={event => setEditTableLabel(event.target.value)} /></label>
         <label>Seats<input type="number" min={1} value={editTableSeats} onChange={event => setEditTableSeats(event.target.value)} /></label>
-        <label>Area<select value={editTableAreaId} onChange={event => setEditTableAreaId(event.target.value)}>
+        <SelectField label="Area" value={editTableAreaId} onChange={event => setEditTableAreaId(event.target.value)}>
           {areas.map(area => <option key={area.id} value={area.id}>{area.name}</option>)}
-        </select></label>
+        </SelectField>
         <div className="floor-inline-form-actions">
           <button type="button" className="text-action" onClick={() => setEditTableOpen(false)}>Cancel</button>
           <button type="button" className="secondary-cta" disabled={tableActionBusy} onClick={() => void handleSaveTable(selectedTable)}>{tableActionBusy ? 'Saving…' : 'Save changes'}</button>
@@ -340,24 +346,21 @@ export function FloorScreen() {
           title={selectedTable.status !== 'available' ? 'Free the table before deleting it' : undefined}
           onClick={() => void handleDeleteTable(selectedTable)}>Delete table</button>
       </div>}
-      {selectedTable.status === SEAT_FROM && <label className="floor-waiter-select">
-        Assign a waiter (optional)
-        <select value={selectedWaiterId} onChange={event => setSelectedWaiterId(event.target.value)}>
+      {selectedTable.status === SEAT_FROM && <div className="floor-waiter-select">
+        <SelectField label="Assign a waiter (optional)" value={selectedWaiterId} onChange={event => setSelectedWaiterId(event.target.value)}>
           <option value="">No waiter selected</option>
           {employees.map(employee => <option key={employee.id} value={employee.id}>{employee.name}</option>)}
-        </select>
-      </label>}
+        </SelectField>
+      </div>}
       {actionError && <p className="form-notice error" role="alert">{actionError}</p>}
       {cartBlockNotice && <p className="form-notice error" role="alert">Clear the current cart before starting a table order.
         <button type="button" className="text-action" onClick={() => { clearCart(); setCartBlockNotice(false) }}>Clear cart</button>
       </p>}
       {moveMode && <div className="floor-move-form" role="group" aria-label={moveMode === 'transfer' ? 'Transfer to' : 'Merge with'}>
-        <label>{moveMode === 'transfer' ? 'Transfer to which table?' : 'Merge with which table?'}
-          <select value={moveTargetId} onChange={event => setMoveTargetId(event.target.value)}>
-            <option value="">Choose a table…</option>
-            {moveCandidates.map(table => <option key={table.id} value={table.id}>{table.label} · {areaName(table.floor_area_id)}</option>)}
-          </select>
-        </label>
+        <SelectField label={moveMode === 'transfer' ? 'Transfer to which table?' : 'Merge with which table?'} value={moveTargetId} onChange={event => setMoveTargetId(event.target.value)}>
+          <option value="">Choose a table…</option>
+          {moveCandidates.map(table => <option key={table.id} value={table.id}>{table.label} · {areaName(table.floor_area_id)}</option>)}
+        </SelectField>
         {moveCandidates.length === 0 && <p className="floor-empty">{moveMode === 'transfer' ? 'No available tables to transfer to.' : 'No other occupied tables to merge with.'}</p>}
         {moveError && <p className="form-notice error" role="alert">{moveError}</p>}
         <div className="floor-inline-form-actions">
