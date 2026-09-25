@@ -309,30 +309,48 @@ Promotions aren't applied at checkout yet — that's Hamza's checkout-wiring tas
 **Hamza:**
 - [x] Loyalty schema (`loyalty_tiers`, `loyalty_accounts`, `loyalty_point_ledger`,
       `reward_rules`) — applied, recorded in `APPLIED.md`, 4 schema-integrity tests passing.
-      Pushed on `feature/hamza/day4-loyalty-foundation`, awaiting your merge. Ahmed can branch
-      once it's merged.
-- [ ] Loyalty + Promotions checkout wiring — **blocked, not started.** This task calls Ahmed's
-      `pointsEarned()`/`redemptionValue()` domain functions and Bisma's `promotionToLineDiscount()`
-      function, neither of which exist yet. Picks up once both PRs are merged.
+      Pushed on `feature/hamza/day4-loyalty-foundation`, merged.
+- [ ] Loyalty + Promotions checkout wiring — **still not started.** Both PRs it depends on
+      (Ahmed's `pointsEarned()`/`redemptionValue()`, Bisma's `promotionToLineDiscount()`) are now
+      merged and ready to consume, but nobody has wired either into `orders.ts`/`pos-store.ts`/
+      `RegisterScreen.tsx` yet. This is the one piece that makes loyalty/promotions actually work
+      end-to-end at checkout — until it lands, points are never earned or redeemed and a
+      configured promotion is never applied to a sale. Carries over as open work.
 - [x] Staff role review — **decision: no distinct "waiter" role this sprint.** Reasoning recorded
       in `MODULE_STATUS.md`'s Staff row — "waiter" was never a login/permission role to begin
       with, and Day 4's loyalty feature doesn't create a real need for one either.
-- [ ] Review and merge Bisma's PR, then Ahmed's PR.
-- [ ] `day4.md` and `MODULE_STATUS.md` updated to true end-of-day state.
+- [x] Review and merge Bisma's PR, then Ahmed's PR — merged in the reverse order (Ahmed's #16
+      first, then Bisma's #18) after checking both were fully independent except for the tier
+      badge, which needed hand-resolving either way; net result is the same either order. Both
+      required resolving a real merge conflict in `CustomerScreen.tsx` (both touched the guest
+      row) plus, for Bisma's PR, `apps/api/src/app.ts` and `apps/web/src/components/icons.ts`.
+      Bisma's own temporary tier-badge lookup (a documented placeholder pending Ahmed's PR) was
+      replaced with Ahmed's canonical `LoyaltyBalance`/`LoyaltyTierBadge` during conflict
+      resolution, so there's now exactly one loyalty-badge implementation, not two. Full
+      `RULES.md` §6 suite re-run on both merges: domain 48/48, api build/test/integration/orders
+      all passing (one confirmed pre-existing CI port-reuse flake, documented in Bisma's own PR,
+      reproduced and cleared on re-run — not a regression), web 39/39, tsc/build clean.
+- [x] `day4.md` and `MODULE_STATUS.md` updated to true end-of-day state.
 
 **Ahmed:**
-- [ ] Loyalty domain math (`packages/domain/src/loyalty.ts`) with tests.
-- [ ] Loyalty API (`/loyalty/accounts/:customerId`, ledger, tiers, reward-rules reads).
-- [ ] Reward rules CRUD.
-- [ ] Enrollment decision documented; balance/tier visible in `CustomerScreen.tsx` and the guest
-      picker.
+- [x] Loyalty domain math (`packages/domain/src/loyalty.ts`) with tests (9 domain tests).
+- [x] Loyalty API (`/loyalty/accounts/:customerId`, ledger, tiers, reward-rules reads) — also
+      mounted under `/pos/loyalty` for terminals.
+- [x] Reward rules CRUD — management section on the web Guests screen.
+- [x] Enrollment decision documented (explicit opt-in, not automatic-on-first-purchase); balance/
+      tier visible in `CustomerScreen.tsx` and the register's guest picker via `<LoyaltyBalance>`.
 
 **Bisma:**
-- [ ] Promotions schema + CRUD screen, applied and recorded in `APPLIED.md`.
-- [ ] Promotion eligibility/discount-calculation domain logic with tests.
-- [ ] Guest CRM profile (visit history + lifetime spend, aggregated not duplicated).
-- [ ] Loyalty-tier badge on the guest picker (after Ahmed's PR merges).
+- [x] Promotions schema + CRUD screen, applied and recorded in `APPLIED.md`.
+- [x] Promotion eligibility/discount-calculation domain logic with tests (8 domain tests).
+- [x] Guest CRM profile (visit history + lifetime spend, aggregated not duplicated).
+- [x] Loyalty-tier badge on the guest picker — now rendered via Ahmed's `<LoyaltyBalance>`
+      (superseding the temporary direct-Supabase lookup her PR shipped with, per the plan's own
+      note that it "may need rework once his PR lands").
 
 **Documentation:**
-- [ ] `docs/MODULE_STATUS.md` given a final pass once all three PRs land, reflecting the true
-      end-of-day state including anything that slipped.
+- [x] `docs/MODULE_STATUS.md` given a final pass now that both PRs have landed.
+
+**Still open going into Day 5:** Hamza's checkout-wiring task is the only incomplete Day 4 item —
+everyone's individually-assigned features are done, tested and merged, but a guest cannot yet
+actually earn or redeem loyalty points, or have a promotion applied, on a real sale.
