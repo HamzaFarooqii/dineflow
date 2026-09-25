@@ -207,7 +207,12 @@ export function AppLayout({ children }: { children: ReactNode }) {
 }
 function Register() { return <AppLayout><RegisterScreen /></AppLayout> }
 function Cart() { return <aside className="sale-cart"><div className="cart-title"><h2>Open check</h2><button type="button" className="text-action" disabled>Void check</button></div><p className="empty-cart">This check is ready for its first course.</p><button type="button" className="customer" disabled>Add customer <small>(available with POS setup)</small></button><div className="totals"><span>Subtotal <b>$0.00</b></span><span>Tax <b>$0.00</b></span><strong>Total <b>$0.00</b></strong></div><Button to="/payment">Proceed to payment</Button></aside> }
-function Dashboard() { return <AppLayout><OwnerDashboardScreen /></AppLayout> }
+function Dashboard() {
+  const { session } = useSession()
+  const fullName = session?.user.user_metadata?.full_name
+  const firstName = typeof fullName === 'string' && fullName.trim() ? fullName.trim().split(' ')[0] : undefined
+  return <AppLayout><OwnerDashboardScreen greetingName={firstName} /></AppLayout>
+}
 function Reports() { return <AppLayout><ReportsScreen /></AppLayout> }
 function Payment() { return <AppLayout><PaymentScreen /></AppLayout> }
 function Orders() { return <AppLayout><OrderHistoryScreen /></AppLayout> }

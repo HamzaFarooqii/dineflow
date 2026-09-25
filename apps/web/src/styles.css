@@ -430,6 +430,7 @@ html{font-family:'Archivo',sans-serif;color:var(--mise-ink);background:var(--mis
 .status-badge-muted{background:var(--mise-surface-sunken);color:var(--mise-ink-muted)}
 .status-badge-violet{background:var(--mise-accent-violet-fill);color:var(--mise-accent-violet)}
 
+.metric-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--mise-space-12);margin-bottom:var(--mise-space-16)}
 .metric-card{min-width:0;background:var(--mise-surface);border:1px solid var(--mise-border-hairline);border-radius:var(--mise-r3);padding:var(--mise-space-16);display:grid;gap:var(--mise-space-8);align-content:start}
 .metric-card small{font-size:var(--mise-text-micro);color:var(--mise-ink-muted);font-weight:600;text-transform:uppercase;letter-spacing:.07em}
 .metric-card strong{font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:var(--mise-text-numeric-md);font-weight:500;color:var(--mise-ink);line-height:1.15;letter-spacing:-.01em;overflow-wrap:anywhere}
@@ -467,6 +468,15 @@ html{font-family:'Archivo',sans-serif;color:var(--mise-ink);background:var(--mis
 .empty-state-description{margin:0;font-size:var(--mise-text-small);max-width:44ch}
 .empty-state-action{margin-top:4px}
 
+@media (max-width:900px){
+  .metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
 @media (max-width:640px){
   .dialog-panel{padding:18px}
+  .metric-grid{grid-template-columns:1fr}
+}
+@media (max-width:700px){
+  .page-header{flex-direction:column;align-items:stretch}
+  .page-header-actions{width:100%}
+  .page-header-actions>*{flex:1;justify-content:center}
 }
