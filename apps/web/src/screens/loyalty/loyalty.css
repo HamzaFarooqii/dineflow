@@ -1,0 +1,118 @@
+/* ── Loyalty (guest balance + reward catalog) — MISE design system ──
+   Tokens only (--mise-*); chips are <StatusBadge>, buttons reuse .cta/.secondary-cta/.text-action,
+   and the reward section sits inside the existing .crm-panel card from customer.css. */
+
+/* Balance row inside a guest result card */
+.loyalty-balance {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mise-space-8);
+  margin-top: var(--mise-space-4);
+}
+
+.loyalty-balance-points {
+  font: 400 12px 'IBM Plex Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--mise-ink-secondary);
+}
+
+.loyalty-balance-points strong {
+  font-weight: 600;
+  color: var(--mise-ink);
+}
+
+.crm-results .loyalty-balance small,
+.crm-results .loyalty-balance-note {
+  margin-top: 0;
+}
+
+.loyalty-balance-error {
+  color: var(--mise-danger);
+}
+
+.crm-panel .loyalty-balance .text-action,
+.crm-dialog .loyalty-balance .text-action {
+  padding: 0 var(--mise-space-4);
+}
+
+/* Reward catalog (management Guests screen) */
+.loyalty-rules {
+  margin-top: var(--mise-space-16);
+}
+
+.loyalty-rules-list {
+  list-style: none;
+  padding: 0;
+  margin: var(--mise-space-16) 0 0;
+  display: grid;
+  gap: var(--mise-space-8);
+}
+
+.loyalty-rules-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--mise-space-12);
+  min-height: 44px;
+  padding: var(--mise-space-8) var(--mise-space-16);
+  border: 1px solid var(--mise-border-hairline);
+  border-radius: var(--mise-r3);
+  background: var(--mise-surface);
+}
+
+.loyalty-rules-list li > span:first-child {
+  display: grid;
+  gap: var(--mise-space-2);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.loyalty-rules-list strong {
+  font: 600 14px 'Archivo', sans-serif;
+  color: var(--mise-ink);
+}
+
+.loyalty-rules-list small {
+  font: 400 11px 'IBM Plex Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--mise-ink-muted);
+}
+
+.loyalty-rules-list .loyalty-rule-inactive strong {
+  color: var(--mise-ink-muted);
+}
+
+.loyalty-rule-actions {
+  display: flex;
+  gap: var(--mise-space-4);
+}
+
+.loyalty-rule-form {
+  margin-top: var(--mise-space-24);
+  padding-top: var(--mise-space-16);
+  border-top: 1px solid var(--mise-border-hairline);
+}
+
+.loyalty-rule-form h3 {
+  font: 600 14px 'Archivo', sans-serif;
+  color: var(--mise-ink);
+  margin: 0;
+}
+
+.loyalty-rule-form-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--mise-space-16);
+}
+
+.loyalty-rule-form-actions {
+  display: flex;
+  gap: var(--mise-space-12);
+}
+
+@media (max-width: 768px) {
+  .loyalty-rules-list li { grid-template-columns: minmax(0, 1fr) auto; }
+  .loyalty-rule-actions { grid-column: 1 / -1; }
+  .loyalty-rule-form-row { grid-template-columns: 1fr; }
+}

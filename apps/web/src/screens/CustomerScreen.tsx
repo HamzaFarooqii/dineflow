@@ -6,6 +6,8 @@ import { pushPendingOrders } from '../lib/order-sync'
 import { usePosStore } from '../lib/pos-store'
 import { requireSupabase } from '../lib/supabase'
 import { currentAccess } from '../terminal-auth/cache'
+import { LoyaltyBalance } from './loyalty/LoyaltyBalance'
+import { RewardRulesSection } from './loyalty/RewardRulesSection'
 import './customer.css'
 
 export function CustomerFinder({ storeId, terminal, onSelect }: { storeId: string; terminal: boolean; onSelect?: (customer: LocalCustomer) => void }) {
@@ -58,7 +60,7 @@ export function CustomerFinder({ storeId, terminal, onSelect }: { storeId: strin
       <label>Phone with country code<input type="tel" inputMode="tel" autoComplete="off" placeholder="+923001234567" value={query} onChange={event => { setQuery(event.target.value); setMessage('') }} /></label>
       <button type="button" className="secondary-cta" disabled={!query.trim() || searching || !navigator.onLine} onClick={() => void onlineSearch()}>{searching ? 'Searching…' : 'Search online'}</button>
       {query.trim() && <div className="crm-results" role="region" aria-live="polite" aria-label="Guest matches">
-        {matches.length ? <ul>{matches.map(customer => <li key={customer.id}><span><strong>{customer.name}</strong><small>{customer.phone_normalized ? `+${customer.phone_normalized}` : 'No phone'} · {customer.sync_status === 'synced' ? 'Saved' : customer.sync_status === 'failed' ? 'Needs review' : 'Pending sync'}</small>{customer.failure_reason && <small role="status">{customer.failure_reason}</small>}</span>
+        {matches.length ? <ul>{matches.map(customer => <li key={customer.id}><span><strong>{customer.name}</strong><small>{customer.phone_normalized ? `+${customer.phone_normalized}` : 'No phone'} · {customer.sync_status === 'synced' ? 'Saved' : customer.sync_status === 'failed' ? 'Needs review' : 'Pending sync'}</small>{customer.failure_reason && <small role="status">{customer.failure_reason}</small>}<LoyaltyBalance storeId={storeId} terminal={terminal} customer={customer} /></span>
           {onSelect && <button type="button" className="secondary-cta" onClick={() => onSelect(customer)}>Select {customer.name}</button>}</li>)}</ul> : <p className="crm-empty">No local matches. Search online or create a new guest.</p>}
       </div>}
       {nextCursor && <button type="button" className="text-action" disabled={searching} onClick={() => void onlineSearch(nextCursor)}>Load more matches</button>}
@@ -136,5 +138,6 @@ export function CustomerScreen({ terminal = false }: { terminal?: boolean }) {
     {error && <p className="form-notice error" role="alert">{error}</p>}
     {!storeId && !error && <p role="status">Checking guest access…</p>}
     {storeId && <CustomerFinder storeId={storeId} terminal={terminal} onSelect={terminal ? customer => { selectCustomer(customer); navigate('/pos/register') } : undefined} />}
+    {storeId && !terminal && <RewardRulesSection storeId={storeId} />}
   </section>
 }
