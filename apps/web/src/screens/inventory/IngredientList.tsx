@@ -1,41 +1,64 @@
+import { useMemo } from 'react'
+import type { RecipeUnit } from '../menu/recipe-draft'
 import type { Ingredient } from '../../lib/inventory'
+import { IngredientRow } from './IngredientRow'
+import { ingredientStatus } from './inventory-status'
+import { EXPIRING_SOON_WINDOW_MS } from '../../../../../packages/domain/src/batch-status'
+import type { InventoryFilter, InventorySort } from './InventoryToolbar'
 
-// Low-stock indicator reuses the shared 'warning' tone (--mise-warning/--mise-warning-fill),
-// same convention as table-status.ts's tone map — no new colors invented for this screen.
-export function isLowStock(ingredient: Ingredient): boolean {
-  if (ingredient.reorder_threshold === null) return false
-  return Number(ingredient.current_stock) <= Number(ingredient.reorder_threshold)
+export { isLowStock, isOutOfStock } from './inventory-status'
+
+function isExpiringSoon(ingredient: Ingredient, now: number): boolean {
+  if (!ingredient.nearest_expiry) return false
+  const expiryMs = Date.parse(ingredient.nearest_expiry)
+  return !Number.isNaN(expiryMs) && expiryMs - now <= EXPIRING_SOON_WINDOW_MS
 }
 
-// Kitchen consumption (kitchen.ts's consumeRecipeIngredients) deliberately lets current_stock go
-// negative rather than blocking a dish that's already been served — the same oversell reasoning
-// pos_stock already documents. That only works as a real reconciliation strategy if it's visible:
-// unlike isLowStock, this doesn't depend on a reorder_threshold being configured, so an ingredient
-// with no threshold set still flags once it's actually out.
-export function isOutOfStock(ingredient: Ingredient): boolean {
-  return Number(ingredient.current_stock) <= 0
+export function applyInventoryView(ingredients: Ingredient[], search: string, filter: InventoryFilter, sort: InventorySort, now = Date.now()): Ingredient[] {
+  const term = search.trim().toLowerCase()
+  const filtered = ingredients.filter(ingredient => {
+    if (term && !ingredient.name.toLowerCase().includes(term)) return false
+    if (filter === 'all') return true
+    if (filter === 'expiring_soon') return isExpiringSoon(ingredient, now)
+    return ingredientStatus(ingredient) === filter
+  })
+  const sorted = [...filtered]
+  if (sort === 'name') sorted.sort((a, b) => a.name.localeCompare(b.name))
+  else if (sort === 'stock_level') sorted.sort((a, b) => Number(a.current_stock) - Number(b.current_stock))
+  else if (sort === 'recently_updated') sorted.sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at))
+  else if (sort === 'expiry') sorted.sort((a, b) => {
+    if (!a.nearest_expiry && !b.nearest_expiry) return a.name.localeCompare(b.name)
+    if (!a.nearest_expiry) return 1
+    if (!b.nearest_expiry) return -1
+    return Date.parse(a.nearest_expiry) - Date.parse(b.nearest_expiry)
+  })
+  return sorted
 }
 
-export function IngredientList({ ingredients, selectedId, onSelect }: { ingredients: Ingredient[]; selectedId: string | null; onSelect: (ingredient: Ingredient) => void }) {
+export function IngredientList({ ingredients, units, currency, search, filter, sort, selectedId, onSelect }: {
+  ingredients: Ingredient[]
+  units: RecipeUnit[]
+  currency: string
+  search: string
+  filter: InventoryFilter
+  sort: InventorySort
+  selectedId: string | null
+  onSelect: (ingredient: Ingredient) => void
+}) {
+  const unitsById = useMemo(() => new Map(units.map(unit => [unit.id, unit])), [units])
+  const view = useMemo(() => applyInventoryView(ingredients, search, filter, sort), [ingredients, search, filter, sort])
+
   return <div className="inventory-list">
-    {ingredients.map(ingredient => <button
-      type="button"
-      key={ingredient.id}
-      className={ingredient.id === selectedId ? 'inventory-list-item active' : 'inventory-list-item'}
-      onClick={() => onSelect(ingredient)}
-    >
-      <span className="inventory-list-item-top">
-        <span className="inventory-list-item-name">{ingredient.name}</span>
-        {isOutOfStock(ingredient)
-          ? <span className="floor-status floor-status-danger">Out of stock</span>
-          : isLowStock(ingredient) && <span className="floor-status floor-status-warning">Low stock</span>}
-      </span>
-      <span className="inventory-list-item-meta">
-        {ingredient.current_stock} on hand
-        {ingredient.reorder_threshold !== null && <> · reorder at {ingredient.reorder_threshold}</>}
-        {ingredient.created_by_name && <> · added by {ingredient.created_by_name}</>}
-      </span>
-    </button>)}
-    {ingredients.length === 0 && <p className="floor-empty">No ingredients yet.</p>}
+    {view.map(ingredient => (
+      <IngredientRow key={ingredient.id} ingredient={ingredient} unit={unitsById.get(ingredient.unit_id)} currency={currency}
+        selected={ingredient.id === selectedId} onSelect={() => onSelect(ingredient)} />
+    ))}
+    {view.length === 0 && ingredients.length > 0 && <p className="floor-empty">No ingredients match this search or filter.</p>}
+    {ingredients.length === 0 && (
+      <div className="floor-empty inventory-empty-state">
+        <p>No inventory items yet.</p>
+        <p>Start by adding ingredients such as Milk, Chicken, Flour or Cooking Oil.</p>
+      </div>
+    )}
   </div>
 }
