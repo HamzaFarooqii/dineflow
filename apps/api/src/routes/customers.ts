@@ -136,7 +136,52 @@ async function push(req: Request, res: Response, terminal = false) {
     finally { client.release() }
   } catch (reason) { sendApiError(res, reason) }
 }
+export interface CustomerSummary {
+  customer_id: string
+  visit_count: number
+  lifetime_spend_cents: number
+  recent_visits: Array<{ order_id: string; total_cents: number; visited_at: string }>
+}
+
+// Visit history + lifetime spend for a guest, computed on read from pos_orders
+// (docs/day-plans/day4.md, Bisma's half: "aggregated from the existing pos_orders table ... don't
+// add a duplicate running-total column"). Same reasoning as reports.ts's loadDailySummary
+// deriving totals from source rows rather than trusting a cached counter. Exported so it's
+// directly testable against PGlite, mirroring loadDailySummary's own test.
+export async function loadCustomerSummary(storeId: string, customerId: string): Promise<CustomerSummary> {
+  const [totals, visits] = await Promise.all([
+    db.query<{ visit_count: string; lifetime_spend_cents: string }>(
+      `select count(*)::text as visit_count, coalesce(sum(total_cents),0)::text as lifetime_spend_cents
+       from public.pos_orders where store_id=$1 and customer_id=$2`,
+      [storeId, customerId],
+    ),
+    db.query<{ id: string; total_cents: string; client_generated_at: string }>(
+      `select id, total_cents::text as total_cents, client_generated_at
+       from public.pos_orders where store_id=$1 and customer_id=$2
+       order by client_generated_at desc limit 10`,
+      [storeId, customerId],
+    ),
+  ])
+  return {
+    customer_id: customerId,
+    visit_count: Number(totals.rows[0]?.visit_count ?? 0),
+    lifetime_spend_cents: Number(totals.rows[0]?.lifetime_spend_cents ?? 0),
+    recent_visits: visits.rows.map(row => ({ order_id: row.id, total_cents: Number(row.total_cents), visited_at: row.client_generated_at })),
+  }
+}
+
+async function summary(req: Request, res: Response, terminal = false) {
+  try {
+    const storeId = terminal ? (await requireCashierTerminal(req, db)).storeId : validUuid(req.query.store_id, 'Store ID')
+    if (!terminal) await requireStoreMember(req, storeId)
+    const customerId = validUuid(req.params.id, 'Customer ID')
+    res.json(await loadCustomerSummary(storeId, customerId))
+  } catch (reason) { sendApiError(res, reason) }
+}
+
 customersRouter.get('/', (req, res) => void search(req, res))
 customersRouter.post('/push', (req, res) => void push(req, res))
+customersRouter.get('/:id/summary', (req, res) => void summary(req, res))
 terminalCustomersRouter.get('/', (req, res) => void search(req, res, true))
 terminalCustomersRouter.post('/push', (req, res) => void push(req, res, true))
+terminalCustomersRouter.get('/:id/summary', (req, res) => void summary(req, res, true))
