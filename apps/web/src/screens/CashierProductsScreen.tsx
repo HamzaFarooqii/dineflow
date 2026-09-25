@@ -11,6 +11,10 @@ import { formatCents } from '../../../../packages/domain/src/money'
 import { posDb, type LocalCategory, type LocalProduct } from '../lib/db'
 import { currentAccess } from '../terminal-auth/cache'
 import { DishAvailability } from './menu/DishAvailability'
+import { MetricCard } from '../components/MetricCard'
+import { StatusBadge } from '../components/StatusBadge'
+import { SelectField } from '../components/SelectField'
+import { Search, X } from '../components/icons'
 import './product-catalog.css'
 
 export function CashierProductsScreen() {
@@ -80,26 +84,26 @@ export function CashierProductsScreen() {
     </div></div>
 
     {products !== null && <div className="pc-stats-strip">
-      <div className="pc-stat"><span className="pc-stat-label">Menu Items</span><span className="pc-stat-value">{total}</span><span className="pc-stat-sub">Across all categories</span></div>
-      <div className="pc-stat"><span className="pc-stat-label">In Stock</span><span className="pc-stat-value">{inStock}</span><span className="pc-stat-sub">Ready to serve</span></div>
-      <div className="pc-stat"><span className="pc-stat-label">Low Stock</span><span className="pc-stat-value">{lowStock}</span><span className="pc-stat-sub">5 portions or fewer</span></div>
-      <div className="pc-stat"><span className="pc-stat-label">Out of Stock</span><span className="pc-stat-value">{outStock}</span><span className="pc-stat-sub">Needs restocking</span></div>
+      <MetricCard label="Menu Items" value={total} detail="Across all categories" />
+      <MetricCard label="In Stock" value={inStock} detail="Ready to serve" />
+      <MetricCard label="Low Stock" value={lowStock} detail="5 portions or fewer" />
+      <MetricCard label="Out of Stock" value={outStock} detail="Needs restocking" />
     </div>}
 
     <div className="pc-content">
       {loadErr && <div className="pc-alert error" role="alert"><span>{loadErr}</span>
-        <button type="button" className="pc-alert-close" onClick={() => setLoadErr('')} aria-label="Dismiss">✕</button></div>}
+        <button type="button" className="pc-alert-close" onClick={() => setLoadErr('')} aria-label="Dismiss"><X aria-hidden="true" size={14} /></button></div>}
 
       <div className="pc-toolbar">
         <div className="pc-search">
-          <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4.5" stroke="currentColor" strokeWidth="1.5" /><path d="M10 10 13.5 13.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
+          <Search aria-hidden="true" size={15} />
           <input id="pc-search" className="pc-search-input" type="search" placeholder="Search dishes by name, SKU or barcode…" value={query} onChange={event => setQuery(event.target.value)} aria-label="Search the menu" />
-          {query && <button type="button" className="pc-search-clear" onClick={() => setQuery('')} aria-label="Clear search">✕</button>}
+          {query && <button type="button" className="pc-search-clear" onClick={() => setQuery('')} aria-label="Clear search"><X aria-hidden="true" size={14} /></button>}
         </div>
-        <select id="pc-cat-filter" className="pc-cat-select" value={catFilter} onChange={event => setCatFilter(event.target.value)} aria-label="Filter by category">
+        <SelectField id="pc-cat-filter" className="pc-cat-select" value={catFilter} onChange={event => setCatFilter(event.target.value)} aria-label="Filter by category">
           <option value="all">All categories</option>
           {categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
-        </select>
+        </SelectField>
         {hasFilters && <button type="button" className="pc-clear-btn" onClick={() => { setQuery(''); setCatFilter('all') }}>Clear filters</button>}
       </div>
 
@@ -130,7 +134,7 @@ export function CashierProductsScreen() {
           const level = stock[product.id] ?? 0
           const catName = product.category_id ? catMap[product.category_id] ?? '' : ''
           const initial = product.name.charAt(0).toUpperCase() || 'P'
-          const stockCls = level > 5 ? 'in' : level > 0 ? 'low' : 'out'
+          const stockTone = level > 5 ? 'success' : level > 0 ? 'warning' : 'danger'
           const stockLabel = level > 5 ? `${level} in stock` : level > 0 ? `${level} left` : 'Out of stock'
           const pillLabel = level > 5 ? 'In Stock' : level > 0 ? 'Low Stock' : 'Out of Stock'
           return <div key={product.id} className="pc-row" role="row">
@@ -145,7 +149,7 @@ export function CashierProductsScreen() {
             <div className="pc-cell-code" role="cell">{product.barcode || '—'}</div>
             <div className="pc-cell" role="cell"><span className={`pc-badge ${catName ? '' : 'empty'}`}>{catName || 'Unassigned'}</span></div>
             <div className="pc-cell-price" role="cell">{formatCents(product.unit_price_cents, currency)}</div>
-            <div className="pc-cell-stock-wrap" role="cell"><span className={`pc-stock-pill ${stockCls}`}><span className={`pc-pill-dot ${stockCls}`} aria-hidden="true" />{pillLabel}</span><span className="pc-stock-qty">{stockLabel}</span></div>
+            <div className="pc-cell-stock-wrap" role="cell"><StatusBadge tone={stockTone}>{pillLabel}</StatusBadge><span className="pc-stock-qty">{stockLabel}</span></div>
           </div>
         })}
       </div>}

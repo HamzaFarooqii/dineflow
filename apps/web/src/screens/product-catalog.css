@@ -60,95 +60,21 @@
   flex-wrap: wrap;
 }
 
-/* Secondary button — surface + strong hairline, tint-only hover */
-.pc-btn-ghost {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  border: 1px solid var(--mise-border-strong);
-  background: var(--mise-surface);
-  border-radius: var(--mise-r3);
-  padding: 0 18px;
-  min-height: 44px;
-  font: 600 13px 'Archivo', sans-serif;
-  color: var(--mise-ink-secondary);
-  text-decoration: none;
-  cursor: pointer;
-  transition: background .12s ease, border-color .12s ease, color .12s ease;
-  white-space: nowrap;
-}
-.pc-btn-ghost:hover:not(:disabled) {
-  background: var(--mise-surface-sunken);
-  border-color: var(--mise-ink-muted);
-  color: var(--mise-ink);
-}
-.pc-btn-ghost:disabled {
-  color: var(--mise-ink-disabled);
-  border-color: var(--mise-border-hairline);
-  cursor: not-allowed;
-}
-
-/* Primary button — MISE action ink, no lift, no glow */
-.pc-btn-primary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  background: var(--mise-action);
-  border: 1px solid var(--mise-action);
-  border-radius: var(--mise-r3);
-  padding: 0 22px;
-  min-height: 48px;
-  font: 600 13.5px 'Archivo', sans-serif;
-  color: var(--mise-ink-inverse);
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background .12s ease, border-color .12s ease;
-}
-.pc-btn-primary:hover:not(:disabled) {
-  background: var(--mise-action-hover);
-  border-color: var(--mise-action-hover);
-}
-.pc-btn-primary:disabled {
-  background: var(--mise-ink-disabled);
-  border-color: var(--mise-ink-disabled);
-  color: var(--mise-surface);
-  cursor: not-allowed;
-}
+/* .pc-btn-ghost/.pc-btn-primary retired -- every consumer (this screen, StoreDetails) now uses
+   the shared .secondary-cta/.cta classes directly instead of a near-duplicate of the same rules
+   under a screen-prefixed name. */
 
 /* ─── Stat strip ─────────────────────────────────────────────── */
+/* Contains <MetricCard>s (apps/web/src/components/MetricCard.tsx) now, replacing the .pc-stat
+   cells that used to live here -- the same 4-KPI-card shape was independently duplicated across
+   the Dashboard, Inventory, and this screen (plus CashierProductsScreen's identical strip). */
 .pc-stats-strip {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--mise-space-12);
   background: var(--mise-surface);
   border-bottom: 1px solid var(--mise-border-hairline);
-}
-.pc-stat {
-  padding: var(--mise-space-16) var(--mise-space-24);
-  border-right: 1px solid var(--mise-border-hairline);
-  display: grid;
-  gap: var(--mise-space-4);
-  align-content: start;
-}
-.pc-stat:last-child { border-right: none; }
-.pc-stat-label {
-  font: 600 10px 'Archivo', sans-serif;
-  letter-spacing: .14em;
-  text-transform: uppercase;
-  color: var(--mise-ink-muted);
-  margin: 0;
-}
-.pc-stat-value {
-  font: 600 30px/1.1 'IBM Plex Mono', monospace;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -.02em;
-  color: var(--mise-ink);
-}
-.pc-stat-sub {
-  font-size: 11.5px;
-  color: var(--mise-ink-muted);
-  margin-top: var(--mise-space-2);
+  padding: var(--mise-space-16) var(--mise-space-32);
 }
 
 /* ─── Content area ───────────────────────────────────────────── */
@@ -181,8 +107,9 @@
   border-color: var(--mise-success);
 }
 .pc-alert-close {
+  display: inline-flex; align-items: center; justify-content: center;
   border: 0; background: transparent; cursor: pointer;
-  color: inherit; font-size: 13px; opacity: .6;
+  color: inherit; opacity: .6;
   padding: 0; margin-left: auto; flex-shrink: 0;
   min-width: 24px; min-height: 24px;
   transition: opacity .12s ease;
@@ -223,30 +150,17 @@
 }
 .pc-search-input::placeholder { color: var(--mise-ink-muted); }
 .pc-search-clear {
+  display: inline-flex; align-items: center; justify-content: center;
   border: 0; background: transparent; cursor: pointer;
-  color: var(--mise-ink-muted); padding: 0; font-size: 13px; line-height: 1;
+  color: var(--mise-ink-muted); padding: 0;
   min-width: 24px; min-height: 24px;
   transition: color .12s ease;
 }
 .pc-search-clear:hover { color: var(--mise-ink); }
 
-/* Category filter select */
-.pc-cat-select {
-  background: var(--mise-surface);
-  border: 1px solid var(--mise-border-strong);
-  border-radius: var(--mise-r2);
-  padding: 0 12px;
-  font: 13px 'Archivo', sans-serif;
-  color: var(--mise-ink);
-  outline: 0; cursor: pointer;
-  min-height: 44px; min-width: 180px;
-  transition: border-color .12s ease, box-shadow .12s ease;
-  appearance: auto;
-}
-.pc-cat-select:focus {
-  border-color: var(--mise-saffron);
-  box-shadow: 0 0 0 3px var(--mise-saffron-fill);
-}
+/* Category filter select -- now a <SelectField> (apps/web/src/components/SelectField.tsx);
+   .pc-cat-select only adds the one thing that component doesn't set for every caller. */
+.pc-cat-select { min-width: 180px; }
 
 /* Clear filters */
 .pc-clear-btn {
@@ -417,45 +331,11 @@
   gap: var(--mise-space-4);
 }
 
-/* ── Stock status pills — semantic fill + hairline + dot ─────── */
-.pc-stock-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border-radius: var(--mise-r2);
-  padding: 5px 10px;
-  font: 600 11px/1 'Archivo', sans-serif;
-  white-space: nowrap;
-  border: 1px solid transparent;
-}
-.pc-stock-pill.in {
-  background: var(--mise-success-fill);
-  border-color: var(--mise-success);
-  color: var(--mise-success);
-}
-.pc-stock-pill.low {
-  background: var(--mise-warning-fill);
-  border-color: var(--mise-warning);
-  color: var(--mise-warning);
-}
-.pc-stock-pill.out {
-  background: var(--mise-danger-fill);
-  border-color: var(--mise-danger);
-  color: var(--mise-danger);
-}
+/* Stock status is now rendered via the shared <StatusBadge> component
+   (.status-badge-* in styles.css) — the old .pc-stock-pill/.pc-pill-dot
+   dot-indicator styling is retired. */
 
-/* Pill dot — dots may be fully round */
-.pc-pill-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-.pc-pill-dot.in  { background: var(--mise-success); }
-.pc-pill-dot.low { background: var(--mise-warning); }
-.pc-pill-dot.out { background: var(--mise-danger); }
-
-/* Quantity sub-text beneath the pill */
+/* Quantity sub-text beneath the badge */
 .pc-stock-qty {
   font: 500 11px 'IBM Plex Mono', monospace;
   font-variant-numeric: tabular-nums;
@@ -870,5 +750,5 @@
   .pc-skel-row > *:nth-child(n+2) { display: none; }
   .pc-skel-row > *:nth-child(5) { display: block; } /* keep stock skel */
   .pc-drawer { width: 100vw; border-radius: 0; }
-  .pc-stock-qty { display: none; } /* tiny screens: pill only */
+  .pc-stock-qty { display: none; } /* tiny screens: badge only */
 }

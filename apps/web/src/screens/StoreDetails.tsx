@@ -113,7 +113,7 @@ export function StoreDetails() {
           <p className="pc-subtitle">House information used across receipts, reporting and the floor.</p>
         </div>
         <div className="pc-actions">
-          <Link className="pc-btn-ghost" to="/settings">
+          <Link className="secondary-cta" to="/settings">
             ← Back to settings
           </Link>
         </div>

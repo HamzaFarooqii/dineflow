@@ -13,6 +13,10 @@ import { foodCostBps, formatFoodCostPercent } from '../../../../packages/domain/
 import { posDb, type LocalCategory, type LocalProduct, type LocalTaxRate } from '../lib/db'
 import { activeStoreId, accessToken, configuredApiUrl, loadCatalog } from '../lib/catalog'
 import { requireSupabase } from '../lib/supabase'
+import { MetricCard } from '../components/MetricCard'
+import { StatusBadge } from '../components/StatusBadge'
+import { SelectField } from '../components/SelectField'
+import { Search, X } from '../components/icons'
 import { DishAvailability } from './menu/DishAvailability'
 import { RecipeEditor } from './menu/RecipeEditor'
 import { createUnit, loadRecipeData, saveRecipe, type RecipeData } from './menu/recipe-api'
@@ -534,7 +538,7 @@ export function ProductCatalogScreen() {
         <div className="pc-actions">
           <button
             type="button"
-            className="pc-btn-ghost"
+            className="secondary-cta"
             onClick={() => void handleRefresh()}
             disabled={refreshing || !storeId}
           >
@@ -543,7 +547,7 @@ export function ProductCatalogScreen() {
           <button
             id="pc-add-btn"
             type="button"
-            className="pc-btn-primary"
+            className="cta"
             onClick={() => {
               setDrawerOpen(true)
               setSubmitErr('')
@@ -559,26 +563,10 @@ export function ProductCatalogScreen() {
       {/* ── Stat Strip ── */}
       {products !== null && (
         <div className="pc-stats-strip">
-          <div className="pc-stat">
-            <span className="pc-stat-label">Menu Items</span>
-            <span className="pc-stat-value">{total}</span>
-            <span className="pc-stat-sub">Across all categories</span>
-          </div>
-          <div className="pc-stat">
-            <span className="pc-stat-label">In Stock</span>
-            <span className="pc-stat-value">{inStock}</span>
-            <span className="pc-stat-sub">Ready to serve</span>
-          </div>
-          <div className="pc-stat">
-            <span className="pc-stat-label">Low Stock</span>
-            <span className="pc-stat-value">{lowStock}</span>
-            <span className="pc-stat-sub">5 portions or fewer</span>
-          </div>
-          <div className="pc-stat">
-            <span className="pc-stat-label">Out of Stock</span>
-            <span className="pc-stat-value">{outStock}</span>
-            <span className="pc-stat-sub">Needs restocking</span>
-          </div>
+          <MetricCard label="Menu Items" value={total} detail="Across all categories" />
+          <MetricCard label="In Stock" value={inStock} detail="Ready to serve" />
+          <MetricCard label="Low Stock" value={lowStock} detail="5 portions or fewer" />
+          <MetricCard label="Out of Stock" value={outStock} detail="Needs restocking" />
         </div>
       )}
 
@@ -589,7 +577,7 @@ export function ProductCatalogScreen() {
           <div className="pc-alert error" role="alert">
             <span>{loadErr}</span>
             <button type="button" className="pc-alert-close" onClick={() => setLoadErr('')} aria-label="Dismiss">
-              ✕
+              <X aria-hidden="true" size={14} />
             </button>
           </div>
         )}
@@ -597,7 +585,7 @@ export function ProductCatalogScreen() {
           <div className="pc-alert success" role="status">
             <span>{notice}</span>
             <button type="button" className="pc-alert-close" onClick={() => setNotice('')} aria-label="Dismiss">
-              ✕
+              <X aria-hidden="true" size={14} />
             </button>
           </div>
         )}
@@ -605,10 +593,7 @@ export function ProductCatalogScreen() {
         {/* Toolbar */}
         <div className="pc-toolbar">
           <div className="pc-search">
-            <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true">
-              <circle cx="6.5" cy="6.5" r="4.5" stroke="currentColor" strokeWidth="1.5" />
-              <path d="M10 10 13.5 13.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
+            <Search aria-hidden="true" size={15} />
             <input
               id="pc-search"
               className="pc-search-input"
@@ -625,12 +610,12 @@ export function ProductCatalogScreen() {
                 onClick={() => setQuery('')}
                 aria-label="Clear search"
               >
-                ✕
+                <X aria-hidden="true" size={14} />
               </button>
             )}
           </div>
 
-          <select
+          <SelectField
             id="pc-cat-filter"
             className="pc-cat-select"
             value={catFilter}
@@ -645,7 +630,7 @@ export function ProductCatalogScreen() {
                   {c.name}
                 </option>
               ))}
-          </select>
+          </SelectField>
 
           {hasFilters && (
             <button
@@ -709,7 +694,7 @@ export function ProductCatalogScreen() {
             {!hasFilters && (
               <button
                 type="button"
-                className="pc-btn-primary"
+                className="cta"
                 onClick={() => {
                   setDrawerOpen(true)
                   setSubmitErr('')
@@ -736,7 +721,7 @@ export function ProductCatalogScreen() {
               const stock = stockMap[product.id] ?? 0
               const catName = product.category_id ? catMap[product.category_id] ?? '' : ''
               const initial = product.name.charAt(0).toUpperCase() || 'P'
-              const stockCls = stock > 5 ? 'in' : stock > 0 ? 'low' : 'out'
+              const stockTone = stock > 5 ? 'success' : stock > 0 ? 'warning' : 'danger'
               const stockLabel = stock > 5 ? `${stock} in stock` : stock > 0 ? `${stock} left` : 'Out of stock'
               const pillLabel = stock > 5 ? 'In Stock' : stock > 0 ? 'Low Stock' : 'Out of Stock'
 
@@ -788,10 +773,7 @@ export function ProductCatalogScreen() {
                     })()}
                   </div>
                   <div className="pc-cell-stock-wrap" role="cell">
-                    <span className={`pc-stock-pill ${stockCls}`}>
-                      <span className={`pc-pill-dot ${stockCls}`} aria-hidden="true" />
-                      {pillLabel}
-                    </span>
+                    <StatusBadge tone={stockTone}>{pillLabel}</StatusBadge>
                     <span className="pc-stock-qty">{stockLabel}</span>
                   </div>
                 </div>
@@ -825,7 +807,7 @@ export function ProductCatalogScreen() {
                 onClick={closeDrawer}
                 aria-label="Close"
               >
-                ✕
+                <X aria-hidden="true" size={18} />
               </button>
             </div>
 
@@ -841,7 +823,7 @@ export function ProductCatalogScreen() {
                     onClick={() => setSubmitErr('')}
                     aria-label="Dismiss"
                   >
-                    ✕
+                    <X aria-hidden="true" size={14} />
                   </button>
                 </div>
               )}
@@ -1102,7 +1084,7 @@ export function ProductCatalogScreen() {
                 <h2 className="pc-drawer-title">{recipeProduct.name}</h2>
               </div>
               <button type="button" className="pc-drawer-close" onClick={closeRecipe} aria-label="Close">
-                ✕
+                <X aria-hidden="true" size={18} />
               </button>
             </div>
 
@@ -1112,7 +1094,7 @@ export function ProductCatalogScreen() {
                   <div className="pc-alert error" role="alert">
                     <span>{recipeSubmitErr}</span>
                     <button type="button" className="pc-alert-close" onClick={() => setRecipeSubmitErr('')} aria-label="Dismiss">
-                      ✕
+                      <X aria-hidden="true" size={14} />
                     </button>
                   </div>
                 )}
