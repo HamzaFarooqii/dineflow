@@ -187,10 +187,15 @@ export function ProductCatalogScreen() {
     const s4 = liveQuery(async () => {
       const rows = await posDb.server_stock.toArray()
       const adjs = await posDb.stock_adjustments.toArray()
+      // Sum every adjustment still on this device, accepted or not -- accepted_checkpoint only
+      // means the server has processed the sale, not that this device's current_stock baseline
+      // has caught up yet (that only happens on the next loadCatalog pull, which is also what
+      // deletes the now-redundant adjustment; see catalog.ts). Matches RegisterScreen,
+      // CashierProductsScreen and reporting.ts's calculateLowStockItems, which never filtered on
+      // accepted_checkpoint -- this screen was the one outlier, understating stock for any sale
+      // the server had already confirmed but this device hadn't re-synced its baseline for yet.
       const adj: Record<string, number> = {}
-      for (const a of adjs) {
-        if (!a.accepted_checkpoint) adj[a.product_id] = (adj[a.product_id] ?? 0) + a.delta
-      }
+      for (const a of adjs) adj[a.product_id] = (adj[a.product_id] ?? 0) + a.delta
       const m: StockMap = {}
       for (const s of rows) m[s.product_id] = s.current_stock + (adj[s.product_id] ?? 0)
       return m
