@@ -59,7 +59,7 @@ export function CustomerFinder({ storeId, terminal, onSelect, onViewProfile }: {
   useEffect(() => {
     let active = true
     setServer([]); setNextCursor(null); setError('')
-    void searchLocalCustomers(storeId, query).then(rows => { if (active) setLocal(rows) }).catch(reason => { if (active) { setLocal([]); setError(reason instanceof Error ? reason.message : 'Invalid phone search.') } })
+    void searchLocalCustomers(storeId, query).then(rows => { if (active) setLocal(rows) }).catch(reason => { if (active) { setLocal([]); setError(reason instanceof Error ? reason.message : 'Invalid search.') } })
     return () => { active = false }
   }, [storeId, query])
   const onlineSearch = async (cursor: string | null = null) => {
@@ -102,8 +102,8 @@ export function CustomerFinder({ storeId, terminal, onSelect, onViewProfile }: {
   }, [storeId, terminal, matchIdKey])
   return <div className="crm-finder">
     <section className="crm-panel" aria-labelledby="crm-search-title"><h2 id="crm-search-title">Find a guest</h2>
-      <p>Search by international phone number. Local matches appear immediately; online lookup adds saved restaurant matches.</p>
-      <label>Phone with country code<input type="tel" inputMode="tel" autoComplete="off" placeholder="+923001234567" value={query} onChange={event => { setQuery(event.target.value); setMessage('') }} /></label>
+      <p>Search by phone number (with country code) or by name. Local matches appear immediately; online lookup adds saved restaurant matches.</p>
+      <label>Phone or name<input type="text" autoComplete="off" placeholder="+923001234567 or Ayesha Khan" value={query} onChange={event => { setQuery(event.target.value); setMessage('') }} /></label>
       <button type="button" className="secondary-cta" disabled={!query.trim() || searching || !navigator.onLine} onClick={() => void onlineSearch()}>{searching ? 'Searching…' : 'Search online'}</button>
       {query.trim() && <div className="crm-results" role="region" aria-live="polite" aria-label="Guest matches">
         {matches.length ? <ul>{matches.map(customer => <li key={customer.id}><span><strong>{customer.name}</strong><small>{customer.phone_normalized ? `+${customer.phone_normalized}` : 'No phone'}</small>{customer.failure_reason && <small role="status">{customer.failure_reason}</small>}</span>

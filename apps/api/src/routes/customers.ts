@@ -29,6 +29,13 @@ function name(value: unknown): string {
   try { return customerName(value) }
   catch (reason) { throw new ApiError(422, 'validation_failed', reason instanceof Error ? reason.message : 'Invalid name.') }
 }
+function nameSearchTerm(value: unknown): string | null {
+  if (value === undefined || value === null || value === '') return null
+  const text = String(value).trim()
+  if (!text) return null
+  if (text.length > 30) throw new ApiError(422, 'validation_failed', 'Name search must be 30 characters or fewer.')
+  return text
+}
 function iso(value: unknown): string {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value) ||
       Number.isNaN(Date.parse(value)) || new Date(value).toISOString() !== value) throw new ApiError(422, 'validation_failed', 'Creation time must be a UTC ISO timestamp.')
@@ -59,15 +66,24 @@ async function search(req: Request, res: Response, terminal = false) {
     const storeId = terminal ? (await requireCashierTerminal(req, db)).storeId : validUuid(req.query.store_id, 'Store ID')
     if (!terminal) await ownerStore(req, storeId)
     if (terminal && req.query.store_id !== undefined && req.query.store_id !== storeId) throw new ApiError(403, 'cross_store_reference', 'This terminal belongs to a different store.')
-    const term = phone(req.query.phone)
-    if (!term) throw new ApiError(400, 'search_required', 'Enter a phone number with its country code to search.')
+    const phoneTerm = phone(req.query.phone)
+    const nameTerm = nameSearchTerm(req.query.name)
+    if (!phoneTerm && !nameTerm) throw new ApiError(400, 'search_required', 'Enter a phone number or a guest name to search.')
     const rawLimit = req.query.limit === undefined ? 20 : Number(req.query.limit)
     if (!Number.isInteger(rawLimit) || rawLimit < 1 || rawLimit > 50) throw new ApiError(400, 'validation_failed', 'Limit must be 1 to 50.')
     const after = cursor(req.query.cursor)
-    const result = await db.query<{ id: string; name: string; phone_normalized: string | null }>(`
-      select id,name,phone_normalized from public.pos_customers
-      where store_id=$1 and phone_normalized like $2 and ($3::uuid is null or id > $3::uuid)
-      order by id limit $4`, [storeId, `${term}%`, after?.id ?? null, rawLimit + 1])
+    // Escape name search's own wildcard characters so a guest named e.g. "50% Off" can't turn
+    // into an unintended ILIKE pattern -- phone search has no such characters to worry about.
+    const namePattern = nameTerm ? `${nameTerm.replace(/[%_\\]/g, char => `\\${char}`)}%` : null
+    const result = phoneTerm
+      ? await db.query<{ id: string; name: string; phone_normalized: string | null }>(`
+          select id,name,phone_normalized from public.pos_customers
+          where store_id=$1 and phone_normalized like $2 and ($3::uuid is null or id > $3::uuid)
+          order by id limit $4`, [storeId, `${phoneTerm}%`, after?.id ?? null, rawLimit + 1])
+      : await db.query<{ id: string; name: string; phone_normalized: string | null }>(`
+          select id,name,phone_normalized from public.pos_customers
+          where store_id=$1 and name ilike $2 and ($3::uuid is null or id > $3::uuid)
+          order by id limit $4`, [storeId, namePattern, after?.id ?? null, rawLimit + 1])
     const page = result.rows.slice(0, rawLimit)
     const last = page.at(-1)
     res.json({ customers: page.map(({ id, name: customerName, phone_normalized }) => ({ id, store_id: storeId, name: customerName, phone_normalized })),

@@ -71,5 +71,12 @@ test('device customer API enforces search scope and returns durable replay resul
     assert.equal(next.status, 200)
     assert.equal((await next.json() as { customers: unknown[]; next_cursor: string | null }).customers.length, 1)
     assert.equal((await fetch('http://127.0.0.1:3182/pos/customers?phone=%2B923001234567', { headers: { ...headers, Cookie: `terminal_access=${access}` } })).status, 401)
+    const nameSearch = await fetch('http://127.0.0.1:3182/pos/customers?name=Alex', { headers })
+    assert.equal(nameSearch.status, 200)
+    const nameMatches = await nameSearch.json() as { customers: Array<{ name: string }> }
+    assert.equal(nameMatches.customers.length, 1)
+    assert.equal(nameMatches.customers[0].name, 'Alex Customer')
+    assert.equal((await fetch('http://127.0.0.1:3182/pos/customers?name=Second', { headers })).status, 200)
+    assert.equal((await (await fetch('http://127.0.0.1:3182/pos/customers?name=Second', { headers })).json() as { customers: unknown[] }).customers.length, 1)
   } finally { server?.closeAllConnections(); server?.close(); await database.close(); await db.end() }
 })

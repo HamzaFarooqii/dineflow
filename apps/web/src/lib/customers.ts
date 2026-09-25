@@ -1,4 +1,4 @@
-import { normalizedPhone } from '../../../../packages/domain/src/customer'
+import { looksLikePhone, normalizedPhone } from '../../../../packages/domain/src/customer'
 import { accessToken, configuredApiUrl } from './catalog'
 import { posDb, type LocalCustomer } from './db'
 export { createLocalCustomer, searchLocalCustomers } from './customer-local'
@@ -22,10 +22,17 @@ export async function fetchCustomerSummary(storeId: string, customerId: string, 
 }
 
 type SearchResult = { customers: Array<{ id: string; store_id: string; name: string; phone_normalized: string | null }>; next_cursor: string | null }
-export async function searchServerCustomers(storeId: string, rawPhone: string, terminal: boolean, cursor: string | null = null): Promise<SearchResult> {
-  const phone = normalizedPhone(rawPhone)
-  if (!phone) throw new Error('Enter a phone number with its country code.')
-  const query = new URLSearchParams({ phone: `+${phone}`, limit: '20' })
+export async function searchServerCustomers(storeId: string, rawQuery: string, terminal: boolean, cursor: string | null = null): Promise<SearchResult> {
+  const query = new URLSearchParams({ limit: '20' })
+  if (looksLikePhone(rawQuery)) {
+    const phone = normalizedPhone(rawQuery)
+    if (!phone) throw new Error('Enter a phone number with its country code.')
+    query.set('phone', `+${phone}`)
+  } else {
+    const name = rawQuery.trim()
+    if (!name) throw new Error('Enter a phone number or guest name to search.')
+    query.set('name', name)
+  }
   if (!terminal) query.set('store_id', storeId)
   if (cursor) query.set('cursor', cursor)
   const response = await fetch(`${configuredApiUrl()}${terminal ? '/pos/customers' : '/customers'}?${query}`, {
