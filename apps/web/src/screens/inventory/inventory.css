@@ -58,13 +58,32 @@
 .receive-stock-total small{font-size:11px;color:var(--mise-ink-muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em}
 .receive-stock-total strong{font:500 18px 'IBM Plex Mono',monospace;color:var(--mise-ink)}
 
-/* ── Tables (batches, stock activity) ───────────────────────────────────── */
-.inventory-table{width:100%;border-collapse:collapse;font-size:13px}
-.inventory-table th{text-align:left;padding:8px 10px;color:var(--mise-ink-muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--mise-border-strong)}
-.inventory-table td{padding:8px 10px;border-bottom:1px solid var(--mise-border-hairline);color:var(--mise-ink)}
+/* ── Batches: one card per batch instead of a dense multi-column table ───── */
+.batch-list{display:grid;gap:10px}
+.batch-card{border:1px solid var(--mise-border-hairline);border-radius:var(--mise-r3);background:var(--mise-surface);padding:16px}
+.batch-card-top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
+.batch-card-id{font:600 12px 'IBM Plex Mono',monospace;color:var(--mise-ink-muted);letter-spacing:.02em}
+.batch-card-qty{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.batch-card-qty strong{font:600 20px 'IBM Plex Mono',monospace;color:var(--mise-ink)}
+.batch-card-qty span{font-size:12px;color:var(--mise-ink-secondary)}
+.batch-card-bar{height:6px;border-radius:var(--mise-r1);background:var(--mise-surface-sunken);overflow:hidden;margin-bottom:12px}
+.batch-card-bar>div{height:100%;background:var(--mise-success);border-radius:inherit}
+.batch-card-costs{display:flex;gap:16px;flex-wrap:wrap;font:500 13px 'IBM Plex Mono',monospace;color:var(--mise-ink);margin-bottom:10px}
+.batch-card-meta{display:flex;gap:14px;flex-wrap:wrap;padding-top:10px;border-top:1px solid var(--mise-border-hairline);font-size:11.5px;color:var(--mise-ink-muted)}
 
+/* ── Stock activity: one card per movement, same recipe as batch cards ──── */
 .stock-activity{display:grid;gap:10px}
 .stock-activity-filters{margin-bottom:0}
+.activity-list{display:grid;gap:8px}
+.activity-row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border:1px solid var(--mise-border-hairline);border-radius:var(--mise-r3);background:var(--mise-surface)}
+.activity-row-main{display:flex;align-items:center;gap:10px;min-width:0;flex:1}
+.activity-row-note{font-size:13px;color:var(--mise-ink-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.activity-row-end{display:grid;justify-items:end;gap:2px}
+.activity-row-end b{font:600 14px 'IBM Plex Mono',monospace;color:var(--mise-ink)}
+.activity-row-end b.activity-up{color:var(--mise-success)}
+.activity-row-end b.activity-down{color:var(--mise-danger)}
+.activity-row-end small{font:400 11px 'IBM Plex Mono',monospace;color:var(--mise-ink-muted)}
+.activity-row-meta{display:flex;gap:12px;flex-basis:100%;font-size:11px;color:var(--mise-ink-muted);border-top:1px solid var(--mise-border-hairline);padding-top:8px;margin-top:2px}
 
 .inventory-wastage-form{margin-bottom:0}
 
@@ -72,15 +91,7 @@
   .inventory-layout{grid-template-columns:1fr}
 }
 
-/* Tables degrade to stacked cards below tablet width -- each row becomes a card, each cell's
-   data-label attribute (set in BatchList.tsx/StockLedger.tsx) supplies the visible label since
-   the <thead> is hidden at this width. */
 @media (max-width:640px){
   .inventory-detail-stats{grid-template-columns:1fr}
-  .batch-table thead,.stock-activity-table thead{display:none}
-  .batch-table tr,.stock-activity-table tr{display:block;border:1px solid var(--mise-border-hairline);border-radius:var(--mise-r3);margin-bottom:10px;padding:8px 10px}
-  .batch-table td,.stock-activity-table td{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:0;text-align:right}
-  .batch-table td::before,.stock-activity-table td::before{content:attr(data-label);font-weight:600;color:var(--mise-ink-muted);text-align:left}
-  .batch-table td[colspan],.stock-activity-table td[colspan]{display:block;text-align:left}
-  .batch-table td[colspan]::before,.stock-activity-table td[colspan]::before{content:none}
+  .activity-row-end{justify-items:start}
 }

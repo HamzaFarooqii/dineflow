@@ -5,6 +5,7 @@ import type { RecipeUnit } from '../menu/recipe-draft'
 import type { StockMovement } from '../../lib/inventory'
 import { batchLabel } from './BatchList'
 import { StatusBadge } from '../../components/StatusBadge'
+import { EmptyState } from '../../components/EmptyState'
 
 type MovementFilter = 'all' | StockMovementReason
 const FILTERS: { value: MovementFilter; label: string }[] = [
@@ -39,6 +40,9 @@ export function withRunningBalance(movements: StockMovement[], currentStock: num
   })
 }
 
+// One card per movement instead of a 7-column table -- the activity chip and the +/- change (the
+// two things a manager actually scans for) read as the headline, with the running balance next to
+// it and who/what/note folded into a quieter meta line, same recipe as BatchList's cards.
 export function StockLedger({ movements, currentStock, unit }: { movements: StockMovement[]; currentStock: number; unit: RecipeUnit | undefined }) {
   const [filter, setFilter] = useState<MovementFilter>('all')
   const rows = useMemo(() => withRunningBalance(movements, currentStock), [movements, currentStock])
@@ -48,25 +52,27 @@ export function StockLedger({ movements, currentStock, unit }: { movements: Stoc
     <div className="floor-area-tabs stock-activity-filters">
       {FILTERS.map(item => <button key={item.value} type="button" className={filter === item.value ? 'active' : undefined} onClick={() => setFilter(item.value)}>{item.label}</button>)}
     </div>
-    <table className="inventory-table stock-activity-table">
-      <thead><tr><th>When</th><th>Activity</th><th>Change</th><th>Stock</th><th>Batch</th><th>By</th><th>Note</th></tr></thead>
-      <tbody>
-        {visibleRows.map(({ movement, previousStock, newStock }) => {
-          const delta = Number(movement.delta)
-          const sign = delta > 0 ? '+' : ''
-          return <tr key={movement.id}>
-            <td data-label="When">{new Date(movement.created_at).toLocaleString()}</td>
-            <td data-label="Activity"><StatusBadge tone={STOCK_MOVEMENT_REASON_TONE[movement.reason]}>{STOCK_MOVEMENT_REASON_LABELS[movement.reason]}</StatusBadge></td>
-            <td data-label="Change">{unit ? `${sign}${formatQuantity(movement.delta, unit)}` : `${sign}${movement.delta}`}</td>
-            <td data-label="Stock">{unit ? `${formatQuantity(previousStock, unit)} → ${formatQuantity(newStock, unit)}` : `${previousStock} → ${newStock}`}</td>
-            <td data-label="Batch">{movement.batch_id ? batchLabel(movement.batch_id) : '—'}</td>
-            <td data-label="By">{movement.created_by_name ?? '—'}</td>
-            <td data-label="Note">{movement.note ?? '—'}</td>
-          </tr>
-        })}
-        {visibleRows.length === 0 && movements.length > 0 && <tr><td colSpan={7} className="floor-empty">No activity matches this filter.</td></tr>}
-        {movements.length === 0 && <tr><td colSpan={7} className="floor-empty">No stock activity yet.</td></tr>}
-      </tbody>
-    </table>
+    {movements.length === 0 && <EmptyState title="No stock activity yet" />}
+    {movements.length > 0 && visibleRows.length === 0 && <EmptyState title="No activity matches this filter" />}
+    {visibleRows.length > 0 && <div className="activity-list">
+      {visibleRows.map(({ movement, previousStock, newStock }) => {
+        const delta = Number(movement.delta)
+        const sign = delta > 0 ? '+' : ''
+        return <article key={movement.id} className="activity-row">
+          <div className="activity-row-main">
+            <StatusBadge tone={STOCK_MOVEMENT_REASON_TONE[movement.reason]}>{STOCK_MOVEMENT_REASON_LABELS[movement.reason]}</StatusBadge>
+            <span className="activity-row-note">{movement.note ?? (movement.batch_id ? batchLabel(movement.batch_id) : 'No note')}</span>
+          </div>
+          <div className="activity-row-end">
+            <b className={delta > 0 ? 'activity-up' : delta < 0 ? 'activity-down' : undefined}>{sign}{unit ? formatQuantity(movement.delta, unit) : movement.delta}</b>
+            <small>{unit ? formatQuantity(previousStock, unit) : previousStock} → {unit ? formatQuantity(newStock, unit) : newStock}</small>
+          </div>
+          <div className="activity-row-meta">
+            <span>{new Date(movement.created_at).toLocaleString()}</span>
+            {movement.created_by_name && <span>{movement.created_by_name}</span>}
+          </div>
+        </article>
+      })}
+    </div>}
   </div>
 }
