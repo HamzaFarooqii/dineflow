@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { requireSupabase, supabase } from '../lib/supabase'
 import { activeStoreId } from '../lib/catalog'
@@ -6,11 +6,14 @@ import { request } from './api'
 import { readTerminal, type TerminalCache } from './cache'
 import { TerminalState } from './TerminalStatus'
 import type { Management } from './types'
+import { PageHeader } from '../components/PageHeader'
+import { SelectField } from '../components/SelectField'
+import { Store, Monitor, Users, History } from '../components/icons'
 import './settings-overview.css'
 
 interface StoreAccess { storeId: string; role: string }
 interface TeamMember { user_id: string; role: string; active: boolean; joined_at: string; profiles: { full_name: string }[] }
-function CardIcon({ children }: { children: string }) { return <span className="settings-icon" aria-hidden="true">{children}</span> }
+function CardIcon({ children }: { children: ReactNode }) { return <span className="settings-icon" aria-hidden="true">{children}</span> }
 
 export function SettingsOverview() {
   const [access, setAccess] = useState<StoreAccess>()
@@ -73,27 +76,27 @@ export function SettingsOverview() {
   const activeEmployees = management.employees.filter(employee => employee.active).length
   const lastSynced = terminal ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(terminal.validated_at)) : ''
   return <section className="settings-page settings-overview">
-    <div className="settings-heading"><CardIcon>⚙</CardIcon><div><p className="kicker">RESTAURANT ADMINISTRATION</p><h1>Restaurant settings</h1><p>Manage your team, service terminals, and staff PIN access.</p></div></div>
+    <PageHeader kicker="RESTAURANT ADMINISTRATION" title="Restaurant settings" subtitle="Manage your team, service terminals, and staff PIN access." />
     {loading ? <p className="form-notice" role="status">Loading restaurant settings…</p> : loadError ? <p className="form-notice error" role="alert">{loadError}</p> : <>
       {canManagePos && <section aria-labelledby="pos-setup-title">
         <h2 id="pos-setup-title" className="settings-section-title">Service setup</h2>
         <div className="pos-setup-cards">
-          <article className="setup-card"><CardIcon>⚑</CardIcon><div>
+          <article className="setup-card"><CardIcon><Store aria-hidden="true" size={20} /></CardIcon><div>
             <div className="card-title"><h3>Restaurant details</h3></div>
             <p>Currency, timezone, address and country used across guest checks and reporting.</p>
             <Link className="cta" to="/settings/store">Edit details <b aria-hidden="true">→</b></Link>
           </div></article>
-          <article className="setup-card"><CardIcon>▣</CardIcon><div>
+          <article className="setup-card"><CardIcon><Monitor aria-hidden="true" size={20} /></CardIcon><div>
             <div className="card-title"><h3>Terminals</h3><span className="count-badge">{activeDevices} active {activeDevices === 1 ? 'terminal' : 'terminals'}</span></div>
             <p>Provision and manage the devices your team uses at the pass and the host stand.</p>
             <Link className="cta" to="/settings/terminals">Manage terminals <b aria-hidden="true">→</b></Link>
           </div></article>
-          <article className="setup-card"><CardIcon>♧</CardIcon><div>
+          <article className="setup-card"><CardIcon><Users aria-hidden="true" size={20} /></CardIcon><div>
             <div className="card-title"><h3>Service staff</h3><span className="count-badge">{activeEmployees} active {activeEmployees === 1 ? 'staff member' : 'staff'}</span></div>
             <p>Issue staff PINs and control who can open a terminal on the floor.</p>
             <Link className="cta" to="/settings/employees">Manage staff <b aria-hidden="true">→</b></Link>
           </div></article>
-          <article className="setup-card"><CardIcon>▤</CardIcon><div>
+          <article className="setup-card"><CardIcon><History aria-hidden="true" size={20} /></CardIcon><div>
             <div className="card-title"><h3>Activity log</h3></div>
             <p>Review terminal and staff changes made by your team.</p>
             <Link className="cta" to="/settings/activity">View activity <b aria-hidden="true">→</b></Link>
@@ -107,7 +110,7 @@ export function SettingsOverview() {
           {canManagePos ? <form className="invite-form" onSubmit={submitInvite}>
             <h3>Invite new team member</h3>
             <label>Work email<input name="email" type="email" autoComplete="email" placeholder="name@restaurant.com" required /></label>
-            <label>Role<select name="role" defaultValue="manager"><option value="manager">Manager</option><option value="cashier">Cashier</option></select></label>
+            <SelectField label="Role" name="role" defaultValue="manager"><option value="manager">Manager</option><option value="cashier">Cashier</option></SelectField>
             <button className="cta" type="submit">Send invite <b aria-hidden="true">→</b></button>
           </form> : <p className="form-notice">You do not have permission to manage this restaurant.</p>}
           <section className="team-members" aria-label="Current store team">
@@ -125,14 +128,14 @@ export function SettingsOverview() {
         <aside className="this-terminal-card">
           <h2>This terminal</h2>
           {terminal ? <>
-            <div className="terminal-summary"><CardIcon>▣</CardIcon><div>
+            <div className="terminal-summary"><CardIcon><Monitor aria-hidden="true" size={18} /></CardIcon><div>
               <div className="card-title"><h3>{terminal.device.name}</h3><TerminalState terminal={terminal} /></div>
               <p>Receipt prefix: <strong>{terminal.device.receipt_prefix}</strong></p>
             </div></div>
             <dl><div><dt>Receipt prefix</dt><dd>{terminal.device.receipt_prefix}</dd></div><div><dt>Last synced</dt><dd>{lastSynced}</dd></div></dl>
             <Link className="secondary-cta" to="/settings/terminals">Manage terminal</Link>
           </> : <div className="terminal-empty">
-            <CardIcon>▣</CardIcon>
+            <CardIcon><Monitor aria-hidden="true" size={20} /></CardIcon>
             <h3>No terminal connected?</h3>
             <p>Add a terminal to start taking orders and keep service running.</p>
             <Link className="cta" to="/settings/terminals">Add terminal <b aria-hidden="true">+</b></Link>
