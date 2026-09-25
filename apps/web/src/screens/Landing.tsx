@@ -19,20 +19,21 @@ const MINI_PRODUCTS = [
 // One entry per real module in the app's own sidebar nav (App.tsx's navGroups) -- the copy
 // describes what each screen actually does, not an aspirational feature list.
 const MODULES = [
-  [ShoppingCart, 'Sell', 'Ring in orders offline or on, split payments across cash and card, apply manager-approved discounts, and reprint any receipt in seconds.'],
-  [LayoutGrid, 'Floor & Tables', "See every table's status at a glance — seated, ordering, served, billed, cleaned — and transfer or merge a party without leaving the floor."],
-  [ChefHat, 'Kitchen Display', 'Tickets fire straight from the register, grouped by station, with one tap to move each item from fired to ready to served.'],
-  [UtensilsCrossed, 'Menu & Recipes', 'Build your menu with categories, tax rates and photos, then cost every dish against its recipe so you always know your food cost.'],
-  [Package, 'Inventory', 'Track ingredients by batch, log wastage with a reason, and watch stock and cost update automatically with every sale and delivery.'],
-  [Users, 'Guests', 'Look guests up by phone in seconds, attach them to a check, and keep every visit on one record — synced or not.'],
-  [BarChart3, 'Reports', "A daily sales report broken down by staff, tender and item, plus low-stock alerts your manager sees the moment they open the dashboard."],
-  [Shield, 'Staff & Security', "Every cashier signs in with their own PIN on a provisioned terminal. Sensitive actions need a manager's approval, and every change lands in an activity log."],
+  [ShoppingCart, 'Sell', 'Ring in orders offline or on, split payments across cash and card, apply manager-approved discounts, and reprint any receipt in seconds. Every terminal has its own receipt prefix, so checks from the bar and the host stand never collide.'],
+  [LayoutGrid, 'Floor & Tables', "See every table's status at a glance — seated, ordering, served, billed, cleaned — group tables into areas like patio or bar, and transfer or merge a party without leaving the floor."],
+  [ChefHat, 'Kitchen Display', 'Tickets fire straight from the register, grouped by station, with one tap to move each item from fired to ready to served — no printers, no re-keying an order by hand.'],
+  [UtensilsCrossed, 'Menu & Recipes', "Build your menu with categories, tax rates and photos, then cost every dish against its recipe so you see a food-cost percentage per dish, not just per ingredient."],
+  [Package, 'Inventory', "Track ingredients by batch with expiry dates, log wastage with a reason, and trace any drop in stock back to the exact delivery it came from."],
+  [Users, 'Guests', 'Look guests up by phone in seconds and attach them to a check. Two guests can share a number or a name without merging into one record by mistake.'],
+  [BarChart3, 'Reports', "A daily sales report broken down by staff, tender and item, refund tracking, and low-stock alerts your manager sees the moment they open the dashboard."],
+  [Shield, 'Staff & Security', "Every cashier signs in with their own PIN on a provisioned terminal — never a shared login. Sensitive actions need a manager's approval, and every change lands in a restaurant-wide activity log."],
 ] as const
 
 const OFFLINE_POINTS = [
   'Orders, payments and stock updates save to the device the instant they happen — not after a round trip to a server.',
   'A sync status badge shows pending, in-flight, blocked or rejected checks on every screen, so nothing goes missing silently.',
   'A provisioned terminal keeps working — sign-in, orders, payments — for up to seven days without a connection.',
+  'Run as many terminals as your service needs; every one reads and writes the same floor, menu and stock, and reconciles automatically the moment it reconnects.',
 ]
 
 const STEPS = [
