@@ -24,13 +24,13 @@ interface Props {
   menuPriceCents: number | null
   currency: string
   disabled: boolean
-  onCreateUnit: (unit: { name: string; abbreviation: string; kind: UnitKind }) => Promise<RecipeUnit>
+  onCreateUnit: (unit: { name: string; abbreviation: string; kind: UnitKind; factor_to_base?: number | null }) => Promise<RecipeUnit>
   onCreateIngredient: (input: { name: string; unit_id: string; cost_per_unit_cents: number }) => Promise<RecipeIngredientOption>
 }
 
 export function RecipeEditor({ draft, onChange, errors, data, dataError, menuPriceCents, currency, disabled, onCreateUnit, onCreateIngredient }: Props) {
   const [creatingUnit, setCreatingUnit] = useState(false)
-  const [unitForm, setUnitForm] = useState({ name: '', abbreviation: '', kind: 'count' as UnitKind })
+  const [unitForm, setUnitForm] = useState({ name: '', abbreviation: '', kind: 'count' as UnitKind, factor: '' })
   const [unitBusy, setUnitBusy] = useState(false)
   const [unitError, setUnitError] = useState('')
 
@@ -38,7 +38,7 @@ export function RecipeEditor({ draft, onChange, errors, data, dataError, menuPri
   if (!data) return <p className="pc-field-hint" role="status">Loading recipe data…</p>
 
   const { units, ingredients, ingredientsReady } = data
-  const cost = costDraft(draft, ingredients)
+  const cost = costDraft(draft, ingredients, units)
   const bps = menuPriceCents === null ? null : foodCostBps(cost.portionCostCents, menuPriceCents)
   const yieldUnit = units.find(unit => unit.id === draft.yieldUnitId)
 
@@ -48,13 +48,23 @@ export function RecipeEditor({ draft, onChange, errors, data, dataError, menuPri
       setUnitError('Enter a unit name and abbreviation.')
       return
     }
+    const factorInput = unitForm.factor.trim()
+    let factorToBase: number | null = null
+    if (factorInput) {
+      const parsed = Number(factorInput)
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        setUnitError('Conversion factor must be a number greater than 0, or left blank.')
+        return
+      }
+      factorToBase = parsed
+    }
     setUnitBusy(true)
     setUnitError('')
     try {
-      const unit = await onCreateUnit({ name, abbreviation, kind: unitForm.kind })
+      const unit = await onCreateUnit({ name, abbreviation, kind: unitForm.kind, factor_to_base: factorToBase })
       onChange({ ...draft, yieldUnitId: unit.id })
       setCreatingUnit(false)
-      setUnitForm({ name: '', abbreviation: '', kind: 'count' })
+      setUnitForm({ name: '', abbreviation: '', kind: 'count', factor: '' })
     } catch (reason) {
       setUnitError(reason instanceof Error ? reason.message : 'Could not add the unit.')
     } finally {
@@ -116,6 +126,14 @@ export function RecipeEditor({ draft, onChange, errors, data, dataError, menuPri
               <option value="volume">Volume</option>
             </select>
           </div>
+          <div className="recipe-new-unit-row">
+            <input aria-label="Conversion factor" type="text" inputMode="decimal" placeholder="Converts to how many base units? (optional)"
+              value={unitForm.factor} onChange={event => setUnitForm(form => ({ ...form, factor: event.target.value }))} disabled={unitBusy} />
+          </div>
+          <p className="pc-field-hint">
+            Optional: e.g. a Kilogram converts to 1000 (grams). Leave blank if this unit doesn’t convert to any other unit you use —
+            a recipe line will still need to use this exact unit to be costed.
+          </p>
           <div className="recipe-new-unit-actions">
             <button type="button" className="pc-btn-ghost" onClick={() => { setCreatingUnit(false); setUnitError('') }} disabled={unitBusy}>Cancel</button>
             <button type="button" className="pc-btn-primary" onClick={() => void submitUnit()} disabled={unitBusy}>{unitBusy ? 'Adding…' : 'Add unit'}</button>

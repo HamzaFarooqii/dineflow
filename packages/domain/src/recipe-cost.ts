@@ -3,14 +3,22 @@
 //
 // A recipe makes `yieldQuantity` of its yield unit per batch, and one sale of the menu item is
 // assumed to consume one yield unit — so the per-sale ("portion") cost is batch cost ÷ yield.
-// Unit conversion is deliberately not supported yet: a line is only costed when its unit is the
-// ingredient's own stored unit; any other unit is reported as a mismatch rather than guessed at.
+//
+// Unit conversion (docs/day-plans/day5.md gap-fill): a line's unit and its ingredient's stored
+// unit convert into each other when they're the exact same unit (always), or when both carry a
+// non-null `factorToBase` of the same `kind` (mass/volume/count) — each unit's factor says how
+// many of its kind's implicit base unit (gram for mass, milliliter for volume) one of it equals.
+// Two units that are merely the same kind but have never been given a real factor stay
+// unconvertible on purpose, rather than silently guessing a 1:1 ratio between them.
+
+export type RecipeUnitKind = 'mass' | 'volume' | 'count'
+export interface RecipeCostUnit { id: string; kind: RecipeUnitKind; factorToBase: number | null }
 
 export interface RecipeCostLineInput {
   quantity: number
-  unitId: string
+  unit: RecipeCostUnit
   /** null when the line's ingredient is unknown (deleted, or not loaded yet). */
-  ingredient: { unitId: string; costPerUnitCents: number } | null
+  ingredient: { unit: RecipeCostUnit; costPerUnitCents: number } | null
 }
 
 export type RecipeLineCost =
@@ -33,6 +41,19 @@ function positiveQuantity(value: number, label: string): number {
   return value
 }
 
+/**
+ * Converts `quantity` of `from` into an equivalent quantity of `to`, or null when the two units
+ * can't be related: different kinds, or either side has no known conversion factor. The identical
+ * unit always converts to itself regardless of whether a factor is set on it.
+ */
+export function convertQuantity(quantity: number, from: RecipeCostUnit, to: RecipeCostUnit): number | null {
+  if (from.id === to.id) return quantity
+  if (from.kind !== to.kind) return null
+  if (from.factorToBase === null || to.factorToBase === null) return null
+  if (!(from.factorToBase > 0) || !(to.factorToBase > 0)) return null
+  return quantity * (from.factorToBase / to.factorToBase)
+}
+
 export function costRecipe(lines: readonly RecipeCostLineInput[], yieldQuantity: number): RecipeCost {
   positiveQuantity(yieldQuantity, 'Recipe yield')
   let exactBatch = 0
@@ -43,8 +64,9 @@ export function costRecipe(lines: readonly RecipeCostLineInput[], yieldQuantity:
     if (!Number.isSafeInteger(costPerUnitCents) || costPerUnitCents < 0) {
       throw new Error('Ingredient cost must be a non-negative integer number of cents.')
     }
-    if (line.unitId !== line.ingredient.unitId) return { status: 'unit_mismatch' }
-    const exact = line.quantity * costPerUnitCents
+    const converted = convertQuantity(line.quantity, line.unit, line.ingredient.unit)
+    if (converted === null) return { status: 'unit_mismatch' }
+    const exact = converted * costPerUnitCents
     exactBatch += exact
     return { status: 'costed', costCents: Math.round(exact) }
   })

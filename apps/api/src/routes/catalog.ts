@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { db } from '../db.js'
 import { requireStoreMember, requireStoreManager, sendApiError, ApiError } from './auth.js'
 import { requireCashierTerminal } from '../terminal-auth/routes.js'
+import { convertQuantity, type RecipeCostUnit } from '../../../../packages/domain/src/recipe-cost.js'
 
 async function snapshot(req: import('express').Request, res: import('express').Response, terminal = false) {
   try {
@@ -276,7 +277,7 @@ type UnitKind = typeof UNIT_KINDS[number]
 const MAX_RECIPE_QUANTITY = 1_000_000
 const MAX_RECIPE_LINES = 100
 
-export interface UnitInput { name: string; abbreviation: string; kind: UnitKind }
+export interface UnitInput { name: string; abbreviation: string; kind: UnitKind; factor_to_base: number | null }
 export interface RecipeLineInput { ingredient_id: string; quantity: number; unit_id: string }
 export interface RecipeInput { yield_quantity: number; yield_unit_id: string; lines: RecipeLineInput[] }
 
@@ -300,7 +301,13 @@ export function parseUnitBody(body: Record<string, unknown>): UnitInput {
   if (!abbreviation || abbreviation.length > 10) throw new ApiError(422, 'validation_failed', 'Unit abbreviation is required and must be 1–10 characters.')
   const kind = body.kind as UnitKind
   if (!UNIT_KINDS.includes(kind)) throw new ApiError(422, 'validation_failed', 'Unit kind must be mass, volume, or count.')
-  return { name, abbreviation, kind }
+  let factorToBase: number | null = null
+  if (body.factor_to_base !== undefined && body.factor_to_base !== null) {
+    const value = Number(body.factor_to_base)
+    if (!Number.isFinite(value) || value <= 0) throw new ApiError(422, 'validation_failed', 'factor_to_base must be a number greater than 0, or omitted.')
+    factorToBase = value
+  }
+  return { name, abbreviation, kind, factor_to_base: factorToBase }
 }
 
 export function parseRecipeBody(body: Record<string, unknown>): RecipeInput {
@@ -368,10 +375,10 @@ export async function saveRecipe(storeId: string, productId: string, input: Reci
     if (!product.rowCount) throw new ApiError(404, 'not_found', 'That dish does not exist in this store.')
 
     const unitIds = [...new Set([input.yield_unit_id, ...input.lines.map(line => line.unit_id)])]
-    const units = await client.query('select id from public.units where store_id=$1 and id = any($2::uuid[])', [storeId, unitIds])
-    const knownUnits = new Set((units.rows as { id: string }[]).map(row => row.id))
-    if (!knownUnits.has(input.yield_unit_id)) throw new ApiError(422, 'validation_failed', 'The yield unit does not belong to this store.')
-    if (unitIds.some(id => !knownUnits.has(id))) throw new ApiError(422, 'validation_failed', 'A recipe line uses a unit that does not belong to this store.')
+    const units = await client.query('select id, kind, factor_to_base::float8 as factor_to_base from public.units where store_id=$1 and id = any($2::uuid[])', [storeId, unitIds])
+    const unitsById = new Map((units.rows as (RecipeCostUnit & { factor_to_base: number | null })[]).map(row => [row.id, { id: row.id, kind: row.kind, factorToBase: row.factor_to_base } as RecipeCostUnit]))
+    if (!unitsById.has(input.yield_unit_id)) throw new ApiError(422, 'validation_failed', 'The yield unit does not belong to this store.')
+    if (unitIds.some(id => !unitsById.has(id))) throw new ApiError(422, 'validation_failed', 'A recipe line uses a unit that does not belong to this store.')
 
     const ready = await ingredientsReady(client)
     if (input.lines.length && !ready) {
@@ -383,12 +390,26 @@ export async function saveRecipe(storeId: string, productId: string, input: Reci
         [storeId, input.lines.map(line => line.ingredient_id)],
       )
       const ingredientUnit = new Map((ingredients.rows as { id: string; unit_id: string }[]).map(row => [row.id, row.unit_id]))
+      // An ingredient's own stock unit isn't necessarily one of the units already fetched above
+      // (those only cover the yield unit and each line's chosen unit) -- fetch whichever of them
+      // are still missing so the conversion check below always has both sides available.
+      const missingUnitIds = [...ingredientUnit.values()].filter(id => !unitsById.has(id))
+      if (missingUnitIds.length) {
+        const moreUnits = await client.query('select id, kind, factor_to_base::float8 as factor_to_base from public.units where store_id=$1 and id = any($2::uuid[])', [storeId, missingUnitIds])
+        for (const row of moreUnits.rows as (RecipeCostUnit & { factor_to_base: number | null })[]) {
+          unitsById.set(row.id, { id: row.id, kind: row.kind, factorToBase: row.factor_to_base })
+        }
+      }
       input.lines.forEach((line, index) => {
-        const unit = ingredientUnit.get(line.ingredient_id)
-        if (!unit) throw new ApiError(422, 'validation_failed', `Line ${index + 1}: that ingredient does not belong to this store.`)
-        // Costing (packages/domain/src/recipe-cost.ts) has no unit conversion yet; a mismatched
-        // line could only ever be mis-costed or mis-consumed, so refuse it at the source.
-        if (unit !== line.unit_id) throw new ApiError(422, 'unit_mismatch', `Line ${index + 1}: use the ingredient's own unit — unit conversion is not supported yet.`)
+        const unitId = ingredientUnit.get(line.ingredient_id)
+        if (!unitId) throw new ApiError(422, 'validation_failed', `Line ${index + 1}: that ingredient does not belong to this store.`)
+        const ingredientUnitInfo = unitsById.get(unitId)
+        const lineUnitInfo = unitsById.get(line.unit_id)
+        // Costing (packages/domain/src/recipe-cost.ts) refuses a mismatched or unconvertible line
+        // at costing time too -- refusing it here as well keeps a bad line out of storage entirely.
+        if (!ingredientUnitInfo || !lineUnitInfo || convertQuantity(1, lineUnitInfo, ingredientUnitInfo) === null) {
+          throw new ApiError(422, 'unit_mismatch', `Line ${index + 1}: this unit has no known conversion to the ingredient's stock unit.`)
+        }
       })
     }
 
@@ -425,7 +446,7 @@ async function listRecipeData(req: import('express').Request, res: import('expre
     const storeId = storeIdFrom(req.query.store_id)
     await requireStoreMember(req, storeId)
     const ready = await ingredientsReady(db)
-    const units = await db.query('select id, name, abbreviation, kind from public.units where store_id=$1 order by name', [storeId])
+    const units = await db.query('select id, name, abbreviation, kind, factor_to_base::float8 as factor_to_base from public.units where store_id=$1 order by name', [storeId])
     const ingredients = ready
       ? await db.query('select id, name, unit_id, cost_per_unit_cents, active from public.ingredients where store_id=$1 order by name', [storeId])
       : { rows: [] }
@@ -442,8 +463,8 @@ async function createUnit(req: import('express').Request, res: import('express')
     const unit = parseUnitBody(body)
     try {
       const result = await db.query(
-        'insert into public.units (store_id, name, abbreviation, kind) values ($1,$2,$3,$4) returning id, name, abbreviation, kind',
-        [storeId, unit.name, unit.abbreviation, unit.kind],
+        'insert into public.units (store_id, name, abbreviation, kind, factor_to_base) values ($1,$2,$3,$4,$5) returning id, name, abbreviation, kind, factor_to_base::float8 as factor_to_base',
+        [storeId, unit.name, unit.abbreviation, unit.kind, unit.factor_to_base],
       )
       res.status(201).json({ unit: result.rows[0] })
     } catch (insertReason) {

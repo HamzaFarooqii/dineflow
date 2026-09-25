@@ -5,22 +5,26 @@ import type { RecipeUnit, UnitKind } from '../menu/recipe-draft'
 // suggestions that create a real row in the store's own `units` table (via onCreateUnit,
 // Ahmed's /catalog/units endpoint) the first time they're picked, not a separate unit system.
 // Reusing the existing units table rather than inventing a parallel one for "common" units.
-const COMMON_UNITS: { name: string; abbreviation: string; kind: UnitKind }[] = [
-  { name: 'Milligram', abbreviation: 'mg', kind: 'mass' },
-  { name: 'Gram', abbreviation: 'g', kind: 'mass' },
-  { name: 'Kilogram', abbreviation: 'kg', kind: 'mass' },
-  { name: 'Milliliter', abbreviation: 'ml', kind: 'volume' },
-  { name: 'Liter', abbreviation: 'L', kind: 'volume' },
-  { name: 'Piece', abbreviation: 'pcs', kind: 'count' },
-  { name: 'Pack', abbreviation: 'pack', kind: 'count' },
-  { name: 'Box', abbreviation: 'box', kind: 'count' },
-  { name: 'Bottle', abbreviation: 'btl', kind: 'count' },
-  { name: 'Can', abbreviation: 'can', kind: 'count' },
-  { name: 'Tray', abbreviation: 'tray', kind: 'count' },
-  { name: 'Bag', abbreviation: 'bag', kind: 'count' },
-  { name: 'Portion', abbreviation: 'ptn', kind: 'count' },
-  { name: 'Slice', abbreviation: 'slice', kind: 'count' },
-  { name: 'Scoop', abbreviation: 'scoop', kind: 'count' },
+//
+// factorToBase is set only for mass/volume, which have real, universal ratios (gram/milliliter
+// base) -- a "Piece" or "Bag" has no such universal ratio to another count unit, so those stay
+// unconvertible (null) until a store explicitly defines one for its own units.
+const COMMON_UNITS: { name: string; abbreviation: string; kind: UnitKind; factorToBase: number | null }[] = [
+  { name: 'Milligram', abbreviation: 'mg', kind: 'mass', factorToBase: 0.001 },
+  { name: 'Gram', abbreviation: 'g', kind: 'mass', factorToBase: 1 },
+  { name: 'Kilogram', abbreviation: 'kg', kind: 'mass', factorToBase: 1_000 },
+  { name: 'Milliliter', abbreviation: 'ml', kind: 'volume', factorToBase: 1 },
+  { name: 'Liter', abbreviation: 'L', kind: 'volume', factorToBase: 1_000 },
+  { name: 'Piece', abbreviation: 'pcs', kind: 'count', factorToBase: null },
+  { name: 'Pack', abbreviation: 'pack', kind: 'count', factorToBase: null },
+  { name: 'Box', abbreviation: 'box', kind: 'count', factorToBase: null },
+  { name: 'Bottle', abbreviation: 'btl', kind: 'count', factorToBase: null },
+  { name: 'Can', abbreviation: 'can', kind: 'count', factorToBase: null },
+  { name: 'Tray', abbreviation: 'tray', kind: 'count', factorToBase: null },
+  { name: 'Bag', abbreviation: 'bag', kind: 'count', factorToBase: null },
+  { name: 'Portion', abbreviation: 'ptn', kind: 'count', factorToBase: null },
+  { name: 'Slice', abbreviation: 'slice', kind: 'count', factorToBase: null },
+  { name: 'Scoop', abbreviation: 'scoop', kind: 'count', factorToBase: null },
 ]
 
 const KIND_LABELS: Record<UnitKind, string> = { mass: 'Weight', volume: 'Volume', count: 'Count' }
@@ -29,7 +33,7 @@ export function UnitSelector({ units, value, onChange, onCreateUnit }: {
   units: RecipeUnit[]
   value: string
   onChange: (unitId: string) => void
-  onCreateUnit: (unit: { name: string; abbreviation: string; kind: UnitKind }) => Promise<RecipeUnit>
+  onCreateUnit: (unit: { name: string; abbreviation: string; kind: UnitKind; factor_to_base?: number | null }) => Promise<RecipeUnit>
 }) {
   const [search, setSearch] = useState('')
   const [creating, setCreating] = useState(false)
@@ -50,10 +54,10 @@ export function UnitSelector({ units, value, onChange, onCreateUnit }: {
       && (!term || common.name.toLowerCase().includes(term) || common.abbreviation.toLowerCase().includes(term)))
   }, [existingAbbreviations, search])
 
-  async function handleQuickAdd(common: { name: string; abbreviation: string; kind: UnitKind }) {
+  async function handleQuickAdd(common: { name: string; abbreviation: string; kind: UnitKind; factorToBase: number | null }) {
     setCreating(true); setCreateError('')
     try {
-      const created = await onCreateUnit(common)
+      const created = await onCreateUnit({ name: common.name, abbreviation: common.abbreviation, kind: common.kind, factor_to_base: common.factorToBase })
       onChange(created.id)
     } catch (reason) {
       setCreateError(reason instanceof Error ? reason.message : 'Could not add this unit.')

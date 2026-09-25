@@ -42,6 +42,9 @@ schema no longer matches history, and it needs manual reconciliation, not a sile
 | 202609250001_loyalty_foundation.sql | `d193d4d27a2644ec12a1c0bbf097aa11bb24654da7bd4a472ed3d28c5504a911` | yes | `public.loyalty_tiers`, `public.loyalty_accounts`, `public.loyalty_point_ledger`, `public.reward_rules` tables exist, each with a member-read RLS policy |
 | 202609250002_inventory_batch_tracking.sql | `d52b2be0f5a83724d91636dcdf208f931412c73aa3c0db3b3ad638c9d8d221eb` | yes | `ingredient_batches.remaining_quantity`/`reference` and `ingredients.updated_at` columns exist |
 | 202609250003_promotions.sql | `48068dcdc514b663d5736735f11813f9e8f4ada69352de2ee9e54ccdc59e69f5` | yes | `public.promotions` table exists with a member-read RLS policy |
+| 202609260001_unit_conversion.sql | `806ebcf2f1950b543d657a5dcb199874fd92c10a25db03449eba20631faf3a93` | yes | `units.factor_to_base` column exists |
+| 202609260002_staff_roles_and_shifts.sql | `6e5f8c4fee9ce2e8ec170bf4f4d54ad9fa72f472c5d42a998beb9f292bf1b5c8` | yes | `terminal_employees_role_check` constraint definition includes `rider`; `public.shifts` table exists |
+| 202609260003_service_charge.sql | `a8268107e9942418d7f36274ca375690553fad62f3f3c9b66a4cc1e842d34371` | yes | `stores.service_charge_bps` and `pos_orders.service_charge_cents` columns exist |
 
 Note: `202609230002_table_waiter_assignment.sql` was renamed from `..._0001_...` (Lead
 integration fixup, PR #4) — it and Ahmed's kitchen-display migration were both authored the

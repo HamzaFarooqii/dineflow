@@ -14,7 +14,7 @@ export function IngredientSelector({ ingredients, value, onChange, units, onCrea
   value: string
   onChange: (ingredientId: string, unitId?: string) => void
   units: readonly RecipeUnit[]
-  onCreateUnit: (unit: { name: string; abbreviation: string; kind: UnitKind }) => Promise<RecipeUnit>
+  onCreateUnit: (unit: { name: string; abbreviation: string; kind: UnitKind; factor_to_base?: number | null }) => Promise<RecipeUnit>
   onCreateIngredient: (input: { name: string; unit_id: string; cost_per_unit_cents: number }) => Promise<RecipeIngredientOption>
   currency: string
   disabled?: boolean

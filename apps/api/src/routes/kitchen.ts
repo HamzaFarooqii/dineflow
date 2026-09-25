@@ -3,6 +3,7 @@ import { db } from '../db.js'
 import { requireStoreMember, sendApiError, ApiError } from './auth.js'
 import { requireCashierTerminal } from '../terminal-auth/routes.js'
 import { deriveTicketStatus, KITCHEN_TICKET_ITEM_TRANSITIONS, KITCHEN_TICKET_STATUSES, type KitchenTicketStatus } from '../../../../packages/domain/src/kitchen-ticket-status.js'
+import { convertQuantity, type RecipeCostUnit } from '../../../../packages/domain/src/recipe-cost.js'
 import { applyTableStatusTransition } from './floor.js'
 
 export const kitchenRouter = Router()
@@ -170,9 +171,10 @@ async function patchItem(req: Request, res: Response) {
 // documents. A negative current_stock is a signal for reconciliation, surfaced as an "Out of
 // stock" tag on the inventory screen, not an error to raise here.
 //
-// A recipe line whose unit doesn't match its ingredient's stored unit is skipped, not guessed at
-// -- mirrors packages/domain/src/recipe-cost.ts's unit_mismatch handling exactly. A product with
-// no recipe at all is skipped entirely; not every dish has one.
+// A recipe line whose unit has no known conversion to its ingredient's stored unit is skipped,
+// not guessed at -- mirrors packages/domain/src/recipe-cost.ts's unit_mismatch handling exactly
+// (same convertQuantity function, so a line that costs also consumes, and vice versa). A product
+// with no recipe at all is skipped entirely; not every dish has one.
 export async function consumeRecipeIngredients(client: import('pg').PoolClient, storeId: string, kitchenTicketItemId: string, productId: string, quantitySold: number): Promise<void> {
   const recipe = await client.query<{ id: string; yield_quantity: string }>(
     'select id, yield_quantity from public.recipes where store_id=$1 and product_id=$2',
@@ -182,16 +184,26 @@ export async function consumeRecipeIngredients(client: import('pg').PoolClient, 
   if (!recipeRow) return
   const yieldQuantity = Number(recipeRow.yield_quantity)
 
-  const lines = await client.query<{ ingredient_id: string; line_quantity: string; line_unit_id: string; ingredient_unit_id: string }>(
-    `select ri.ingredient_id, ri.quantity::text as line_quantity, ri.unit_id as line_unit_id, i.unit_id as ingredient_unit_id
+  const lines = await client.query<{
+    ingredient_id: string; line_quantity: string; line_unit_id: string; line_kind: RecipeCostUnit['kind']; line_factor: number | null
+    ingredient_unit_id: string; ingredient_kind: RecipeCostUnit['kind']; ingredient_factor: number | null
+  }>(
+    `select ri.ingredient_id, ri.quantity::text as line_quantity,
+            ri.unit_id as line_unit_id, lu.kind as line_kind, lu.factor_to_base::float8 as line_factor,
+            i.unit_id as ingredient_unit_id, iu.kind as ingredient_kind, iu.factor_to_base::float8 as ingredient_factor
      from public.recipe_ingredients ri
      join public.ingredients i on i.store_id = ri.store_id and i.id = ri.ingredient_id
+     join public.units lu on lu.store_id = ri.store_id and lu.id = ri.unit_id
+     join public.units iu on iu.store_id = i.store_id and iu.id = i.unit_id
      where ri.store_id = $1 and ri.recipe_id = $2`,
     [storeId, recipeRow.id],
   )
 
   for (const line of lines.rows) {
-    if (line.line_unit_id !== line.ingredient_unit_id) continue
+    const converted = convertQuantity(1,
+      { id: line.line_unit_id, kind: line.line_kind, factorToBase: line.line_factor },
+      { id: line.ingredient_unit_id, kind: line.ingredient_kind, factorToBase: line.ingredient_factor })
+    if (converted === null) continue
 
     // Defensive: the served transition is one-way (KITCHEN_TICKET_ITEM_TRANSITIONS['served'] is
     // empty) so this item can't be re-served, but a duplicate consumption row is cheap to guard
@@ -202,7 +214,8 @@ export async function consumeRecipeIngredients(client: import('pg').PoolClient, 
     )
     if (already.rowCount) continue
 
-    const consumeQuantity = (Number(line.line_quantity) / yieldQuantity) * quantitySold
+    // converted is per unit of line_quantity, so scale it the same way line_quantity itself is used.
+    const consumeQuantity = ((Number(line.line_quantity) * converted) / yieldQuantity) * quantitySold
     // Best-effort FEFO batch depletion, same single-batch-only rule as inventory.ts's
     // selectWastageBatch: only associate a specific batch when it alone can cover the quantity,
     // since splitting one consumption across several batches would need multi-batch accounting

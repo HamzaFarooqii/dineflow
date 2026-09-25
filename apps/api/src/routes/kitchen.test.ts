@@ -32,6 +32,7 @@ const chain = [
   '202609240003_inventory_audit_columns.sql',
   '202609240004_inventory_terminal_audit.sql',
   '202609250002_inventory_batch_tracking.sql',
+  '202609260001_unit_conversion.sql',
 ]
 
 async function seededDatabase() {
@@ -59,18 +60,21 @@ function clientFor(database: PGlite): import('pg').PoolClient {
 // Shared fixture: a store, a 'kg' unit, an ingredient priced/stocked in kg, a product with a
 // recipe that uses 2kg of that ingredient per 1-unit batch, and one paid order line for that
 // product so a kitchen_ticket_item exists to serve.
-async function seedRecipeFixture(database: PGlite, options: { currentStock: number; quantitySold: number; mismatchUnit?: boolean }) {
+async function seedRecipeFixture(database: PGlite, options: { currentStock: number; quantitySold: number; mismatchUnit?: boolean; gramsLine?: boolean }) {
   const owner = randomUUID(), store = randomUUID(), product = randomUUID()
-  const kg = randomUUID(), litre = randomUUID(), ingredient = randomUUID(), recipe = randomUUID()
+  const kg = randomUUID(), litre = randomUUID(), gram = randomUUID(), ingredient = randomUUID(), recipe = randomUUID()
   await database.query('insert into auth.users(id) values ($1)', [owner])
   await database.query("insert into public.stores(id,name,code,created_by,timezone) values ($1,'One','kitchen-test',$2,'UTC')", [store, owner])
   await database.query(`insert into public.pos_products(id,store_id,sku,name,unit_price_cents) values ($1,$2,'SKU-1','Test dish',1200)`, [product, store])
-  await database.query(`insert into public.units(id,store_id,name,abbreviation,kind) values ($1,$2,'Kilogram','kg','mass')`, [kg, store])
+  await database.query(`insert into public.units(id,store_id,name,abbreviation,kind,factor_to_base) values ($1,$2,'Kilogram','kg','mass',1000)`, [kg, store])
   await database.query(`insert into public.units(id,store_id,name,abbreviation,kind) values ($1,$2,'Litre','L','volume')`, [litre, store])
+  await database.query(`insert into public.units(id,store_id,name,abbreviation,kind,factor_to_base) values ($1,$2,'Gram','g','mass',1)`, [gram, store])
   await database.query(`insert into public.ingredients(id,store_id,name,unit_id,cost_per_unit_cents,current_stock) values ($1,$2,'Flour',$3,50,$4)`, [ingredient, store, kg, options.currentStock])
   await database.query(`insert into public.recipes(id,store_id,product_id,yield_quantity,yield_unit_id) values ($1,$2,$3,1,$4)`, [recipe, store, product, kg])
-  await database.query(`insert into public.recipe_ingredients(id,store_id,recipe_id,ingredient_id,quantity,unit_id) values ($1,$2,$3,$4,2,$5)`,
-    [randomUUID(), store, recipe, ingredient, options.mismatchUnit ? litre : kg])
+  const lineUnit = options.mismatchUnit ? litre : options.gramsLine ? gram : kg
+  const lineQuantity = options.gramsLine ? 2_000 : 2 // 2000g == 2kg, same physical quantity as the kg-line tests
+  await database.query(`insert into public.recipe_ingredients(id,store_id,recipe_id,ingredient_id,quantity,unit_id) values ($1,$2,$3,$4,$5,$6)`,
+    [randomUUID(), store, recipe, ingredient, lineQuantity, lineUnit])
 
   const orderId = randomUUID()
   await database.query(`insert into public.pos_orders(id,store_id,receipt_number,currency,store_name_snapshot,timezone_snapshot,
@@ -152,6 +156,24 @@ test('consumeRecipeIngredients skips a line whose unit does not match its ingred
     assert.equal(movements.rows.length, 0, 'a unit mismatch must be skipped, never guessed at')
     const stock = await database.query<{ current_stock: string }>('select current_stock from public.ingredients where id=$1', [ingredient])
     assert.equal(Number(stock.rows[0].current_stock), 10, 'stock is untouched when the line is skipped')
+  } finally {
+    await database.close()
+  }
+})
+
+test('consumeRecipeIngredients converts a line in grams against an ingredient stocked in kilograms', async () => {
+  const database = await seededDatabase()
+  try {
+    const { store, product, ingredient, itemId } = await seedRecipeFixture(database, { currentStock: 10, quantitySold: 3, gramsLine: true })
+    const client = clientFor(database)
+    await consumeRecipeIngredients(client, store, itemId, product, 3)
+
+    const movement = await database.query<{ delta: string }>('select delta from public.stock_movements where ingredient_id=$1', [ingredient])
+    assert.equal(movement.rows.length, 1)
+    assert.equal(Number(movement.rows[0].delta), -6) // 2000g line == 2kg, same math as the kg-native test above
+
+    const stock = await database.query<{ current_stock: string }>('select current_stock from public.ingredients where id=$1', [ingredient])
+    assert.equal(Number(stock.rows[0].current_stock), 4) // 10 - 6
   } finally {
     await database.close()
   }

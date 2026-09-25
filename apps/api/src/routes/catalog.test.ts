@@ -14,10 +14,16 @@ const { db } = await import('../db.js')
 const unitA = randomUUID(), unitB = randomUUID(), ingredientA = randomUUID()
 
 test('parseUnitBody trims and validates name, abbreviation and kind', () => {
-  assert.deepEqual(parseUnitBody({ name: ' Kilogram ', abbreviation: ' kg ', kind: 'mass' }), { name: 'Kilogram', abbreviation: 'kg', kind: 'mass' })
+  assert.deepEqual(parseUnitBody({ name: ' Kilogram ', abbreviation: ' kg ', kind: 'mass' }), { name: 'Kilogram', abbreviation: 'kg', kind: 'mass', factor_to_base: null })
   assert.throws(() => parseUnitBody({ name: '', abbreviation: 'kg', kind: 'mass' }), /Unit name/)
   assert.throws(() => parseUnitBody({ name: 'Kilogram', abbreviation: 'kilograms!!', kind: 'mass' }), /abbreviation/)
   assert.throws(() => parseUnitBody({ name: 'Kilogram', abbreviation: 'kg', kind: 'weight' }), /mass, volume, or count/)
+})
+
+test('parseUnitBody accepts an optional positive factor_to_base, or rejects a bad one', () => {
+  assert.deepEqual(parseUnitBody({ name: 'Gram', abbreviation: 'g', kind: 'mass', factor_to_base: 1 }), { name: 'Gram', abbreviation: 'g', kind: 'mass', factor_to_base: 1 })
+  assert.throws(() => parseUnitBody({ name: 'Gram', abbreviation: 'g', kind: 'mass', factor_to_base: 0 }), /factor_to_base/)
+  assert.throws(() => parseUnitBody({ name: 'Gram', abbreviation: 'g', kind: 'mass', factor_to_base: -1 }), /factor_to_base/)
 })
 
 test('parseRecipeBody requires a positive yield, a unit, and well-formed unique lines', () => {
@@ -38,6 +44,7 @@ const chain = [
   '202609150001_catalog_checkout_sync.sql',
   '202609210001_restaurant_foundation.sql',
   '202609240001_units_and_recipes.sql',
+  '202609260001_unit_conversion.sql',
 ]
 
 // Bisma's planned ingredients/recipe_ingredients shape (docs/day-plans/day3.md), trimmed to the
@@ -109,8 +116,9 @@ test('saveRecipe replaces every ingredient line on save and enforces store + uni
   const { database, store, otherStore, product, portion, otherUnit } = await fixtureDatabase()
   try {
     await database.exec(ingredientTables)
-    const kg = randomUUID(), rice = randomUUID(), stock = randomUUID(), foreign = randomUUID()
-    await database.query("insert into public.units(id,store_id,name,abbreviation,kind) values ($1,$2,'Kilogram','kg','mass')", [kg, store])
+    const kg = randomUUID(), gram = randomUUID(), rice = randomUUID(), stock = randomUUID(), foreign = randomUUID()
+    await database.query("insert into public.units(id,store_id,name,abbreviation,kind,factor_to_base) values ($1,$2,'Kilogram','kg','mass',1000)", [kg, store])
+    await database.query("insert into public.units(id,store_id,name,abbreviation,kind,factor_to_base) values ($1,$2,'Gram','g','mass',1)", [gram, store])
     await database.query("insert into public.ingredients(id,store_id,name,unit_id,cost_per_unit_cents) values ($1,$2,'Rice',$3,400)", [rice, store, kg])
     await database.query("insert into public.ingredients(id,store_id,name,unit_id,cost_per_unit_cents) values ($1,$2,'Stock',$3,50)", [stock, store, portion])
     await database.query("insert into public.ingredients(id,store_id,name,unit_id,cost_per_unit_cents) values ($1,$2,'Rice',$3,400)", [foreign, otherStore, otherUnit])
@@ -126,7 +134,13 @@ test('saveRecipe replaces every ingredient line on save and enforces store + uni
     const count = await database.query<{ n: number }>('select count(*)::int as n from public.recipe_ingredients')
     assert.equal(count.rows[0].n, 1, 'old lines are deleted, not left orphaned')
 
-    await assert.rejects(saveRecipe(store, product, { yield_quantity: 4, yield_unit_id: portion, lines: [{ ingredient_id: rice, quantity: 1, unit_id: portion }] }), /use the ingredient's own unit/)
+    await assert.rejects(saveRecipe(store, product, { yield_quantity: 4, yield_unit_id: portion, lines: [{ ingredient_id: rice, quantity: 1, unit_id: portion }] }), /no known conversion/)
+
+    // Gram and kilogram both carry a factor_to_base of the same kind, so a gram line against a
+    // kilogram-stocked ingredient is now accepted (this is the whole point of the feature).
+    const converted = await saveRecipe(store, product, { yield_quantity: 4, yield_unit_id: portion, lines: [{ ingredient_id: rice, quantity: 500, unit_id: gram }] })
+    assert.deepEqual(converted.lines.map(line => [line.ingredient_id, line.quantity, line.unit_id]), [[rice, 500, gram]])
+
     await assert.rejects(saveRecipe(store, product, { yield_quantity: 4, yield_unit_id: portion, lines: [{ ingredient_id: foreign, quantity: 1, unit_id: kg }] }), /does not belong to this store/)
     await assert.rejects(saveRecipe(store, product, { yield_quantity: 4, yield_unit_id: portion, lines: [{ ingredient_id: rice, quantity: 1, unit_id: otherUnit }] }), /unit that does not belong/)
   } finally {

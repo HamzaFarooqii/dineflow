@@ -250,7 +250,7 @@ export function ProductCatalogScreen() {
   const storeSavedRecipe = (saved: SavedRecipe) =>
     setRecipeData((d) => d && { ...d, recipes: [...d.recipes.filter((r) => r.product_id !== saved.product_id), saved] })
 
-  const handleCreateUnit = async (unit: { name: string; abbreviation: string; kind: UnitKind }) => {
+  const handleCreateUnit = async (unit: { name: string; abbreviation: string; kind: UnitKind; factor_to_base?: number | null }) => {
     const created = await createUnit(storeId, unit)
     setRecipeData((d) => d && { ...d, units: [...d.units, created].sort((a, b) => a.name.localeCompare(b.name)) })
     return created
@@ -283,7 +283,7 @@ export function ProductCatalogScreen() {
   const handleRecipeSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (!recipeProduct || !recipeData) return
-    const result = validateDraft(recipeDraft, recipeData.ingredients)
+    const result = validateDraft(recipeDraft, recipeData.ingredients, recipeData.units)
     if (!result.ok) {
       setRecipeErrs(result.errors)
       return
@@ -387,7 +387,7 @@ export function ProductCatalogScreen() {
     const fieldErrs = validate()
     // An untouched recipe section is simply skipped; a started one must be valid before the
     // dish is created, so a bad recipe can't leave a half-saved dish behind.
-    const recipeResult = isDraftBlank(recipeDraft) || !recipeData ? null : validateDraft(recipeDraft, recipeData.ingredients)
+    const recipeResult = isDraftBlank(recipeDraft) || !recipeData ? null : validateDraft(recipeDraft, recipeData.ingredients, recipeData.units)
     if (Object.keys(fieldErrs).length || (recipeResult && !recipeResult.ok)) {
       setErrs(fieldErrs)
       if (recipeResult && !recipeResult.ok) setRecipeErrs(recipeResult.errors)
@@ -770,7 +770,7 @@ export function ProductCatalogScreen() {
                           </button>
                         )
                       }
-                      const cost = costSavedRecipe(recipe, recipeData.ingredients)
+                      const cost = costSavedRecipe(recipe, recipeData.ingredients, recipeData.units)
                       const pct = formatFoodCostPercent(foodCostBps(cost.portionCostCents, product.unit_price_cents))
                       return (
                         <button

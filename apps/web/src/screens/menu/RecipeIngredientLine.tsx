@@ -14,7 +14,7 @@ interface Props {
   disabled: boolean
   onChange: (line: RecipeDraftLine) => void
   onRemove: () => void
-  onCreateUnit: (unit: { name: string; abbreviation: string; kind: UnitKind }) => Promise<RecipeUnit>
+  onCreateUnit: (unit: { name: string; abbreviation: string; kind: UnitKind; factor_to_base?: number | null }) => Promise<RecipeUnit>
   onCreateIngredient: (input: { name: string; unit_id: string; cost_per_unit_cents: number }) => Promise<RecipeIngredientOption>
 }
 
@@ -70,7 +70,7 @@ export function RecipeIngredientLine({ index, line, ingredients, units, cost, er
       )}
       {cost?.status === 'unit_mismatch' && !error && (
         <p className="cart-line-stock-warning" role="alert">
-          Unit differs from this ingredient’s stock unit ({unitLabel(selected?.unit_id ?? '')}) — unit conversion isn’t supported yet, so this line isn’t costed.
+          No known conversion between this unit and the ingredient’s stock unit ({unitLabel(selected?.unit_id ?? '')}) — this line isn’t costed. Use the ingredient’s own unit, or give both units a conversion factor.
         </p>
       )}
       {error && <p className="pc-field-err">{error}</p>}

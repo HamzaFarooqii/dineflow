@@ -36,7 +36,7 @@ export async function saveRecipe(storeId: string, productId: string, payload: Re
   return data.recipe
 }
 
-export async function createUnit(storeId: string, unit: { name: string; abbreviation: string; kind: UnitKind }): Promise<RecipeUnit> {
+export async function createUnit(storeId: string, unit: { name: string; abbreviation: string; kind: UnitKind; factor_to_base?: number | null }): Promise<RecipeUnit> {
   const data = await request<{ unit: RecipeUnit }>('/catalog/units', { method: 'POST', body: JSON.stringify({ store_id: storeId, ...unit }) })
   return data.unit
 }
