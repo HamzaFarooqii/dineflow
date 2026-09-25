@@ -28,6 +28,11 @@ import { CashierHardwareSettings } from './screens/CashierHardwareSettings'
 import { CashierProductsScreen } from './screens/CashierProductsScreen'
 import { OnboardingWizard } from './onboarding/OnboardingWizard'
 import { activeStoreId, loadCatalog } from './lib/catalog'
+import {
+  LayoutDashboard, ShoppingCart, UtensilsCrossed, ClipboardList, Users, BarChart3,
+  LayoutGrid, ChefHat, Package, Settings as SettingsIcon, LogOut, CircleUser,
+} from './components/icons'
+import type { LucideIcon } from 'lucide-react'
 
 const CashierLogin = lazy(() => import('./terminal-auth/CashierLogin').then(module => ({ default: module.CashierLogin })))
 const ManagerSetup = lazy(() => import('./terminal-auth/ManagerSetup').then(module => ({ default: module.ManagerSetup })))
@@ -36,7 +41,20 @@ const StoreDetails = lazy(() => import('./screens/StoreDetails').then(module => 
 // Menu mock for the marketing hero's <RegisterMini /> only. The fourth field names a
 // .product-art shape in styles.css; the third is the station the dish fires from.
 const products = [['Hamachi Crudo', '$26.00', 'Raw bar', 'plate'], ['Burrata & Peach', '$19.00', 'Garde manger', 'bowl'], ['Charred Broccolini', '$14.00', 'Garde manger', 'leaf'], ['Sourdough & Cultured Butter', '$9.00', 'Bakery', 'slice'], ['Duck Breast, Cherry', '$42.00', 'Grill', 'board'], ['Bavette, Bone Marrow', '$46.00', 'Grill', 'board'], ['Riesling, Mosel', '$17.00', 'Cellar', 'glass'], ['Amaro Service', '$15.00', 'Bar', 'bottle']] as const
-const nav = [['⌂', 'Dashboard', '/dashboard'], ['⌁', 'Sell', '/register'], ['▦', 'Menu', '/products'], ['▤', 'Orders', '/orders'], ['♧', 'Guests', '/customers'], ['▥', 'Reports', '/reports'], ['◫', 'Floor & Tables', '/floor'], ['♨', 'Kitchen', '/kitchen'], ['▣', 'Inventory', '/inventory'], ['⚙', 'Settings', '/settings']] as const
+// Grouped by how a restaurant actually thinks about these screens, not an alphabetical or
+// flat admin-sidebar list: a home item, then the moment-to-moment "Operate" screens, the
+// less time-sensitive "Manage" screens, "Insights", and Settings on its own at the bottom
+// (account/system-level, not a workflow). navGroups drives the sidebar; ALL_NAV_ITEMS is the
+// flat lookup mobileNav and the Reports-visibility filter both need.
+type NavItem = readonly [LucideIcon, string, string]
+const navGroups: readonly { label: string | null; items: readonly NavItem[] }[] = [
+  { label: null, items: [[LayoutDashboard, 'Dashboard', '/dashboard']] },
+  { label: 'Operate', items: [[ShoppingCart, 'Sell', '/register'], [ClipboardList, 'Orders', '/orders'], [LayoutGrid, 'Floor & Tables', '/floor'], [ChefHat, 'Kitchen', '/kitchen']] },
+  { label: 'Manage', items: [[UtensilsCrossed, 'Menu', '/products'], [Package, 'Inventory', '/inventory'], [Users, 'Guests', '/customers']] },
+  { label: 'Insights', items: [[BarChart3, 'Reports', '/reports']] },
+]
+const settingsNavItem: NavItem = [SettingsIcon, 'Settings', '/settings']
+const ALL_NAV_ITEMS: readonly NavItem[] = [...navGroups.flatMap(group => group.items), settingsNavItem]
 function Mark() { return <span aria-hidden="true" className="leaf-mark">⌁</span> }
 function Brand({ dark = false }: { dark?: boolean }) { return <Link className={`brand ${dark ? 'brand-dark' : ''}`} to="/"><Mark />Dineflow <small>RESTAURANT OPERATING SYSTEM</small></Link> }
 function Button({ children, to, disabled = false, type = 'button', onClick }: { children: ReactNode, to?: string, disabled?: boolean, type?: 'button' | 'submit', onClick?: () => void }) { return to ? <Link className="cta" to={to}>{children}<b aria-hidden="true">→</b></Link> : <button className="cta" type={type} disabled={disabled} onClick={onClick}>{children}<b aria-hidden="true">→</b></button> }
@@ -114,10 +132,11 @@ function Invite() { const go = useNavigate(); const [error, setError] = useState
 
 export function AppLayout({ children }: { children: ReactNode }) {
   // Mobile bottom bar is a fixed 5-column grid (styles.css); keep exactly 5 items here
-  // (Dashboard, Sell, Products, Orders, Settings) or the 6th wraps onto its own row.
-  // Customers stays reachable from the sidebar on larger screens. Settings is referenced by
-  // label, not index, since it now sits last in `nav` rather than at a fixed position.
-  const mobileNav = [nav[0], nav[1], nav[2], nav[3], nav.find(([, label]) => label === 'Settings')!]
+  // (Dashboard, Sell, Menu, Orders, Settings) or the 6th wraps onto its own row. Customers
+  // stays reachable from the sidebar on larger screens. Looked up by label rather than array
+  // index so this doesn't silently break if navGroups gets reordered.
+  const mobileLabels = ['Dashboard', 'Sell', 'Menu', 'Orders', 'Settings']
+  const mobileNav = mobileLabels.map(label => ALL_NAV_ITEMS.find(([, itemLabel]) => itemLabel === label)!)
   const go = useNavigate()
   const [signingOut, setSigningOut] = useState(false)
   const [canReport, setCanReport] = useState<boolean>()
@@ -137,7 +156,12 @@ export function AppLayout({ children }: { children: ReactNode }) {
     void resolveFinancialAccess().then(() => { if (active) setCanReport(true) }).catch(() => { if (active) setCanReport(false) })
     return () => { active = false }
   }, [session?.user.id])
-  const visibleNav = nav.filter(([, label]) => label !== 'Reports' || canReport)
+  // canReport resolves quickly in background; sidebar simply hides Reports until ready. A group
+  // that ends up with no visible items (only "Insights" can, today) is dropped entirely rather
+  // than rendering an empty labeled section.
+  const visibleGroups = navGroups
+    .map(group => ({ ...group, items: group.items.filter(([, label]) => label !== 'Reports' || canReport) }))
+    .filter(group => group.items.length > 0)
   const signOut = async () => {
     setSigningOut(true)
     try {
@@ -146,8 +170,40 @@ export function AppLayout({ children }: { children: ReactNode }) {
       go('/login', { replace: true })
     } finally { setSigningOut(false) }
   }
-  // canReport resolves quickly in background; sidebar simply hides Reports until ready
-  return <div className="pos-app"><aside className="app-sidebar"><Brand dark /><nav aria-label="Store navigation">{visibleNav.map(([icon, label, to]) => <NavLink key={label} to={to}><span aria-hidden="true">{icon}</span>{label}</NavLink>)}</nav><div className="sidebar-bottom"><span>{terminal?.device.name ?? 'Store workspace'}<br /><small>{terminal ? 'Terminal ready' : 'No terminal connected'}</small></span></div></aside><main className="app-main"><header className="app-top"><div className="mobile-store"><Brand dark /></div><StoreSwitcher /><ConnectionAndSync /><span className="register-meta"><b>{terminal?.device.name ?? 'Store workspace'}</b><small>{terminal ? `Receipt prefix: ${terminal.device.receipt_prefix}` : 'No terminal connected'}</small></span><button className="sign-out" type="button" onClick={() => void signOut()} disabled={signingOut}>{signingOut ? 'Signing out…' : 'Sign out'}</button></header>{children}</main><nav className="mobile-nav mobile-nav-with-customers" aria-label="Store navigation">{mobileNav.map(([icon, label, to]) => <NavLink key={label} to={to}><span aria-hidden="true">{icon}</span>{label}</NavLink>)}</nav></div>
+  return <div className="pos-app">
+    <aside className="app-sidebar">
+      <Brand dark />
+      <nav aria-label="Store navigation" className="sidebar-nav">
+        {visibleGroups.map((group, index) => <div className="sidebar-nav-group" key={group.label ?? `top-${index}`}>
+          {group.label && <p className="sidebar-nav-label">{group.label}</p>}
+          {group.items.map(([Icon, label, to]) => <NavLink key={label} to={to}><Icon aria-hidden="true" size={18} />{label}</NavLink>)}
+        </div>)}
+        <div className="sidebar-nav-group sidebar-nav-settings">
+          <NavLink to={settingsNavItem[2]}><SettingsIcon aria-hidden="true" size={18} />{settingsNavItem[1]}</NavLink>
+        </div>
+      </nav>
+      <div className="sidebar-bottom"><span>{terminal?.device.name ?? 'Store workspace'}<br /><small>{terminal ? 'Terminal ready' : 'No terminal connected'}</small></span></div>
+    </aside>
+    <main className="app-main">
+      <header className="app-top">
+        <div className="mobile-store"><Brand dark /></div>
+        <StoreSwitcher />
+        <ConnectionAndSync />
+        <span className="register-meta"><b>{terminal?.device.name ?? 'Store workspace'}</b><small>{terminal ? `Receipt prefix: ${terminal.device.receipt_prefix}` : 'No terminal connected'}</small></span>
+        <div className="account-chip">
+          <CircleUser aria-hidden="true" size={20} />
+          <span className="account-chip-email">{session?.user.email ?? 'Account'}</span>
+          <button className="account-chip-signout" type="button" onClick={() => void signOut()} disabled={signingOut} title="Sign out">
+            <LogOut aria-hidden="true" size={16} />{signingOut ? 'Signing out…' : 'Sign out'}
+          </button>
+        </div>
+      </header>
+      {children}
+    </main>
+    <nav className="mobile-nav mobile-nav-with-customers" aria-label="Store navigation">
+      {mobileNav.map(([Icon, label, to]) => <NavLink key={label} to={to}><Icon aria-hidden="true" size={18} />{label}</NavLink>)}
+    </nav>
+  </div>
 }
 function Register() { return <AppLayout><RegisterScreen /></AppLayout> }
 function Cart() { return <aside className="sale-cart"><div className="cart-title"><h2>Open check</h2><button type="button" className="text-action" disabled>Void check</button></div><p className="empty-cart">This check is ready for its first course.</p><button type="button" className="customer" disabled>Add customer <small>(available with POS setup)</small></button><div className="totals"><span>Subtotal <b>$0.00</b></span><span>Tax <b>$0.00</b></span><strong>Total <b>$0.00</b></strong></div><Button to="/payment">Proceed to payment</Button></aside> }

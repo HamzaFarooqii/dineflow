@@ -64,6 +64,26 @@ receipt/order numbers, timestamps: anything numeric that benefits from tabular f
 | Numeric / price | `500–600 13–20px IBM Plex Mono` |
 | Status chip text | `600 10–11px Archivo` |
 
+Sizes above now also exist as tokens (`styles.css` `:root`): `--mise-text-display/h1/h2/h3/body/
+small/micro` and `--mise-text-numeric-lg/md/sm`. Screens redesigned from here on size text from
+these instead of a one-off px value; screens not yet touched keep their existing inline sizes —
+this is additive, not a forced rewrite of every screen at once.
+
+## Icons
+
+**One library: `lucide-react`.** Before the product-wide redesign (`docs/day-plans` — Hamza's
+Day 4 redesign branches), every icon in the app was a hand-picked Unicode glyph (⌂ ⌁ ▦ ♧ …) —
+consistent as a mechanism, not as a visual system (inconsistent weight, a card-suit symbol
+standing in for "Guests"). Import icons from `apps/web/src/components/icons.ts`, not straight
+from `lucide-react` — that file re-exports the specific set actually in use, so "which icons does
+this app have" stays answerable from one place instead of drifting. Add a new icon there, not
+inline, the first time a screen needs one that isn't already re-exported.
+
+**Not yet migrated**: `apps/web/src/terminal-auth/CashierPosLayout.tsx` (the cashier-terminal
+shell) has its own separate, even less consistent icon setup — generic "○" placeholders for two
+of its five nav items. Scheduled for the Sell/POS module redesign pass, not done in the shell
+change, since it's the shell specifically for that workflow.
+
 ## Spacing, radius, elevation
 
 - Spacing scale: `--mise-space-2/4/8/12/16/24/32` (px). Pick from this scale; don't invent a
@@ -78,27 +98,29 @@ receipt/order numbers, timestamps: anything numeric that benefits from tabular f
 
 ## Components (existing — standardize on these, don't create alternates)
 
-| Component | Reference class(es) | Notes |
+| Component | Reference | Notes |
 |---|---|---|
 | Primary button | `.cta` | Dark fill, inverse text |
 | Secondary button | `.secondary-cta` | Outlined |
 | Text/tertiary button | `.text-action` | No border, saffron-tinted hover |
 | Icon-only button | `.quantity button`, `.cart-line>button` | 44px square minimum |
 | Search input | `.search` | Icon + input, saffron focus ring |
-| Select/dropdown | native `<select>` styled inline (see `.floor-waiter-select`) | No custom dropdown component yet — don't build one for a single use site |
+| Select/dropdown | `<SelectField>` (`apps/web/src/components/SelectField.tsx`) | Styled wrapper around a real native `<select>` — e.g. keyboard/mobile-picker behavior is free, it's just no longer bare browser chrome. Used by `StoreSwitcher`; migrate other native selects (currency/timezone, role pickers) onto it as their screens get redesigned, not all at once |
 | Tabs | `.categories`, `.floor-area-tabs` | Pill row, active = dark fill |
 | Card | `.catalog-card`, `.table-card` | Hairline border, r3, flat |
-| Status chip | `.floor-status`, `.order-state`, kitchen ticket status badge | Fill/ink pair per tone (see Colors) — **one pattern, reused across floor/kitchen/orders**, not reinvented per screen |
+| KPI/metric card | `<MetricCard>` (`apps/web/src/components/MetricCard.tsx`) | Replaces the `ReportCard`/`.inventory-summary-card` duplication — both were the same recipe built independently within days of each other. Use this for any new KPI card |
+| Status chip | `<StatusBadge>` (`apps/web/src/components/StatusBadge.tsx`), class family `.status-badge-*` | **The new canonical chip going forward.** `.floor-status` (floor/kitchen/inventory) and `.order-state` (orders/receipts) are the same idea built twice already and still render as-is today — migrate each onto `StatusBadge` as that screen gets its own redesign pass, not as a mechanical find-replace. Don't start a fourth pattern; if a screen needs a chip today, this is the one to add |
+| Page header | `<PageHeader>` (`apps/web/src/components/PageHeader.tsx`) | Kicker/h1/subtitle/actions row every screen was hand-building slightly differently (`.floor-page-head`, `.reporting-heading`, ...) |
 | Popover/inline editor | `.discount-popover` | Anchored, not a full modal |
-| Modal | `ManagerApprovalModal` | The one true modal pattern so far — reuse its structure (backdrop, focus trap) for any new modal rather than writing a second one |
+| Modal/dialog shell | `<Dialog>` (`apps/web/src/components/Dialog.tsx`) | Extracted from `ManagerApprovalModal`'s original focus-trap logic. **Not yet migrated**: `ManagerApprovalModal` still stands alone (checkout/terminal-approval code, not touched without dedicated test time) and `CustomerSelector` still hand-rolls its own second overlay (`.crm-overlay`/`.crm-dialog`) — both are follow-up work for their own module's redesign pass. Any *new* dialog uses `Dialog`, not a third hand-rolled overlay |
 | Drawer | `.floor-detail` (fixed-position side panel) | Reuse for any future detail-panel need before inventing a new drawer pattern |
-| Notice/toast-equivalent | `.form-notice` (error/status variants) | No true stacking toast system exists yet — if Day 3–5 needs one, it's a new shared component, flag to the Lead before building a one-off |
-| Empty state | Plain `<p>` with a specific message (e.g. Floor's "No floor areas or tables are set up...") | No dedicated `<EmptyState>` component yet — text pattern is: state the fact, not "no data" |
+| Notice/toast-equivalent | `.form-notice` (error/status variants) | No true stacking toast system exists yet — if a screen needs one, it's a new shared component, flag to the Lead before building a one-off |
+| Empty state | `<EmptyState>` (`apps/web/src/components/EmptyState.tsx`) | Title + optional description + optional action. Screens not yet migrated keep their own plain `<p>` message for now. Text pattern stays: state the fact, not "no data" |
 | Loading state | `role="status"` text ("Loading the floor…") | No skeleton components yet |
 | Confirmation dialog | `window.confirm(...)` (e.g. "Void this check") | Acceptable for low-frequency destructive actions; don't build a custom confirm dialog for parity's sake alone |
 
 **Gaps, honestly**: no dedicated Table/DataGrid, Tooltip, or Skeleton component exists. Don't
-invent one speculatively — build it the first time a Day 3–5 screen genuinely needs it, as a
+invent one speculatively — build it the first time a screen genuinely needs it, as a
 shared component from that point on, not a one-off.
 
 ## Restaurant-specific components (existing — reuse, extend, don't duplicate)
