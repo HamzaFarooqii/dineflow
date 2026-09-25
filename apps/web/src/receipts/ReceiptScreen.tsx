@@ -8,6 +8,7 @@ import { useReceiptStore } from './useReceiptStore'
 import { accessToken, configuredApiUrl } from '../lib/catalog'
 import { posDb } from '../lib/db'
 import { requireSupabase } from '../lib/supabase'
+import { PageHeader } from '../components/PageHeader'
 
 export function ReceiptScreen({ terminal = false }: { terminal?: boolean }) {
   const { orderId = '' } = useParams()
@@ -86,8 +87,15 @@ export function ReceiptScreen({ terminal = false }: { terminal?: boolean }) {
     }
   }
 
-  return <section className="receipt-page"><p className="kicker">SAVED CHECK</p><h1>Guest check.</h1>
-    <div className="receipt-actions"><Link to={terminal ? '/pos/orders' : '/orders'}>← Back to checks</Link><Link to={terminal ? '/pos/register' : '/register'}>Open a check →</Link></div>
+  return <section className="receipt-page">
+    <PageHeader
+      kicker="SAVED CHECK"
+      title="Guest check."
+      actions={<>
+        <Link className="secondary-cta" to={terminal ? '/pos/orders' : '/orders'}>← Back to checks</Link>
+        <Link className="cta" to={terminal ? '/pos/register' : '/register'}>Open a check →</Link>
+      </>}
+    />
     {failure ? <div role="alert"><p>{failure}</p><button type="button" onClick={() => { scope.retry(); setAttempt(value => value + 1) }}>Try again</button></div>
       : receipt === undefined ? <p role="status">Loading saved check…</p>
       : receipt === null ? <div role="status"><h2>Check not found</h2><p>This check is not saved for this restaurant in this browser. Look under Orders on the terminal that closed it.</p></div>

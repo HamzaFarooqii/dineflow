@@ -8,7 +8,18 @@ import { classifySyncState, canRetrySync, SYNC_STATE_LABELS, type SyncState } fr
 import { saleDate, saleDay } from '../receipts/data'
 import { receiptStore, useReceiptStore } from '../receipts/useReceiptStore'
 import { fetchOrdersPage, type ServerOrderSummary } from '../lib/server-reports'
+import { PageHeader } from '../components/PageHeader'
+import { StatusBadge, type BadgeTone } from '../components/StatusBadge'
 import '../receipts/receipts.css'
+
+// Mirrors the color choices .order-state already used (receipts.css) onto the shared chip.
+const SYNC_STATE_TONE: Record<SyncState, BadgeTone> = {
+  synced: 'success',
+  pending: 'warning',
+  in_flight: 'info',
+  blocked: 'violet',
+  rejected: 'danger',
+}
 
 export function OrderHistoryScreen({ terminal = false }: { terminal?: boolean }) {
   const scope = useReceiptStore(terminal)
@@ -94,9 +105,13 @@ export function OrderHistoryScreen({ terminal = false }: { terminal?: boolean })
   }
   const visible = orders?.filter(order => (!date || saleDay(order) === date) &&
     `${order.receipt_number} ${saleDate(order)} ${saleDay(order)}`.toLowerCase().includes(query.trim().toLowerCase())) ?? []
-  return <section className="order-history receipt-history"><p className="kicker">SERVICE HISTORY</p><h1>Closed checks.</h1>
-    <p className="screen-note">Every check settled on this terminal, saved in this browser. Dates use the timezone recorded when the check was closed.</p>
-    <div className="receipt-actions"><Link to={terminal ? '/pos/register' : '/register'}>Open a check</Link></div>
+  return <section className="order-history receipt-history">
+    <PageHeader
+      kicker="SERVICE HISTORY"
+      title="Closed checks."
+      subtitle="Every check settled on this terminal, saved in this browser. Dates use the timezone recorded when the check was closed."
+      actions={<Link className="cta" to={terminal ? '/pos/register' : '/register'}>Open a check</Link>}
+    />
     <div className="history-tools"><label>Find check or date<input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Check number or date" /></label>
       <label>Service date<input type="date" value={date} onChange={event => setDate(event.target.value)} /></label>
       {(query || date) && <button type="button" onClick={() => { setQuery(''); setDate('') }}>Clear search</button>}
@@ -119,7 +134,7 @@ export function OrderHistoryScreen({ terminal = false }: { terminal?: boolean })
         <article key={order.id}>
           <div><strong>{order.receipt_number}</strong><small>{saleDate(order)} | {order.timezone_snapshot}</small></div>
           <b>{formatCents(order.total_cents, order.currency)}</b>
-          <span className={`order-state ${state}`}>{SYNC_STATE_LABELS[state]}</span>
+          <StatusBadge tone={SYNC_STATE_TONE[state]}>{SYNC_STATE_LABELS[state]}</StatusBadge>
           <Link className="receipt-detail-link" to={`${terminal ? '/pos/orders' : '/orders'}/${encodeURIComponent(order.id)}`}>View check / print</Link>
           {canRetry && <button type="button" disabled={busy} onClick={() => void sync(order.id)}>Retry now</button>}
           {failureMsg && <p className="history-reason">{failureMsg}</p>}
@@ -143,7 +158,7 @@ export function OrderHistoryScreen({ terminal = false }: { terminal?: boolean })
               <article key={order.id}>
                 <div><strong>{order.receiptNumber}</strong><small>{new Date(order.time).toLocaleString()}{order.cashierName ? ` | ${order.cashierName}` : ''}</small></div>
                 <b>{formatCents(order.totalCents, currency)}</b>
-                <span className="order-state synced">Synced</span>
+                <StatusBadge tone="success">Synced</StatusBadge>
                 <small>{order.itemCount} item{order.itemCount === 1 ? '' : 's'} | {order.paymentMethod}</small>
               </article>
             ))}</div>
