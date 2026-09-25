@@ -5,14 +5,15 @@ import { TrendingDown, TrendingUp, Minus } from './icons'
 // ReportingScreens.tsx's ReportCard/.report-card and InventoryScreen's near-identical
 // .inventory-summary-card, built independently within days of each other. One component now;
 // both screens render through it (docs/DESIGN_SYSTEM.md: reuse, don't reinvent per screen).
-export function MetricCard({ label, value, detail, featured = false, delta }: {
+export function MetricCard({ label, value, detail, featured = false, delta, className }: {
   label: string
   value: ReactNode
   detail?: ReactNode
   featured?: boolean
   delta?: { direction: 'up' | 'down' | 'flat'; label: string }
+  className?: string
 }) {
-  return <article className={featured ? 'metric-card featured' : 'metric-card'}>
+  return <article className={['metric-card', featured && 'featured', className].filter(Boolean).join(' ')}>
     <small>{label}</small>
     <strong>{value}</strong>
     {(detail || delta) && <div className="metric-card-footer">

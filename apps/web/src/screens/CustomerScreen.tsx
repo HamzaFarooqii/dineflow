@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { createLocalCustomer, searchLocalCustomers, searchServerCustomers } from '../lib/customers'
 import type { LocalCustomer } from '../lib/db'
@@ -8,7 +8,13 @@ import { requireSupabase } from '../lib/supabase'
 import { currentAccess } from '../terminal-auth/cache'
 import { LoyaltyBalance } from './loyalty/LoyaltyBalance'
 import { RewardRulesSection } from './loyalty/RewardRulesSection'
+import { Dialog } from '../components/Dialog'
+import { PageHeader } from '../components/PageHeader'
+import { StatusBadge, type BadgeTone } from '../components/StatusBadge'
 import './customer.css'
+
+const CUSTOMER_SYNC_TONE: Record<LocalCustomer['sync_status'], BadgeTone> = { synced: 'success', pending: 'warning', failed: 'danger' }
+const CUSTOMER_SYNC_LABEL: Record<LocalCustomer['sync_status'], string> = { synced: 'Saved', pending: 'Pending sync', failed: 'Needs review' }
 
 export function CustomerFinder({ storeId, terminal, onSelect }: { storeId: string; terminal: boolean; onSelect?: (customer: LocalCustomer) => void }) {
   const [query, setQuery] = useState('')
@@ -60,7 +66,9 @@ export function CustomerFinder({ storeId, terminal, onSelect }: { storeId: strin
       <label>Phone with country code<input type="tel" inputMode="tel" autoComplete="off" placeholder="+923001234567" value={query} onChange={event => { setQuery(event.target.value); setMessage('') }} /></label>
       <button type="button" className="secondary-cta" disabled={!query.trim() || searching || !navigator.onLine} onClick={() => void onlineSearch()}>{searching ? 'Searching…' : 'Search online'}</button>
       {query.trim() && <div className="crm-results" role="region" aria-live="polite" aria-label="Guest matches">
-        {matches.length ? <ul>{matches.map(customer => <li key={customer.id}><span><strong>{customer.name}</strong><small>{customer.phone_normalized ? `+${customer.phone_normalized}` : 'No phone'} · {customer.sync_status === 'synced' ? 'Saved' : customer.sync_status === 'failed' ? 'Needs review' : 'Pending sync'}</small>{customer.failure_reason && <small role="status">{customer.failure_reason}</small>}<LoyaltyBalance storeId={storeId} terminal={terminal} customer={customer} /></span>
+        {matches.length ? <ul>{matches.map(customer => <li key={customer.id}><span><strong>{customer.name}</strong><small>{customer.phone_normalized ? `+${customer.phone_normalized}` : 'No phone'}</small>{customer.failure_reason && <small role="status">{customer.failure_reason}</small>}</span>
+          <StatusBadge tone={CUSTOMER_SYNC_TONE[customer.sync_status]}>{CUSTOMER_SYNC_LABEL[customer.sync_status]}</StatusBadge>
+          <LoyaltyBalance storeId={storeId} terminal={terminal} customer={customer} />
           {onSelect && <button type="button" className="secondary-cta" onClick={() => onSelect(customer)}>Select {customer.name}</button>}</li>)}</ul> : <p className="crm-empty">No local matches. Search online or create a new guest.</p>}
       </div>}
       {nextCursor && <button type="button" className="text-action" disabled={searching} onClick={() => void onlineSearch(nextCursor)}>Load more matches</button>}
@@ -79,28 +87,9 @@ export function CustomerFinder({ storeId, terminal, onSelect }: { storeId: strin
 
 export function CustomerSelector({ storeId, terminal, onClose }: { storeId: string; terminal: boolean; onClose: () => void }) {
   const selectCustomer = usePosStore(state => state.selectCustomer)
-  const closeButton = useRef<HTMLButtonElement>(null)
-  const dialog = useRef<HTMLElement>(null)
-  useEffect(() => {
-    closeButton.current?.focus()
-    const key = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
-      if (event.key === 'Tab' && dialog.current) {
-        const focusable = [...dialog.current.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), a[href]')]
-        if (!focusable.length) return
-        const first = focusable[0], last = focusable.at(-1)!
-        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus() }
-        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
-      }
-    }
-    document.addEventListener('keydown', key)
-    return () => document.removeEventListener('keydown', key)
-  }, [onClose])
-  return <div className="crm-overlay" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
-    <section ref={dialog} className="crm-dialog" role="dialog" aria-modal="true" aria-labelledby="crm-dialog-title">
-      <div className="crm-dialog-head"><div><p className="kicker">CURRENT CHECK</p><h2 id="crm-dialog-title">Add guest</h2></div><button ref={closeButton} type="button" className="text-action" onClick={onClose}>Close</button></div>
-      <CustomerFinder storeId={storeId} terminal={terminal} onSelect={customer => { selectCustomer(customer); onClose() }} />
-    </section></div>
+  return <Dialog title="Add guest" kicker="CURRENT CHECK" onClose={onClose} className="wide">
+    <CustomerFinder storeId={storeId} terminal={terminal} onSelect={customer => { selectCustomer(customer); onClose() }} />
+  </Dialog>
 }
 
 export function CustomerScreen({ terminal = false }: { terminal?: boolean }) {
@@ -133,8 +122,12 @@ export function CustomerScreen({ terminal = false }: { terminal?: boolean }) {
     }
     void load(); return () => { active = false }
   }, [terminal])
-  return <section className="crm-page"><p className="kicker">{terminal ? 'SERVICE TERMINAL' : 'RESTAURANT MANAGEMENT'}</p><h1>Guests</h1>
-    <p>Search or create guests for this restaurant. Duplicate phone numbers remain separate records.</p>
+  return <section className="crm-page">
+    <PageHeader
+      kicker={terminal ? 'SERVICE TERMINAL' : 'RESTAURANT MANAGEMENT'}
+      title="Guests"
+      subtitle="Search or create guests for this restaurant. Duplicate phone numbers remain separate records."
+    />
     {error && <p className="form-notice error" role="alert">{error}</p>}
     {!storeId && !error && <p role="status">Checking guest access…</p>}
     {storeId && <CustomerFinder storeId={storeId} terminal={terminal} onSelect={terminal ? customer => { selectCustomer(customer); navigate('/pos/register') } : undefined} />}

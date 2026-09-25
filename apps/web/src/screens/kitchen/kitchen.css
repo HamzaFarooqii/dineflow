@@ -1,5 +1,5 @@
 .kitchen-page{padding:28px 20px;max-width:1200px;font-family:'Archivo',sans-serif}
-.kitchen-page h1{font:600 clamp(26px,2.6vw,32px)/1.15 'Archivo',sans-serif;letter-spacing:-.02em;margin:4px 0 8px;color:var(--mise-ink)}
+/* Header now renders through the shared <PageHeader> -- the old .kitchen-page h1 rule is retired. */
 .kitchen-page>p:not(.kicker){color:var(--mise-ink-secondary);margin:0 0 24px;font-size:14px}
 .kitchen-empty{color:var(--mise-ink-muted);font-size:14px;padding:24px 0}
 

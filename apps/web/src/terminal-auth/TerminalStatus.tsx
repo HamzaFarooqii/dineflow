@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { readTerminal, type TerminalCache } from './cache'
+import { StatusBadge } from '../components/StatusBadge'
 
 export function useTerminalStatus() {
   const [terminal, setTerminal] = useState<TerminalCache>()
@@ -19,7 +20,8 @@ export function useTerminalStatus() {
 }
 
 export function TerminalState({ terminal }: { terminal?: TerminalCache }) {
-  if (!terminal) return <span className="terminal-state muted">No terminal</span>
+  if (!terminal) return <StatusBadge tone="muted">No terminal</StatusBadge>
   const age = Date.now() - Date.parse(terminal.validated_at)
-  return <span className={`terminal-state ${navigator.onLine && age < 60 * 60 * 1000 ? 'active' : 'offline'}`}>{navigator.onLine ? 'Active' : 'Offline'}</span>
+  const online = navigator.onLine && age < 60 * 60 * 1000
+  return <StatusBadge tone={online ? 'success' : 'warning'}>{navigator.onLine ? 'Active' : 'Offline'}</StatusBadge>
 }

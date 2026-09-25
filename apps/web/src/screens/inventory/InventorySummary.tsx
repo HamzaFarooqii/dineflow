@@ -1,11 +1,8 @@
 import { formatCents } from '../../../../../packages/domain/src/money'
 import { isLowStock, isOutOfStock } from './inventory-status'
+import { MetricCard } from '../../components/MetricCard'
 import type { Ingredient } from '../../lib/inventory'
 
-// Reuses reporting.css's .report-card visual recipe under inventory's own class names
-// (inventory.css) rather than importing that file directly -- keeps each screen's CSS
-// self-contained, matching the existing one-file-per-screen convention, while still drawing from
-// the same --mise-* tokens (docs/DESIGN_SYSTEM.md).
 export function InventorySummary({ ingredients, expiringBatchCount, currency }: {
   ingredients: Ingredient[]
   expiringBatchCount: number | null
@@ -21,26 +18,10 @@ export function InventorySummary({ ingredients, expiringBatchCount, currency }: 
     return stock > 0 ? sum + Math.round(stock * ingredient.cost_per_unit_cents) : sum
   }, 0)
 
-  return <div className="inventory-summary-grid">
-    <article className="inventory-summary-card">
-      <small>Total Ingredients</small>
-      <strong>{ingredients.length}</strong>
-      <div className="inventory-summary-card-footer"><span>Tracked in this store</span></div>
-    </article>
-    <article className="inventory-summary-card">
-      <small>Low Stock Items</small>
-      <strong>{lowStockCount}</strong>
-      <div className="inventory-summary-card-footer"><span>{outOfStockCount} out of stock</span></div>
-    </article>
-    <article className="inventory-summary-card">
-      <small>Expiring Batches</small>
-      <strong>{expiringBatchCount ?? '—'}</strong>
-      <div className="inventory-summary-card-footer"><span>Within 3 days, or already expired</span></div>
-    </article>
-    <article className="inventory-summary-card featured">
-      <small>Inventory Value</small>
-      <strong>{formatCents(totalValueCents, currency)}</strong>
-      <div className="inventory-summary-card-footer"><span>Current stock × cost per unit</span></div>
-    </article>
+  return <div className="metric-grid">
+    <MetricCard label="Total Ingredients" value={ingredients.length} detail="Tracked in this store" />
+    <MetricCard label="Low Stock Items" value={lowStockCount} detail={`${outOfStockCount} out of stock`} />
+    <MetricCard label="Expiring Batches" value={expiringBatchCount ?? '—'} detail="Within 3 days, or already expired" />
+    <MetricCard label="Inventory Value" value={formatCents(totalValueCents, currency)} detail="Current stock × cost per unit" featured />
   </div>
 }

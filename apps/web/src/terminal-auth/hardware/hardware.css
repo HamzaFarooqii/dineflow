@@ -17,7 +17,7 @@
 .hardware-title h2 { margin: 0; }
 .hardware-title p { margin: var(--mise-space-8) 0 0; color: var(--mise-ink-secondary); font-size: 13px; }
 
-/* Live device state — same badge vocabulary as the rest of the app. */
+/* Live device state now renders through the shared <StatusBadge>. */
 .hardware-status {
   display: flex;
   align-items: center;
@@ -31,9 +31,6 @@
   font-size: 12px;
   color: var(--mise-ink-secondary);
 }
-.hardware-status .terminal-state { white-space: normal; background: var(--mise-surface); }
-.hardware-status .terminal-state.active { background: var(--mise-success-fill); }
-.hardware-status .terminal-state.offline { background: var(--mise-warning-fill); }
 
 .hardware-details { display: grid; gap: var(--mise-space-16); margin: var(--mise-space-24) 0; }
 .identity-details { grid-template-columns: repeat(2, minmax(0, 1fr)); }

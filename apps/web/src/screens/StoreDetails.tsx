@@ -11,6 +11,7 @@ import { Link } from 'react-router-dom'
 import { accessToken, activeStoreId, configuredApiUrl } from '../lib/catalog'
 import { posDb } from '../lib/db'
 import { CURRENCY_OPTIONS, timezoneOptions } from '../lib/locale-options'
+import { X } from '../components/icons'
 import './product-catalog.css'
 
 interface StoreRecord {
@@ -113,7 +114,7 @@ export function StoreDetails() {
           <p className="pc-subtitle">House information used across receipts, reporting and the floor.</p>
         </div>
         <div className="pc-actions">
-          <Link className="pc-btn-ghost" to="/settings">
+          <Link className="secondary-cta" to="/settings">
             ← Back to settings
           </Link>
         </div>
@@ -124,7 +125,7 @@ export function StoreDetails() {
           <div className="pc-alert error" role="alert">
             <span>{loadError}</span>
             <button type="button" className="pc-alert-close" onClick={() => setLoadError('')} aria-label="Dismiss">
-              ✕
+              <X aria-hidden="true" size={14} />
             </button>
           </div>
         )}
@@ -132,7 +133,7 @@ export function StoreDetails() {
           <div className="pc-alert success" role="status">
             <span>{message}</span>
             <button type="button" className="pc-alert-close" onClick={() => setMessage('')} aria-label="Dismiss">
-              ✕
+              <X aria-hidden="true" size={14} />
             </button>
           </div>
         )}
@@ -208,7 +209,7 @@ export function StoreDetails() {
               <div className="pc-alert error" role="alert" style={{ marginTop: 0 }}>
                 <span>{error}</span>
                 <button type="button" className="pc-alert-close" onClick={() => setError('')} aria-label="Dismiss">
-                  ✕
+                  <X aria-hidden="true" size={14} />
                 </button>
               </div>
             )}

@@ -2,17 +2,23 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { currentAccess, readTerminal, type TerminalCache } from './cache'
 import { pushPendingOrders } from '../lib/order-sync'
+import { LayoutDashboard, ShoppingCart, UtensilsCrossed, ClipboardList, Users, Package, Settings as SettingsIcon, Store } from '../components/icons'
 import './terminal-auth.css'
 import '../receipts/receipts.css'
 
+// Same icon choices as the owner/manager shell's sidebar (App.tsx) for the same concepts, so a
+// manager who uses both the web app and a terminal sees one consistent icon language. Before the
+// redesign this used Unicode glyphs, and three of the five items (Products, Orders, Settings)
+// shared the exact same generic "○" placeholder glyph -- not just a different icon style from the
+// owner shell, but no real distinction between its own nav items either.
 const navigation = [
-  { label: 'Dashboard', to: '/pos/dashboard', icon: '⌂' },
-  { label: 'Sell', to: '/pos/register', icon: '⌁' },
-  { label: 'Products', to: '/pos/products', icon: '○' },
-  { label: 'Orders', to: '/pos/orders', icon: '○' },
-  { label: 'Customers', to: '/pos/customers', icon: '♧' },
-  { label: 'Inventory', to: '/pos/inventory', icon: '▣' },
-  { label: 'Settings', to: '/pos/settings', icon: '○' },
+  { label: 'Dashboard', to: '/pos/dashboard', icon: LayoutDashboard },
+  { label: 'Sell', to: '/pos/register', icon: ShoppingCart },
+  { label: 'Products', to: '/pos/products', icon: UtensilsCrossed },
+  { label: 'Orders', to: '/pos/orders', icon: ClipboardList },
+  { label: 'Customers', to: '/pos/customers', icon: Users },
+  { label: 'Inventory', to: '/pos/inventory', icon: Package },
+  { label: 'Settings', to: '/pos/settings', icon: SettingsIcon },
 ]
 
 export function CashierPosLayout({ children }: { children: ReactNode }) {
@@ -49,18 +55,19 @@ export function CashierPosLayout({ children }: { children: ReactNode }) {
           : item.label === 'Orders'
             ? pathname.startsWith('/pos/orders')
             : pathname === item.to
+        const Icon = item.icon
         return item.to
-          ? <Link key={item.label} className={active ? 'active' : ''} aria-current={active ? 'page' : undefined} to={item.to}><span aria-hidden="true">{item.icon}</span>{item.label}</Link>
-          : <span key={item.label} className="cashier-nav-muted"><span aria-hidden="true">{item.icon}</span>{item.label}</span>
+          ? <Link key={item.label} className={active ? 'active' : ''} aria-current={active ? 'page' : undefined} to={item.to}><Icon aria-hidden="true" size={18} />{item.label}</Link>
+          : <span key={item.label} className="cashier-nav-muted"><Icon aria-hidden="true" size={18} />{item.label}</span>
       })}</nav>
       <footer><span className="cashier-online-dot" />Terminal ready<br /><small>{terminal?.device.name ?? 'Cashier terminal'}</small></footer>
     </aside>
     <main className="cashier-pos-main">
-      <header className="cashier-pos-topbar"><span className="cashier-online"><i />{navigator.onLine ? 'Online' : 'Offline'}</span><span>▣ {terminal?.device.name ?? 'Terminal'}</span><span>{terminal?.device.receipt_prefix ?? 'Receipt prefix unavailable'}</span><span className="cashier-profile">{cashier?.name ?? 'Cashier'}<small>{cashier?.role ?? 'Cashier'}</small></span></header>
+      <header className="cashier-pos-topbar"><span className="cashier-online"><i />{navigator.onLine ? 'Online' : 'Offline'}</span><span><Store aria-hidden="true" size={14} /> {terminal?.device.name ?? 'Terminal'}</span><span>{terminal?.device.receipt_prefix ?? 'Receipt prefix unavailable'}</span><span className="cashier-profile">{cashier?.name ?? 'Cashier'}<small>{cashier?.role ?? 'Cashier'}</small></span></header>
       <nav className="cashier-pos-mobile-nav" aria-label="Cashier navigation"><Link className={pathname === '/pos/register' ? 'active' : ''} to="/pos/register">Sell</Link><Link className={pathname === '/pos/customers' ? 'active' : ''} to="/pos/customers">Customers</Link></nav>
       {children}
       <footer className="cashier-pos-status"><span><i /> {navigator.onLine ? 'Connected' : 'Offline'}</span><span>{terminal?.device.name ?? 'Terminal'}</span><span>Receipt prefix: {terminal?.device.receipt_prefix ?? '—'}</span></footer>
     </main>
-    <nav className="cashier-mobile-nav" aria-label="Cashier navigation"><Link className={pathname === '/pos/dashboard' ? 'active' : ''} to="/pos/dashboard"><span aria-hidden="true">⌂</span>Dashboard</Link><Link className={pathname === '/pos/register' || pathname === '/pos/payment' ? 'active' : ''} to="/pos/register"><span aria-hidden="true">⌁</span>Sell</Link></nav>
+    <nav className="cashier-mobile-nav" aria-label="Cashier navigation"><Link className={pathname === '/pos/dashboard' ? 'active' : ''} to="/pos/dashboard"><LayoutDashboard aria-hidden="true" size={18} />Dashboard</Link><Link className={pathname === '/pos/register' || pathname === '/pos/payment' ? 'active' : ''} to="/pos/register"><ShoppingCart aria-hidden="true" size={18} />Sell</Link></nav>
   </div>
 }

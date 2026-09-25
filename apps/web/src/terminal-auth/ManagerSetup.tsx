@@ -5,6 +5,10 @@ import { requireSupabase } from '../lib/supabase'
 import { request } from './api'
 import { provisionTerminal } from './cache'
 import type { ManagedEmployee, Management } from './types'
+import { PageHeader } from '../components/PageHeader'
+import { SelectField } from '../components/SelectField'
+import { StatusBadge } from '../components/StatusBadge'
+import { Monitor, Users } from '../components/icons'
 import './terminal-auth.css'
 import { TerminalHardwareSettings } from './hardware/TerminalHardwareSettings'
 
@@ -87,10 +91,10 @@ export function ManagerSetup({ screen }: { screen: 'terminals' | 'employees' }) 
   const description = screen === 'terminals' ? 'Provision and manage the devices your team uses at the pass and the host stand.' : 'Create staff PIN access and control who can open a terminal on the floor.'
   return <AppLayout><section className="terminal-admin-page">
     <nav className="breadcrumbs" aria-label="Breadcrumb"><Link to="/settings">Settings</Link><span>/</span><Link to="/settings">Service setup</Link><span>/</span><span>{title}</span></nav>
-    <div className="terminal-admin-heading"><div><p className="kicker">SERVICE SETUP</p><h1>{title}</h1><p>{description}</p></div><Link className="secondary-cta" to="/settings">Back to settings</Link></div>
+    <PageHeader kicker="SERVICE SETUP" title={title} subtitle={description} actions={<Link className="secondary-cta" to="/settings">Back to settings</Link>} />
     {error && <p role="alert" className="form-notice error">{error}</p>}
     {message && <p role="status" className="form-notice">{message}</p>}
-    <label className="store-picker">Restaurant<select value={storeId} onChange={event => { setStoreId(event.target.value); setMessage('') }} disabled={busy || loading}>{!stores.length && <option value="">No managed restaurants available</option>}{stores.map(store => <option key={store.id} value={store.id}>{store.name}</option>)}</select></label>
+    <div className="store-picker"><SelectField label="Restaurant" value={storeId} onChange={event => { setStoreId(event.target.value); setMessage('') }} disabled={busy || loading}>{!stores.length && <option value="">No managed restaurants available</option>}{stores.map(store => <option key={store.id} value={store.id}>{store.name}</option>)}</SelectField></div>
     {loading ? <p role="status" className="form-notice">Loading restaurant access…</p> : storeId && <>
       {screen === 'terminals' && <TerminalHardwareSettings storeId={storeId} storeName={stores.find(store => store.id === storeId)?.name ?? 'Selected restaurant'} devices={management.devices} />}
       <div className="terminal-admin-grid">
@@ -102,7 +106,7 @@ export function ManagerSetup({ screen }: { screen: 'terminals' | 'employees' }) 
             {screen === 'employees' && <>
               <label>{editing ? 'New PIN (leave blank to keep current PIN)' : 'PIN'}<input name="pin" type="password" inputMode="numeric" pattern="[0-9]{4,8}" minLength={4} maxLength={8} required={!editing} autoComplete="new-password" aria-describedby="pin-help" /></label>
               <p id="pin-help" className="field-help">Use 4 to 8 digits. Give each staff member their own PIN.</p>
-              <label>Floor role<select name="role" defaultValue={editing?.role ?? 'cashier'}><option value="cashier">Cashier</option><option value="manager">Manager</option></select></label>
+              <SelectField label="Floor role" name="role" defaultValue={editing?.role ?? 'cashier'}><option value="cashier">Cashier</option><option value="manager">Manager</option></SelectField>
               <label className="terminal-check"><input name="active" type="checkbox" defaultChecked={editing?.active ?? true} />Active staff member</label>
             </>}
             <button className="cta" type="submit">{busy ? 'Saving…' : screen === 'terminals' ? 'Provision this browser' : editing ? 'Save staff member' : 'Add staff member'}</button>
@@ -115,18 +119,18 @@ export function ManagerSetup({ screen }: { screen: 'terminals' | 'employees' }) 
             <span className="count-badge">{screen === 'terminals' ? management.devices.filter(device => !device.revoked_at).length : management.employees.filter(employee => employee.active).length} active</span>
           </div>
           <ul className="terminal-list">{screen === 'terminals' ? management.devices.map(device => <li key={device.id}>
-            <span className="list-icon" aria-hidden="true">▣</span>
+            <span className="list-icon" aria-hidden="true"><Monitor size={16} /></span>
             <div><strong>{device.name}</strong><small>Receipt prefix: {device.receipt_prefix}</small></div>
-            <span className={`terminal-state ${device.revoked_at ? 'muted' : 'active'}`}>{device.revoked_at ? 'Revoked' : 'Active'}</span>
+            <StatusBadge tone={device.revoked_at ? 'muted' : 'success'}>{device.revoked_at ? 'Revoked' : 'Active'}</StatusBadge>
             {!device.revoked_at && <button type="button" className="text-button" disabled={busy} onClick={() => { if (window.confirm(`Revoke ${device.name}? Staff using this terminal will need manager provisioning again.`)) void revoke(device.id) }}>Revoke</button>}
             {device.revoked_at && <button type="button" className="text-button" disabled={busy} onClick={() => void reactivate(device.id)}>Reactivate</button>}
           </li>) : management.employees.map(employee => <li key={employee.id}>
-            <span className="list-icon" aria-hidden="true">♧</span>
+            <span className="list-icon" aria-hidden="true"><Users size={16} /></span>
             <div><strong>{employee.name}</strong><small>{employee.role === 'manager' ? 'Manager PIN' : 'Cashier PIN'}</small></div>
-            <span className={`terminal-state ${employee.active ? 'active' : 'muted'}`}>{employee.active ? 'Active' : 'Inactive'}</span>
+            <StatusBadge tone={employee.active ? 'success' : 'muted'}>{employee.active ? 'Active' : 'Inactive'}</StatusBadge>
             <button type="button" className="text-button" disabled={busy} onClick={() => { setEditing(employee); setMessage('') }}>Edit</button>
           </li>)}</ul>
-          {(screen === 'terminals' ? !management.devices.length : !management.employees.length) && <div className="list-empty"><span aria-hidden="true">▣</span><p>No {screen === 'terminals' ? 'terminals' : 'staff'} yet.</p></div>}
+          {(screen === 'terminals' ? !management.devices.length : !management.employees.length) && <div className="list-empty"><Monitor aria-hidden="true" size={20} /><p>No {screen === 'terminals' ? 'terminals' : 'staff'} yet.</p></div>}
         </section>
       </div>
     </>}

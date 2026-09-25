@@ -1,8 +1,8 @@
 .floor-page{padding:28px 20px;max-width:1200px;font-family:'Archivo',sans-serif}
-.floor-page-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
-.floor-page h1{font:600 clamp(26px,2.6vw,32px)/1.15 'Archivo',sans-serif;letter-spacing:-.02em;margin:4px 0 8px;color:var(--mise-ink)}
+/* Header (kicker/h1/subtitle/actions) now renders through the shared <PageHeader> -- .floor-page-head
+   and the old .floor-page h1 rule are retired (both Floor and Inventory, which shares this file's
+   page-shell classes, are migrated). */
 .floor-page>p:not(.kicker){color:var(--mise-ink-secondary);margin:0 0 24px;font-size:14px}
-.floor-page-head p:not(.kicker){margin:0 0 24px}
 .floor-empty{color:var(--mise-ink-muted);font-size:14px;padding:24px 0}
 
 .floor-area-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;align-items:center}
@@ -10,7 +10,7 @@
 .floor-area-tabs button{min-height:44px;padding:0 16px;border:1px solid var(--mise-border-strong);border-radius:var(--mise-r2);background:var(--mise-surface);color:var(--mise-ink-secondary);font:500 13px 'Archivo',sans-serif;transition:background .15s ease,border-color .15s ease,color .15s ease}
 .floor-area-tabs button:hover{background:var(--mise-surface-sunken)}
 .floor-area-tabs button.active{background:var(--mise-ink);border-color:var(--mise-ink);color:var(--mise-ink-inverse)}
-.floor-area-delete{min-height:32px!important;min-width:32px;padding:0!important;border-radius:50%!important;background:var(--mise-danger-fill)!important;color:var(--mise-danger)!important;font:600 15px/1 'Archivo',sans-serif!important;border-color:transparent!important}
+.floor-area-delete{display:inline-flex;align-items:center;justify-content:center;min-height:32px!important;min-width:32px;padding:0!important;border-radius:50%!important;background:var(--mise-danger-fill)!important;color:var(--mise-danger)!important;border-color:transparent!important}
 .floor-area-delete:hover{background:var(--mise-danger)!important;color:var(--mise-ink-inverse)!important}
 
 .floor-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px}
@@ -40,13 +40,10 @@
 .table-card-area{font-size:11px;color:var(--mise-ink-muted);text-transform:uppercase;letter-spacing:.06em}
 .table-card-meta{font-size:11px;color:var(--mise-ink-disabled);font-family:'IBM Plex Mono',monospace}
 
-.floor-status{display:inline-flex;padding:4px 10px;border-radius:var(--mise-r2);font:600 11px 'Archivo',sans-serif;white-space:nowrap}
-.floor-status-success{background:var(--mise-success-fill);color:var(--mise-success)}
-.floor-status-saffron{background:var(--mise-saffron-fill);color:var(--mise-saffron-deep)}
-.floor-status-info{background:var(--mise-info-fill);color:var(--mise-info)}
-.floor-status-warning{background:var(--mise-warning-fill);color:var(--mise-warning)}
-.floor-status-danger{background:var(--mise-danger-fill);color:var(--mise-danger)}
-.floor-status-muted{background:var(--mise-surface-sunken);color:var(--mise-ink-muted)}
+/* Status chips (table status, ingredient/batch/movement status) now render through the shared
+   <StatusBadge> (styles.css's .status-badge-*) -- .floor-status was the same tone-modifier recipe,
+   copy-pasted across Floor and Inventory (TableCard, InventoryStatusBadge, BatchList, StockLedger)
+   before both modules were migrated onto the one component in the same pass. */
 
 .floor-detail{position:fixed;top:0;right:0;height:100vh;width:min(360px,100vw);background:var(--mise-surface);border-left:1px solid var(--mise-border-hairline);box-shadow:var(--mise-e3);padding:24px;overflow:auto;z-index:20}
 .floor-detail header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}

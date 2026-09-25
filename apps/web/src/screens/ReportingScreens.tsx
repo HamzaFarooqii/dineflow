@@ -22,6 +22,9 @@ import { configuredApiUrl, loadCatalog } from '../lib/catalog'
 import { classifySyncState, type SyncState } from '../lib/order-sync-core'
 import { fetchDailySummary, fetchOrdersPage, fetchOversold, type ServerOversoldProduct } from '../lib/server-reports'
 import { buildCsv, downloadCsv } from '../lib/csv'
+import { PageHeader } from '../components/PageHeader'
+import { MetricCard } from '../components/MetricCard'
+import { Wallet, RefreshCw, Award, AlertTriangle, CircleAlert, Receipt } from '../components/icons'
 import './reporting.css'
 
 // Health-check the API the same way ConnectionAndSync/CashierDashboardScreen do: navigator.onLine
@@ -313,7 +316,25 @@ function exportDailyReportCsv(state: ReportState) {
   downloadCsv(`dineflow-daily-report-${day}.csv`, buildCsv(rows))
 }
 
-export function OwnerDashboardScreen() {
+// Time-of-day greeting -- a small, low-risk touch toward "immediately communicate restaurant
+// performance and status" rather than a flat "Today at a glance" for everyone at every hour.
+function timeGreeting(now = new Date()): string {
+  const hour = now.getHours()
+  if (hour < 12) return 'Good morning'
+  if (hour < 17) return 'Good afternoon'
+  return 'Good evening'
+}
+
+// Replaces the old DeltaBadge component with a pure function feeding MetricCard's structured
+// delta prop -- null when there's nothing meaningful to compare (both days at zero).
+function computeDelta(current: number, previous: number): { direction: 'up' | 'down' | 'flat'; label: string } | null {
+  if (current === 0 && previous === 0) return null
+  const diff = current - previous
+  const pct = previous > 0 ? Math.round((diff / previous) * 100) : diff > 0 ? 100 : 0
+  return { direction: pct === 0 ? 'flat' : diff > 0 ? 'up' : 'down', label: `${Math.abs(pct)}% vs yesterday` }
+}
+
+export function OwnerDashboardScreen({ greetingName }: { greetingName?: string } = {}) {
   const { state, error } = useFinancialReport()
   const { products: oversoldProducts, error: oversoldError } = useOversoldProducts(state?.storeId)
   const previousDayTotal = usePreviousDayTotal(state?.storeId, state?.day)
@@ -324,40 +345,39 @@ export function OwnerDashboardScreen() {
   const totalTakings = report.cashTakingsCents + report.cardTakingsCents
   const cashPct = totalTakings > 0 ? Math.round((report.cashTakingsCents / totalTakings) * 100) : 0
   const cardPct = totalTakings > 0 ? 100 - cashPct : 0
+  const delta = previousDayTotal === undefined ? undefined : computeDelta(report.recordedTotalCents, previousDayTotal) ?? undefined
 
   return (
     <section className="reporting-page owner-dashboard">
-      <header className="reporting-heading">
-        <div>
-          <p className="kicker">RESTAURANT OVERVIEW · {config.name}</p>
-          <h1>Today at a glance.</h1>
-          <p>Recorded sales for today in {config.timezone}. Offline and pending sales remain included.</p>
-        </div>
-        <div className="heading-actions">
+      <PageHeader
+        kicker={`RESTAURANT OVERVIEW · ${config.name}`}
+        title={`${timeGreeting()}${greetingName ? `, ${greetingName}` : ''}.`}
+        subtitle={`Recorded sales for today in ${config.timezone}. Offline and pending sales remain included.`}
+        actions={<>
           <Link className="report-secondary" to="/reports">Daily report <span aria-hidden="true">→</span></Link>
           <Link className="report-primary" to="/register">Open register <span aria-hidden="true">→</span></Link>
-        </div>
-      </header>
+        </>}
+      />
 
       {/* KPI Stats — the headline metric is visually emphasized, the rest stay lighter-weight */}
-      <div className="report-card-grid">
-        <ReportCard
+      <div className="metric-grid">
+        <MetricCard
           label="Today’s recorded sales"
           value={<Money cents={report.recordedTotalCents} currency={config.currency} />}
           detail="Total revenue completed locally"
           featured
-          delta={previousDayTotal === undefined ? undefined : <DeltaBadge current={report.recordedTotalCents} previous={previousDayTotal} />}
+          delta={delta}
         />
-        <ReportCard label="Completed orders" value={report.completedOrderCount} detail="Recorded in this browser" />
-        <ReportCard label="Average ticket" value={<Money cents={report.averageSaleCents} currency={config.currency} />} detail="Original sale total ÷ orders" />
-        <ReportCard label="Items sold" value={report.itemsSold} detail="Total items rung in today" />
+        <MetricCard label="Completed orders" value={report.completedOrderCount} detail="Recorded in this browser" />
+        <MetricCard label="Average ticket" value={<Money cents={report.averageSaleCents} currency={config.currency} />} detail="Original sale total ÷ orders" />
+        <MetricCard label="Items sold" value={report.itemsSold} detail="Total items rung in today" />
       </div>
 
       {/* Tender Breakdown & Sync Status */}
       <div className="dashboard-subgrid">
         <section className="dashboard-panel tender-panel">
           <div className="panel-header">
-            <h2>Payment breakdown</h2>
+            <h2><Wallet aria-hidden="true" size={16} className="panel-icon" />Payment breakdown</h2>
             <small>Cash vs. Card distribution</small>
           </div>
           {totalTakings > 0 ? (
@@ -385,11 +405,11 @@ export function OwnerDashboardScreen() {
 
         <section className="unresolved-panel">
           <div>
-            <h2>Sync queue status</h2>
+            <h2><RefreshCw aria-hidden="true" size={16} className="panel-icon" />Sync queue status</h2>
             <p>Sales are recorded immediately in browser storage and uploaded when connected.</p>
           </div>
-          <StatusAmount label="Pending sync" count={report.pendingCount} cents={report.pendingAmountCents} currency={config.currency} />
-          <StatusAmount label="Rejected" count={report.rejectedCount} cents={report.rejectedAmountCents} currency={config.currency} rejected />
+          <MetricCard label="Pending sync" value={report.pendingCount} detail={<Money cents={report.pendingAmountCents} currency={config.currency} />} />
+          <MetricCard label="Rejected" value={report.rejectedCount} detail={<Money cents={report.rejectedAmountCents} currency={config.currency} />} className="rejected" />
         </section>
       </div>
 
@@ -397,7 +417,7 @@ export function OwnerDashboardScreen() {
       <div className="dashboard-columns">
         <section className="dashboard-panel">
           <div className="panel-header">
-            <h2>Top menu items</h2>
+            <h2><Award aria-hidden="true" size={16} className="panel-icon" />Top menu items</h2>
             <small>Best sellers today by quantity</small>
           </div>
           {topProducts.length ? (
@@ -420,7 +440,7 @@ export function OwnerDashboardScreen() {
 
         <section className="dashboard-panel">
           <div className="panel-header">
-            <h2>Stock alerts</h2>
+            <h2><AlertTriangle aria-hidden="true" size={16} className="panel-icon" />Stock alerts</h2>
             <small>Low inventory and out of stock</small>
           </div>
           {lowStock.length ? (
@@ -444,7 +464,7 @@ export function OwnerDashboardScreen() {
 
         <section className="dashboard-panel">
           <div className="panel-header">
-            <h2>Oversold items</h2>
+            <h2><CircleAlert aria-hidden="true" size={16} className="panel-icon" />Oversold items</h2>
             <small>Restaurant-wide stock gone negative, across every device</small>
           </div>
           {oversoldError ? (
@@ -473,7 +493,7 @@ export function OwnerDashboardScreen() {
       <section className="dashboard-panel recent-orders-panel">
         <div className="panel-header">
           <div>
-            <h2>Recent orders</h2>
+            <h2><Receipt aria-hidden="true" size={16} className="panel-icon" />Recent orders</h2>
             <small>Latest checks across the restaurant</small>
           </div>
           <Link className="panel-link" to="/orders">View all orders <span aria-hidden="true">→</span></Link>
@@ -522,13 +542,11 @@ export function ReportsScreen() {
   }, [state, day])
   return (
     <section className="reporting-page reports-detail">
-      <header className="reporting-heading">
-        <div>
-          <p className="kicker">THIS BROWSER / REGISTER-LOCAL</p>
-          <h1>Daily sales report.</h1>
-          <p>Calendar days use the saved store timezone and the recorded sale time.</p>
-        </div>
-        {state && (
+      <PageHeader
+        kicker="THIS BROWSER / REGISTER-LOCAL"
+        title="Daily sales report."
+        subtitle="Calendar days use the saved store timezone and the recorded sale time."
+        actions={state && (
           <div className="reports-heading-controls">
             <label className="day-picker">
               Report date
@@ -539,7 +557,7 @@ export function ReportsScreen() {
             </button>
           </div>
         )}
-      </header>
+      />
       {error && <AccessMessage message={error} embedded />}
       {!error && !state && <ReportLinesSkeleton />}
       {state && (
@@ -558,15 +576,15 @@ export function ReportsScreen() {
               <h2>Unresolved sales</h2>
               <p>Included in recorded totals and shown separately here.</p>
             </div>
-            <StatusAmount label="Pending" count={state.report.pendingCount} cents={state.report.pendingAmountCents} currency={state.config.currency} />
-            <StatusAmount label="Rejected" count={state.report.rejectedCount} cents={state.report.rejectedAmountCents} currency={state.config.currency} rejected />
+            <MetricCard label="Pending" value={state.report.pendingCount} detail={<Money cents={state.report.pendingAmountCents} currency={state.config.currency} />} />
+            <MetricCard label="Rejected" value={state.report.rejectedCount} detail={<Money cents={state.report.rejectedAmountCents} currency={state.config.currency} />} className="rejected" />
           </section>
           <section className="unresolved-panel">
             <div>
               <h2>Refunds</h2>
               <p>Original sales remain in gross figures; refunds reduce net sales and takings.</p>
             </div>
-            <StatusAmount label="Refunded" count={state.report.refundedCount} cents={state.report.refundedAmountCents} currency={state.config.currency} rejected />
+            <MetricCard label="Refunded" value={state.report.refundedCount} detail={<Money cents={state.report.refundedAmountCents} currency={state.config.currency} />} className="rejected" />
           </section>
 
           <section className="dashboard-panel">
@@ -711,11 +729,11 @@ export function CashierDashboardScreen() {
       </header>
 
       {/* Shift Register Metrics */}
-      <div className="report-card-grid">
-        <ReportCard label="Today’s shift sales" value={<Money cents={state.shift.salesCents} currency={state.currency} />} detail="Total recorded on this terminal" />
-        <ReportCard label="Checks closed" value={state.shift.orderCount} detail="Completed checkouts today" />
-        <ReportCard label="Cash in drawer" value={<Money cents={cashInDrawer} currency={state.currency} />} detail="Net cash collected (less change)" />
-        <ReportCard label="Card takings" value={<Money cents={state.shift.cardCents} currency={state.currency} />} detail="External card approvals" />
+      <div className="metric-grid">
+        <MetricCard label="Today’s shift sales" value={<Money cents={state.shift.salesCents} currency={state.currency} />} detail="Total recorded on this terminal" />
+        <MetricCard label="Checks closed" value={state.shift.orderCount} detail="Completed checkouts today" />
+        <MetricCard label="Cash in drawer" value={<Money cents={cashInDrawer} currency={state.currency} />} detail="Net cash collected (less change)" />
+        <MetricCard label="Card takings" value={<Money cents={state.shift.cardCents} currency={state.currency} />} detail="External card approvals" />
       </div>
 
       {/* Quick Register Actions */}
@@ -842,35 +860,6 @@ function AccessMessage({ message, embedded = false }: { message: string; embedde
   )
 }
 
-function ReportCard({ label, value, detail, featured = false, delta }: { label: string; value: ReactNode; detail: string; featured?: boolean; delta?: ReactNode }) {
-  return (
-    <article className={featured ? 'report-card featured' : 'report-card'}>
-      <small>{label}</small>
-      <strong>{value}</strong>
-      <div className="report-card-footer">
-        <span>{detail}</span>
-        {delta}
-      </div>
-    </article>
-  )
-}
-
-// Simple day-over-day indicator — a small up/down badge next to the headline KPI, per the visual
-// redesign's "keep it simple" scope (no full trend chart, just a delta against yesterday).
-function DeltaBadge({ current, previous }: { current: number; previous: number }) {
-  if (current === 0 && previous === 0) return null
-  const diff = current - previous
-  const pct = previous > 0 ? Math.round((diff / previous) * 100) : diff > 0 ? 100 : 0
-  const flat = pct === 0
-  const up = diff > 0
-  return (
-    <span className={`delta-badge ${flat ? 'flat' : up ? 'up' : 'down'}`}>
-      <span aria-hidden="true">{flat ? '•' : up ? '▲' : '▼'}</span>
-      {Math.abs(pct)}% vs yesterday
-    </span>
-  )
-}
-
 // Cash vs. card split as an SVG donut — still pure CSS/SVG, no charting library. Strokes are set
 // from MISE tokens in reporting.css (track = sunken surface, cash = info blue, card = saffron),
 // following the design system's fixed categorical series order rather than hard-coded hexes.
@@ -931,15 +920,6 @@ function ReportLinesSkeleton() {
   )
 }
 
-function StatusAmount({ label, count, cents, currency, rejected = false }: { label: string; count: number; cents: number; currency: string; rejected?: boolean }) {
-  return (
-    <article className={rejected ? 'status-amount rejected' : 'status-amount'}>
-      <small>{label}</small>
-      <strong>{count}</strong>
-      <span><Money cents={cents} currency={currency} /></span>
-    </article>
-  )
-}
 
 function ReportLine({ label, hint, cents, currency, emphasized = false }: { label: string; hint: string; cents: number; currency: string; emphasized?: boolean }) {
   return (

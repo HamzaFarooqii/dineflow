@@ -11,23 +11,8 @@
   color: var(--mise-ink);
 }
 
-.crm-page > .kicker {
-  font: 500 10px 'IBM Plex Mono', monospace;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--mise-ink-muted);
-  margin: 0 0 var(--mise-space-8);
-}
-
-.crm-page h1 {
-  font-family: 'Archivo', sans-serif;
-  font-weight: 600;
-  font-size: clamp(26px, 3vw, 34px);
-  letter-spacing: -0.025em;
-  line-height: 1.1;
-  color: var(--mise-ink);
-  margin: 0 0 var(--mise-space-8);
-}
+/* Header kicker/h1/subtitle now render through the shared <PageHeader> (styles.css's
+   .page-header/.kicker/.page-header-subtitle) instead of this screen's own rules. */
 
 .crm-page > p {
   font-size: 13px;
@@ -117,8 +102,7 @@
 }
 
 .crm-panel input:focus-visible,
-.crm-panel button:focus-visible,
-.crm-dialog button:focus-visible {
+.crm-panel button:focus-visible {
   outline: 2px solid var(--mise-ink);
   outline-offset: 2px;
 }
@@ -131,8 +115,7 @@
 }
 
 /* Buttons — flat, ≥44px, no lift on hover */
-.crm-panel .cta,
-.crm-dialog .cta {
+.crm-panel .cta {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -150,23 +133,20 @@
   transition: background-color 0.12s ease;
 }
 
-.crm-panel .cta:hover,
-.crm-dialog .cta:hover {
+.crm-panel .cta:hover {
   background: var(--mise-action-hover);
   border-color: var(--mise-action-hover);
   transform: none;
 }
 
-.crm-panel .cta:disabled,
-.crm-dialog .cta:disabled {
+.crm-panel .cta:disabled {
   background: var(--mise-surface-sunken);
   border-color: var(--mise-border-hairline);
   color: var(--mise-ink-disabled);
   opacity: 1;
 }
 
-.crm-panel .secondary-cta,
-.crm-dialog .secondary-cta {
+.crm-panel .secondary-cta {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -179,21 +159,18 @@
   font: 600 13px 'Archivo', sans-serif;
 }
 
-.crm-panel .secondary-cta:hover,
-.crm-dialog .secondary-cta:hover {
+.crm-panel .secondary-cta:hover {
   background: var(--mise-surface-sunken);
   border-color: var(--mise-ink-muted);
 }
 
-.crm-panel .secondary-cta:disabled,
-.crm-dialog .secondary-cta:disabled {
+.crm-panel .secondary-cta:disabled {
   background: var(--mise-surface);
   border-color: var(--mise-border-hairline);
   color: var(--mise-ink-disabled);
 }
 
-.crm-panel .text-action,
-.crm-dialog .text-action {
+.crm-panel .text-action {
   min-height: 44px;
   padding: 0 var(--mise-space-8);
   border: 0;
@@ -204,13 +181,11 @@
   text-underline-offset: 3px;
 }
 
-.crm-panel .text-action:hover,
-.crm-dialog .text-action:hover {
+.crm-panel .text-action:hover {
   color: var(--mise-ink-secondary);
 }
 
-.crm-panel .form-notice,
-.crm-dialog .form-notice {
+.crm-panel .form-notice {
   margin: var(--mise-space-16) 0 0;
   border: 1px solid var(--mise-border-hairline);
   border-left: 3px solid var(--mise-saffron);
@@ -223,7 +198,6 @@
 }
 
 .crm-panel .form-notice.error,
-.crm-dialog .form-notice.error,
 .crm-page > .form-notice.error {
   border-left-color: var(--mise-danger);
   background: var(--mise-danger-fill);
@@ -271,6 +245,7 @@
 }
 
 .crm-results li span {
+  flex: 1;
   min-width: 0;
   overflow-wrap: anywhere;
   display: grid;
@@ -296,56 +271,10 @@
   margin: var(--mise-space-12) 0 0;
 }
 
-/* Floating guest drawer over the register — the one place elevation is earned */
-.crm-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 40;
-  background: rgba(27, 25, 23, 0.48);
-  display: grid;
-  place-items: center;
-  padding: var(--mise-space-12);
-}
-
-.crm-dialog {
-  background: var(--mise-canvas);
-  border: 1px solid var(--mise-border-hairline);
-  border-radius: var(--mise-r4);
-  box-shadow: var(--mise-e3);
-  width: min(100%, 940px);
-  max-height: min(94vh, 900px);
-  overflow: auto;
-  padding: clamp(16px, 3vw, 32px);
-  box-sizing: border-box;
-  font-family: 'Archivo', sans-serif;
-  color: var(--mise-ink);
-}
-
-.crm-dialog-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: start;
-  gap: var(--mise-space-16);
-  padding-bottom: var(--mise-space-16);
-  border-bottom: 1px solid var(--mise-border-hairline);
-}
-
-.crm-dialog-head .kicker {
-  font: 500 10px 'IBM Plex Mono', monospace;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--mise-ink-muted);
-  margin: 0 0 var(--mise-space-4);
-}
-
-.crm-dialog h2 {
-  font-family: 'Archivo', sans-serif;
-  font-weight: 600;
-  font-size: 20px;
-  letter-spacing: -0.02em;
-  color: var(--mise-ink);
-  margin: 0;
-}
+/* The floating guest picker now renders through the shared <Dialog> primitive
+   (apps/web/src/components/Dialog.tsx, styles.css's .dialog-overlay/.dialog-panel) instead of
+   the .crm-overlay/.crm-dialog pair that used to live here -- this was the app's second,
+   undocumented modal pattern before the redesign consolidated onto one. */
 
 /* Guest attached to the open check (rendered inside the register cart) */
 .crm-cart-customer {
@@ -397,6 +326,7 @@
   .crm-page { padding: var(--mise-space-16) var(--mise-space-12); }
   .crm-panel { padding: var(--mise-space-16); }
   .crm-results li { align-items: stretch; flex-direction: column; }
+  .crm-results li .status-badge { align-self: flex-start; }
   .crm-results li .secondary-cta { width: 100%; }
 }
 

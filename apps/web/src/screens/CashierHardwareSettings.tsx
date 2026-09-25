@@ -13,6 +13,7 @@ import { browserCapabilities, type BrowserCapabilities, type ShellStatus, type S
 import { StorageSettings } from '../terminal-auth/hardware/StorageSettings'
 import { checkTerminalService } from '../terminal-auth/hardware/terminalService'
 import { posDb } from '../lib/db'
+import { StatusBadge } from '../components/StatusBadge'
 import '../terminal-auth/hardware/hardware.css'
 
 interface Snapshot {
@@ -82,9 +83,9 @@ export function CashierHardwareSettings({ adapter = browserCapabilities }: { ada
       <div className="hardware-title"><div><h2 id="hardware-status-heading">Terminal hardware & storage</h2></div>
         <button className="secondary-cta" type="button" disabled={checking} onClick={() => void inspect()}>{checking ? 'Checking…' : 'Check device status'}</button></div>
       <div role="status" aria-live="polite" aria-atomic="true" className="hardware-status">
-        <span className={`terminal-state ${terminal && !expired && !clockInvalid ? 'active' : 'muted'}`}>{state}</span>
-        <span className={`terminal-state ${snapshot?.online ? 'active' : 'offline'}`}>{snapshot ? snapshot.online ? 'Browser online' : 'Browser offline' : 'Checking connection…'}</span>
-        <span className={`terminal-state ${snapshot?.serviceAvailable ? 'active' : 'muted'}`}>{snapshot ? snapshot.serviceAvailable ? 'Terminal service available' : 'Terminal service unavailable' : 'Checking terminal service…'}</span>
+        <StatusBadge tone={terminal && !expired && !clockInvalid ? 'success' : 'muted'}>{state}</StatusBadge>
+        <StatusBadge tone={snapshot?.online ? 'success' : 'warning'}>{snapshot ? snapshot.online ? 'Browser online' : 'Browser offline' : 'Checking connection…'}</StatusBadge>
+        <StatusBadge tone={snapshot?.serviceAvailable ? 'success' : 'muted'}>{snapshot ? snapshot.serviceAvailable ? 'Terminal service available' : 'Terminal service unavailable' : 'Checking terminal service…'}</StatusBadge>
         <span>{snapshot?.shell ? shellLabels[snapshot.shell.state] : 'Checking offline app…'}</span>
       </div>
       <p className="hardware-help">Device status checks this browser, local terminal identity, and the terminal service. It does not confirm that closed checks have synchronized.</p>

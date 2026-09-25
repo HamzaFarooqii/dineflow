@@ -1,5 +1,6 @@
 import { KITCHEN_TICKET_STATUS_LABELS, KITCHEN_TICKET_STATUS_TONE, type KitchenTicketStatus } from '../../../../../packages/domain/src/kitchen-ticket-status'
 import type { KitchenTicket } from '../../lib/kitchen'
+import { StatusBadge } from '../../components/StatusBadge'
 
 // The next forward action for a ticket item — queued -> preparing -> ready -> served. Cancelling
 // isn't exposed here (Definition of Done only asks for advancing); the API still enforces the
@@ -18,8 +19,8 @@ function elapsedLabel(createdAt: string): string {
 }
 
 // The reusable Kitchen Display ticket primitive (Blueprint docs/09, Day 2) — mirrors the shape
-// of floor/TableCard.tsx: one status chip per item on the shared .order-state tone family, plus
-// a single forward-advance control per item.
+// of floor/TableCard.tsx: one status chip per item via the shared <StatusBadge>, plus a single
+// forward-advance control per item.
 export function KitchenTicketCard({ ticket, orderTypeLabel, busyItemId, onAdvance }: {
   ticket: KitchenTicket
   orderTypeLabel: string
@@ -37,7 +38,7 @@ export function KitchenTicketCard({ ticket, orderTypeLabel, busyItemId, onAdvanc
         const action = NEXT_ACTION[item.status]
         return <li key={item.id} className="kitchen-ticket-item">
           <span className="kitchen-item-name"><b>{item.quantity}×</b> {item.snapshot_name}{item.station_name && <small> · {item.station_name}</small>}</span>
-          <span className={`order-state tone-${KITCHEN_TICKET_STATUS_TONE[item.status]}`}>{KITCHEN_TICKET_STATUS_LABELS[item.status]}</span>
+          <StatusBadge tone={KITCHEN_TICKET_STATUS_TONE[item.status]}>{KITCHEN_TICKET_STATUS_LABELS[item.status]}</StatusBadge>
           {action && <button type="button" className="secondary-cta" disabled={busyItemId === item.id}
             onClick={() => onAdvance(item.id, action.next)}>{busyItemId === item.id ? 'Updating…' : action.label}</button>}
         </li>

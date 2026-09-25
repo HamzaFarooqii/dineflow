@@ -1,23 +1,19 @@
 .inventory-head-actions{display:flex;align-items:center;gap:12px}
 
-/* ── Summary cards ─────────────────────────────────────────────────────── */
-/* Same visual recipe as reporting.css's .report-card, under inventory's own class names so this
-   screen's CSS stays self-contained (docs/DESIGN_SYSTEM.md: one card pattern, not reinvented). */
-.inventory-summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--mise-space-12);margin-bottom:var(--mise-space-16)}
-.inventory-summary-card{min-width:0;background:var(--mise-surface);border:1px solid var(--mise-border-hairline);border-radius:var(--mise-r3);padding:var(--mise-space-16);display:grid;gap:var(--mise-space-8);align-content:start}
-.inventory-summary-card small{font-size:11px;color:var(--mise-ink-muted);font-weight:600;text-transform:uppercase;letter-spacing:.07em}
-.inventory-summary-card strong{font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:clamp(21px,2.2vw,28px);font-weight:500;color:var(--mise-ink);line-height:1.15;letter-spacing:-.01em;overflow-wrap:anywhere}
-.inventory-summary-card-footer{display:flex;align-items:center;justify-content:space-between;gap:var(--mise-space-8)}
-.inventory-summary-card-footer span{font-size:11px;color:var(--mise-ink-muted);line-height:1.35}
-.inventory-summary-card.featured{border-left:3px solid var(--mise-action)}
-.inventory-summary-card.featured strong{font-size:clamp(24px,2.8vw,34px);font-weight:600}
+/* Summary cards now render through the shared <MetricCard>/.metric-grid primitive
+   (apps/web/src/components/MetricCard.tsx, styles.css) -- see InventorySummary.tsx. */
+
+/* ── Quantity (see Quantity.tsx): number + a visibly separate unit tag ────── */
+.qty{font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;white-space:nowrap}
+.qty-unit{margin-left:5px;padding:2px 5px;border-radius:var(--mise-r1);background:var(--mise-surface-sunken);color:var(--mise-ink-muted);font:700 9px 'Archivo',sans-serif;text-transform:uppercase;letter-spacing:.04em;vertical-align:1px;white-space:nowrap}
 
 /* ── Toolbar: search, sort, add, filter pills ─────────────────────────────── */
 .inventory-toolbar{display:grid;gap:12px;margin-bottom:20px}
 .inventory-toolbar-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .inventory-toolbar-row .search{flex:1;min-width:220px}
-.inventory-sort-select{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--mise-ink-muted);white-space:nowrap}
-.inventory-sort-select select{min-height:44px;padding:0 10px;border:1px solid var(--mise-border-strong);border-radius:var(--mise-r2);background:var(--mise-surface);color:var(--mise-ink);font:500 13px 'Archivo',sans-serif}
+/* .inventory-sort-select now sits on the <select> inside <SelectField> (SelectField.tsx) --
+   everything but the extra width came for free from its own styling in styles.css. */
+.inventory-sort-select{min-width:170px}
 
 /* ── Unit selector ──────────────────────────────────────────────────────── */
 .unit-selector{display:grid;gap:8px}
@@ -48,10 +44,10 @@
 .inventory-detail-header-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
 .inventory-detail-header-top h2{font:600 22px 'Archivo',sans-serif;margin:0;color:var(--mise-ink)}
 .inventory-detail-subtitle{margin:2px 0 0;font-size:12px;color:var(--mise-ink-muted)}
+/* The 3-up Current Stock/Average Cost/Estimated Stock Value row now renders through the shared
+   <MetricCard> (styles.css) -- .inventory-detail-stat was the same label/value recipe rebuilt
+   independently. This wrapper still supplies the 3-column grid. */
 .inventory-detail-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
-.inventory-detail-stat{display:grid;gap:4px}
-.inventory-detail-stat small{font-size:11px;color:var(--mise-ink-muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em}
-.inventory-detail-stat strong{font:500 20px 'IBM Plex Mono',monospace;color:var(--mise-ink)}
 .inventory-detail-reorder{margin:0;font-size:12px;color:var(--mise-ink-muted)}
 .inventory-detail-actions{display:flex;gap:10px;flex-wrap:wrap}
 
@@ -66,31 +62,40 @@
 .receive-stock-total small{font-size:11px;color:var(--mise-ink-muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em}
 .receive-stock-total strong{font:500 18px 'IBM Plex Mono',monospace;color:var(--mise-ink)}
 
-/* ── Tables (batches, stock activity) ───────────────────────────────────── */
-.inventory-table{width:100%;border-collapse:collapse;font-size:13px}
-.inventory-table th{text-align:left;padding:8px 10px;color:var(--mise-ink-muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--mise-border-strong)}
-.inventory-table td{padding:8px 10px;border-bottom:1px solid var(--mise-border-hairline);color:var(--mise-ink)}
+/* ── Batches: one card per batch instead of a dense multi-column table ───── */
+.batch-list{display:grid;gap:10px}
+.batch-card{border:1px solid var(--mise-border-hairline);border-radius:var(--mise-r3);background:var(--mise-surface);padding:16px}
+.batch-card-top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
+.batch-card-id{font:600 12px 'IBM Plex Mono',monospace;color:var(--mise-ink-muted);letter-spacing:.02em}
+.batch-card-qty{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.batch-card-qty strong{font:600 20px 'IBM Plex Mono',monospace;color:var(--mise-ink)}
+.batch-card-qty span{font-size:12px;color:var(--mise-ink-secondary)}
+.batch-card-bar{height:6px;border-radius:var(--mise-r1);background:var(--mise-surface-sunken);overflow:hidden;margin-bottom:12px}
+.batch-card-bar>div{height:100%;background:var(--mise-success);border-radius:inherit}
+.batch-card-costs{display:flex;gap:16px;flex-wrap:wrap;font:500 13px 'IBM Plex Mono',monospace;color:var(--mise-ink);margin-bottom:10px}
+.batch-card-meta{display:flex;gap:14px;flex-wrap:wrap;padding-top:10px;border-top:1px solid var(--mise-border-hairline);font-size:11.5px;color:var(--mise-ink-muted)}
 
+/* ── Stock activity: one card per movement, same recipe as batch cards ──── */
 .stock-activity{display:grid;gap:10px}
 .stock-activity-filters{margin-bottom:0}
+.activity-list{display:grid;gap:8px}
+.activity-row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border:1px solid var(--mise-border-hairline);border-radius:var(--mise-r3);background:var(--mise-surface)}
+.activity-row-main{display:flex;align-items:center;gap:10px;min-width:0;flex:1}
+.activity-row-note{font-size:13px;color:var(--mise-ink-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.activity-row-end{display:grid;justify-items:end;gap:2px}
+.activity-row-end b{font:600 14px 'IBM Plex Mono',monospace;color:var(--mise-ink)}
+.activity-row-end b.activity-up{color:var(--mise-success)}
+.activity-row-end b.activity-down{color:var(--mise-danger)}
+.activity-row-end small{font:400 11px 'IBM Plex Mono',monospace;color:var(--mise-ink-muted)}
+.activity-row-meta{display:flex;gap:12px;flex-basis:100%;font-size:11px;color:var(--mise-ink-muted);border-top:1px solid var(--mise-border-hairline);padding-top:8px;margin-top:2px}
 
 .inventory-wastage-form{margin-bottom:0}
 
 @media (max-width:900px){
   .inventory-layout{grid-template-columns:1fr}
-  .inventory-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 
-/* Tables degrade to stacked cards below tablet width -- each row becomes a card, each cell's
-   data-label attribute (set in BatchList.tsx/StockLedger.tsx) supplies the visible label since
-   the <thead> is hidden at this width. */
 @media (max-width:640px){
-  .inventory-summary-grid{grid-template-columns:1fr}
   .inventory-detail-stats{grid-template-columns:1fr}
-  .batch-table thead,.stock-activity-table thead{display:none}
-  .batch-table tr,.stock-activity-table tr{display:block;border:1px solid var(--mise-border-hairline);border-radius:var(--mise-r3);margin-bottom:10px;padding:8px 10px}
-  .batch-table td,.stock-activity-table td{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:0;text-align:right}
-  .batch-table td::before,.stock-activity-table td::before{content:attr(data-label);font-weight:600;color:var(--mise-ink-muted);text-align:left}
-  .batch-table td[colspan],.stock-activity-table td[colspan]{display:block;text-align:left}
-  .batch-table td[colspan]::before,.stock-activity-table td[colspan]::before{content:none}
+  .activity-row-end{justify-items:start}
 }
