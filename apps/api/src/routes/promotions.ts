@@ -2,8 +2,11 @@ import { Router, type Request, type Response } from 'express'
 import { db } from '../db.js'
 import { requireStoreManager, sendApiError, ApiError } from './auth.js'
 import { MAX_CENTS } from '../../../../packages/domain/src/money.js'
+import { activePromotions, type Promotion as DomainPromotion } from '../../../../packages/domain/src/promotions.js'
+import { requireCashierTerminal } from '../terminal-auth/routes.js'
 
 export const promotionsRouter = Router()
+export const terminalPromotionsRouter = Router()
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -131,6 +134,46 @@ async function updatePromotion(req: Request, res: Response) {
 // campaign someone can also re-enable later (unlike a floor table, which is soft-deleted for
 // good), so it stays a toggle rather than gaining its own endpoint.
 
+interface PromotionRow {
+  id: string; store_id: string; name: string; discount_kind: 'percent' | 'fixed'; discount_value: number
+  starts_at: string | null; ends_at: string | null; active: boolean
+}
+
+function toDomain(row: PromotionRow): DomainPromotion {
+  return {
+    id: row.id, storeId: row.store_id, name: row.name, discountKind: row.discount_kind, discountValue: row.discount_value,
+    startsAt: row.starts_at ? new Date(row.starts_at) : null, endsAt: row.ends_at ? new Date(row.ends_at) : null, active: row.active,
+  }
+}
+
+function toRow(promotion: DomainPromotion): PromotionRow {
+  return {
+    id: promotion.id, store_id: promotion.storeId, name: promotion.name, discount_kind: promotion.discountKind, discount_value: promotion.discountValue,
+    starts_at: promotion.startsAt?.toISOString() ?? null, ends_at: promotion.endsAt?.toISOString() ?? null, active: promotion.active,
+  }
+}
+
+// GET /pos/promotions — terminal-only, read-only, active-and-in-window promotions a cashier can
+// apply at checkout. Deliberately not the same endpoint as the management GET /promotions above:
+// that one is requireStoreManager-gated (a Supabase web session only) and returns every promotion
+// including inactive/scheduled ones for the management screen, neither of which a cashier terminal
+// needs or has credentials for.
+async function listActivePromotions(req: Request, res: Response) {
+  try {
+    const storeId = storeIdParam(req)
+    const session = await requireCashierTerminal(req, db)
+    if (session.storeId !== storeId) throw new ApiError(403, 'cross_store_reference', 'This terminal belongs to a different store.')
+    const result = await db.query<PromotionRow>(
+      `select id, store_id, name, discount_kind, discount_value, starts_at, ends_at, active
+       from public.promotions where store_id = $1 and active = true`,
+      [storeId],
+    )
+    const active = activePromotions(result.rows.map(toDomain), new Date())
+    res.json({ promotions: active.map(toRow) })
+  } catch (reason) { sendApiError(res, reason) }
+}
+
 promotionsRouter.get('/', listPromotions)
 promotionsRouter.post('/', createPromotion)
 promotionsRouter.patch('/:id', updatePromotion)
+terminalPromotionsRouter.get('/', listActivePromotions)

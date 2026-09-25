@@ -2,10 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { calculateDiscountedLine, discountNeedsManagerApproval, formatCents, parseCents } from '../../../../packages/domain/src/money'
 import { ORDER_TYPES, ORDER_TYPE_LABELS } from '../../../../packages/domain/src/order-type'
+import { redemptionValue } from '../../../../packages/domain/src/loyalty'
+import { promotionToLineDiscount } from '../../../../packages/domain/src/promotions'
 import { activeStoreId, loadCatalog } from '../lib/catalog'
 import { posDb, type LocalCategory, type LocalProduct, type LocalStock } from '../lib/db'
 import { pushPendingOrders } from '../lib/order-sync'
 import { approvalIsCurrent, cartSignature, productsRequiringApproval, usePosStore, type CartItem, type LineDiscount } from '../lib/pos-store'
+import { fetchLoyaltyAccount, fetchRewardRules, type LoyaltyAccount, type RewardRule } from '../lib/loyalty'
+import { fetchActivePromotions, type Promotion } from '../lib/promotions'
 import { currentAccess, type TerminalCache } from '../terminal-auth/cache'
 import { ManagerApprovalModal } from '../terminal-auth/ManagerApprovalModal'
 import { requireSupabase } from '../lib/supabase'
@@ -13,7 +17,7 @@ import { CustomerSelector } from './CustomerScreen'
 import { MenuCategoryTabs } from './menu/MenuCategoryTabs'
 import { MenuItemCard } from './menu/MenuItemCard'
 import { MenuSearch } from './menu/MenuSearch'
-import { RestaurantOrderItem } from './menu/RestaurantOrderItem'
+import { RestaurantOrderItem, type DiscountEditorKind } from './menu/RestaurantOrderItem'
 import { liveQuery } from 'dexie'
 
 export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
@@ -37,9 +41,12 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
   const [terminalCache, setTerminalCache] = useState<TerminalCache | undefined>()
   const [permissionVersion, setPermissionVersion] = useState(0)
   const [discountEditorFor, setDiscountEditorFor] = useState<string | null>(null)
-  const [discountKind, setDiscountKind] = useState<'percent' | 'fixed'>('percent')
+  const [discountKind, setDiscountKind] = useState<DiscountEditorKind>('percent')
   const [discountInput, setDiscountInput] = useState('')
   const [discountError, setDiscountError] = useState('')
+  const [rewardRules, setRewardRules] = useState<RewardRule[]>([])
+  const [promotions, setPromotions] = useState<Promotion[]>([])
+  const [loyaltyAccount, setLoyaltyAccount] = useState<LoyaltyAccount | null>(null)
   const [approvalOpen, setApprovalOpen] = useState(false)
   const [approvalReason, setApprovalReason] = useState('')
   const [oversoldAcknowledged, setOversoldAcknowledged] = useState(false)
@@ -51,6 +58,8 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
   const remove = usePosStore(state => state.removeItem)
   const clear = usePosStore(state => state.clearCart)
   const setLineDiscount = usePosStore(state => state.setLineDiscount)
+  const applyRewardDiscount = usePosStore(state => state.applyRewardDiscount)
+  const applyPromotionDiscount = usePosStore(state => state.applyPromotionDiscount)
   const setItemNote = usePosStore(state => state.setItemNote)
   const managerApproval = usePosStore(state => state.managerApproval)
   const setManagerApproval = usePosStore(state => state.setManagerApproval)
@@ -88,6 +97,23 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
     const interval = window.setInterval(sync, 15_000)
     return () => { active = false; window.removeEventListener('online', sync); window.clearInterval(interval) }
   }, [storeId, terminal])
+  // Day 4 checkout wiring: reward rules and active promotions are store-level, so they load once
+  // storeId is ready; the loyalty account is per-guest, so it reloads whenever the attached guest
+  // changes. All three are online-only reads (no local Dexie cache exists for them yet) — offline,
+  // the Reward/Promo tabs just show their empty state rather than failing the register.
+  useEffect(() => {
+    if (!storeId || !navigator.onLine) return
+    let active = true
+    void fetchRewardRules(storeId, terminal).then(rules => { if (active) setRewardRules(rules) }).catch(() => { if (active) setRewardRules([]) })
+    void fetchActivePromotions(storeId, terminal).then(list => { if (active) setPromotions(list) }).catch(() => { if (active) setPromotions([]) })
+    return () => { active = false }
+  }, [storeId, terminal])
+  useEffect(() => {
+    if (!selectedCustomer || !storeId || !navigator.onLine) { setLoyaltyAccount(null); return }
+    let active = true
+    void fetchLoyaltyAccount(storeId, selectedCustomer.id, terminal).then(account => { if (active) setLoyaltyAccount(account) }).catch(() => { if (active) setLoyaltyAccount(null) })
+    return () => { active = false }
+  }, [storeId, terminal, selectedCustomer?.id])
   useEffect(() => {
     if (!scanNotice) return
     const timer = window.setTimeout(() => setScanNotice(''), 2_500)
@@ -169,6 +195,14 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
   const approvalValid = terminal ? approvalIsCurrent(managerApproval, cart, permissionVersion) : true
   const needsApproval = terminal && approvalNeededIds.length > 0 && !approvalValid
 
+  const rewardOptions = useMemo(() => rewardRules.map(rule => ({
+    id: rule.id, label: `${rule.name} — ${formatCents(rule.discount_cents, currency)} for ${rule.points_cost} pts`,
+    affordable: (loyaltyAccount?.points_balance ?? 0) >= rule.points_cost,
+  })), [rewardRules, loyaltyAccount, currency])
+  const promoOptions = useMemo(() => promotions.map(promo => ({
+    id: promo.id, label: `${promo.name} — ${promo.discount_kind === 'percent' ? `${(promo.discount_value / 100).toFixed(2)}%` : formatCents(promo.discount_value, currency)} off`,
+  })), [promotions, currency])
+
   // A cashier can still complete this sale even if it oversells — pos_stock is allowed to go
   // negative by design (loadOversold reports it for reconciliation) because the local stock
   // count can be stale, especially offline, and blocking a paying guest is worse than a rare
@@ -205,24 +239,50 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
   function openDiscountEditor(item: CartItem) {
     setDiscountEditorFor(item.productId)
     setDiscountError('')
-    if (item.discount) { setDiscountKind(item.discount.kind); setDiscountInput(item.discount.kind === 'percent' ? String(item.discount.bps / 100) : (item.discount.cents / 100).toFixed(2)) }
+    if (item.discountSource?.kind === 'reward') { setDiscountKind('reward'); setDiscountInput(item.discountSource.ruleId) }
+    else if (item.discountSource?.kind === 'promotion') { setDiscountKind('promo'); setDiscountInput(item.discountSource.promotionId) }
+    else if (item.discount) { setDiscountKind(item.discount.kind); setDiscountInput(item.discount.kind === 'percent' ? String(item.discount.bps / 100) : (item.discount.cents / 100).toFixed(2)) }
     else { setDiscountKind('percent'); setDiscountInput('') }
   }
 
+  // Reward/promotion redemption produce a plain LineDiscount exactly like a manual one (Day 4
+  // checkout wiring) — they go through the same lineSubtotal bound and the same manager-approval
+  // check below; only *how* the discount amount was decided, and which pos-store action records
+  // it, differs per kind.
   function applyDiscount(item: CartItem) {
     try {
-      let discount: LineDiscount
       const lineSubtotal = item.unitPriceCents * item.quantity
+      let discount: LineDiscount
+      let commit: () => void
       if (discountKind === 'percent') {
         const value = Number(discountInput)
         if (!Number.isFinite(value) || value <= 0 || value > 100) throw new Error('Enter a percent between 0 and 100.')
         discount = { kind: 'percent', bps: Math.round(value * 100) }
-      } else {
+        commit = () => setLineDiscount(item.productId, discount)
+      } else if (discountKind === 'fixed') {
         const cents = parseCents(discountInput || '0')
         if (cents <= 0 || cents > lineSubtotal) throw new Error('Enter an amount up to the line subtotal.')
         discount = { kind: 'fixed', cents }
+        commit = () => setLineDiscount(item.productId, discount)
+      } else if (discountKind === 'reward') {
+        const rule = rewardRules.find(candidate => candidate.id === discountInput)
+        if (!rule) throw new Error('Choose a reward.')
+        const value = redemptionValue(rule.points_cost, rule.discount_cents, loyaltyAccount?.points_balance ?? 0)
+        if (!value) throw new Error(`${selectedCustomer?.name ?? 'This guest'} doesn't have enough points for that reward.`)
+        if (value.cents > lineSubtotal) throw new Error(`This reward (${formatCents(value.cents, currency)}) is worth more than this line — apply it to a larger item.`)
+        discount = value
+        commit = () => applyRewardDiscount(item.productId, { kind: 'reward', ruleId: rule.id, ruleName: rule.name, pointsCost: rule.points_cost }, value)
+      } else {
+        const promo = promotions.find(candidate => candidate.id === discountInput)
+        if (!promo) throw new Error('Choose a promotion.')
+        const value = promotionToLineDiscount({ id: promo.id, storeId: promo.store_id, name: promo.name, discountKind: promo.discount_kind,
+          discountValue: promo.discount_value, startsAt: promo.starts_at ? new Date(promo.starts_at) : null, endsAt: promo.ends_at ? new Date(promo.ends_at) : null, active: promo.active })
+        if (!value) throw new Error('This promotion could not be applied.')
+        if (value.kind === 'fixed' && value.cents > lineSubtotal) throw new Error(`This promotion (${formatCents(value.cents, currency)}) is worth more than this line — apply it to a larger item.`)
+        discount = value
+        commit = () => applyPromotionDiscount(item.productId, { kind: 'promotion', promotionId: promo.id, name: promo.name }, value)
       }
-      setLineDiscount(item.productId, discount)
+      commit()
       setDiscountEditorFor(null); setDiscountError('')
       const line = calculateDiscountedLine(item.unitPriceCents, item.quantity, item.taxRateBps, discount)
       if (terminal && discountNeedsManagerApproval(line.subtotalCents, line.discountAppliedCents)) {
@@ -276,6 +336,7 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
       {cart.map(item => <RestaurantOrderItem key={item.productId} item={item} currency={currency} availableStock={stock[item.productId]}
         flagged={approvalNeededIds.includes(item.productId)} approvalValid={approvalValid}
         discountEditorOpen={discountEditorFor === item.productId} discountKind={discountKind} discountInput={discountInput} discountError={discountError}
+        rewardOptions={rewardOptions} promoOptions={promoOptions} hasCustomer={Boolean(selectedCustomer)}
         onIncrement={() => increment(item.productId)} onDecrement={() => decrement(item.productId)} onRemove={() => remove(item.productId)}
         onOpenDiscountEditor={() => openDiscountEditor(item)}
         onSetDiscountKind={kind => { setDiscountKind(kind); setDiscountInput(''); setDiscountError('') }}

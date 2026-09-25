@@ -310,12 +310,44 @@ Promotions aren't applied at checkout yet — that's Hamza's checkout-wiring tas
 - [x] Loyalty schema (`loyalty_tiers`, `loyalty_accounts`, `loyalty_point_ledger`,
       `reward_rules`) — applied, recorded in `APPLIED.md`, 4 schema-integrity tests passing.
       Pushed on `feature/hamza/day4-loyalty-foundation`, merged.
-- [ ] Loyalty + Promotions checkout wiring — **still not started.** Both PRs it depends on
-      (Ahmed's `pointsEarned()`/`redemptionValue()`, Bisma's `promotionToLineDiscount()`) are now
-      merged and ready to consume, but nobody has wired either into `orders.ts`/`pos-store.ts`/
-      `RegisterScreen.tsx` yet. This is the one piece that makes loyalty/promotions actually work
-      end-to-end at checkout — until it lands, points are never earned or redeemed and a
-      configured promotion is never applied to a sale. Carries over as open work.
+- [x] Loyalty + Promotions checkout wiring — **done.**
+      - **Award**: `orders.ts`'s `push()` now looks up the guest's `loyalty_accounts` row (if
+        any — opt-in, per Ahmed's decision) inside the same transaction as the order/items/
+        payment insert, computes the tier from lifetime points *before* this order (Ahmed's
+        `tierForLifetimePoints`, base 1x when no tier qualifies), awards points via
+        `pointsEarned(totalCents, tierMultiplierBps)`, and writes a `loyalty_point_ledger` row —
+        idempotent for free, since a retried/replayed `operation_id` already short-circuits
+        before this code runs (same `pos_operation_ledger` replay guard the rest of `push()`
+        relies on).
+      - **Redeem**: a cashier can now pick "Reward" or "Promo" in a cart line's existing discount
+        popover (`RestaurantOrderItem.tsx`) — a reward converts via `redemptionValue()`, a
+        promotion via `promotionToLineDiscount()`, both producing an ordinary `LineDiscount` that
+        goes through the exact same `discountNeedsManagerApproval` gate as a manual discount. The
+        cart (`pos-store.ts`) tracks *which* reward/promotion produced a line's discount
+        (`CartItem.discountSource`) so the UI can label it honestly and so `checkout.ts` can tell
+        the server which `reward_rule_id` to deduct points for. The deduction itself is clamped
+        to whatever balance is actually available and never blocks the sale — the same "don't
+        reverse a completed, paid sale over a stale local number" reasoning this file already
+        uses for oversold stock, now applied to a stale points balance on a device that queued
+        the sale while offline.
+      - **Gap found and fixed along the way**: Bisma's `/promotions` management endpoints are
+        `requireStoreManager`-gated by design (a Supabase session only), which meant a cashier
+        terminal had no way to even *read* which promotions are active to apply one. Added a new
+        `GET /pos/promotions` (read-only, active-and-in-window only) so terminal checkout can use
+        promotions too, not just the web register.
+      - **Also found and fixed**: `packages/domain/src/promotions.ts` imported `money.ts` with a
+        `.ts`-suffixed specifier, which works for this package's own test runner and for
+        apps/web's bundler but is a hard `tsc` error (`TS5097`) under apps/api's NodeNext
+        resolution — invisible until this task became the first thing in apps/api to actually
+        import that file. Fixed the same way `money.ts`'s own `formatCostPerUnit` already had to
+        (see its comment): inline the couple of lines needed (`boundedInteger`/`MAX_CENTS`)
+        instead of importing them as values, keep the type-only import (erased before any runtime
+        resolution happens either way).
+      - New test coverage: `apps/api/test/orders-loyalty.test.ts` (9 subtests, real HTTP against
+        PGlite) — no-account guest earns nothing, base-rate earning, tier-multiplier earning,
+        redeem-and-earn-on-the-discounted-total in one order, clamped redemption on a
+        too-low balance, idempotent retry, redemption-without-a-customer rejected, and the new
+        `/pos/promotions` endpoint's active/in-window filter and store isolation.
 - [x] Staff role review — **decision: no distinct "waiter" role this sprint.** Reasoning recorded
       in `MODULE_STATUS.md`'s Staff row — "waiter" was never a login/permission role to begin
       with, and Day 4's loyalty feature doesn't create a real need for one either.
@@ -349,8 +381,13 @@ Promotions aren't applied at checkout yet — that's Hamza's checkout-wiring tas
       note that it "may need rework once his PR lands").
 
 **Documentation:**
-- [x] `docs/MODULE_STATUS.md` given a final pass now that both PRs have landed.
+- [x] `docs/MODULE_STATUS.md` given a final pass now that all three PRs and the checkout-wiring
+      task have landed.
 
-**Still open going into Day 5:** Hamza's checkout-wiring task is the only incomplete Day 4 item —
-everyone's individually-assigned features are done, tested and merged, but a guest cannot yet
-actually earn or redeem loyalty points, or have a promotion applied, on a real sale.
+**Day 4 is now fully complete.** Every task in this plan — Hamza's, Ahmed's and Bisma's — is done,
+tested and on `develop`. Known, deliberately-scoped-out-of-Day-4 follow-ups for later: nobody can
+configure a loyalty tier yet (read-only API, no create/update UI); a redeemed-but-insufficient
+balance is clamped rather than blocked (see Hamza's checkout-wiring note above); the web register's
+manual->20%-discount manager-approval path is enforced at `checkout.ts`'s local-save step, not
+gated through a modal the way the terminal path is — pre-existing behavior, not something this
+task's reward/promotion additions changed.

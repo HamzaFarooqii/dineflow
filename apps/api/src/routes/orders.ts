@@ -4,6 +4,7 @@ import { db } from '../db.js'
 import { ApiError, requireStoreMember, requireStoreManager, sendApiError } from './auth.js'
 import { boundedInteger, calculateDiscountedLine, discountNeedsManagerApproval, MAX_CENTS, sumDiscountedLines, type LineDiscount } from '../../../../packages/domain/src/money.js'
 import { ORDER_TYPES, type OrderType } from '../../../../packages/domain/src/order-type.js'
+import { BASE_MULTIPLIER_BPS, pointsEarned, tierForLifetimePoints } from '../../../../packages/domain/src/loyalty.js'
 import { requireCashierTerminal, requireDeviceTerminal } from '../terminal-auth/routes.js'
 
 export const ordersRouter = Router()
@@ -42,6 +43,19 @@ function orderTypeValue(value: unknown): OrderType {
   if (typeof value !== 'string' || !ORDER_TYPES.includes(value as OrderType)) throw new ApiError(422, 'validation_failed', 'Order type is invalid.')
   return value as OrderType
 }
+// Day 4 checkout wiring: a cart may redeem one reward rule against the guest's loyalty account,
+// converting it to a LineDiscount on a line client-side (Ahmed's redemptionValue) exactly like a
+// manual discount. This is the API's own record of *which* rule to deduct points for -- the line
+// discount amount itself is trusted the same way any other line discount already is (the server
+// checks the arithmetic totals, not the "why" behind a given cent amount).
+function parseLoyaltyRedemption(body: JsonRecord, customerId: string | null): { rewardRuleId: string } | null {
+  const raw = body.loyalty_redemption
+  if (raw === null || raw === undefined) return null
+  const redemption = record(raw, 'Loyalty redemption')
+  if (!customerId) throw new ApiError(422, 'validation_failed', 'Loyalty redemption requires a guest on this sale.')
+  return { rewardRuleId: id(redemption.reward_rule_id, 'Reward rule ID') }
+}
+
 // A line may send discount_kind/discount_value together, or omit both for no discount.
 function parseDiscount(item: JsonRecord, label: string): LineDiscount {
   const kind = item.discount_kind
@@ -120,7 +134,7 @@ export function validateOperation(raw: unknown) {
   if (!Number.isSafeInteger(order.catalog_version) || (order.catalog_version as number) < 1 || (order.catalog_version as number) > MAX_CENTS) {
     throw new ApiError(422, 'validation_failed', 'Catalog version is invalid.')
   }
-  return { operationId, storeId, items: parsedItems, totals,
+  return { operationId, storeId, items: parsedItems, totals, loyaltyRedemption: parseLoyaltyRedemption(body, customerId),
     order: { customer_id: customerId, receipt_number: text(order.receipt_number, 'Receipt number', 100),
       catalog_version: order.catalog_version as number, order_type: parsedOrderType, table_id: tableId,
       client_generated_at: generatedAt, employee_id: employeeId, manager_id: managerId, manager_approved_at: managerApprovedAt },
@@ -234,6 +248,57 @@ async function push(req: import('express').Request, res: import('express').Respo
         values ($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [operation.payment.id, operation.storeId, operation.operationId,
           operation.payment.method, operation.payment.amount_cents, operation.payment.tendered_cents,
           operation.payment.change_cents, operation.payment.reference, operation.order.client_generated_at])
+      // Loyalty (Day 4 checkout wiring): redeem first, then award. Both are silent no-ops for a
+      // guest with no loyalty_accounts row (opt-in enrollment, Ahmed's Day 4 decision) -- this
+      // sale completes exactly the same either way, it just doesn't touch the loyalty tables.
+      // Idempotent for free: this whole block only ever runs once per operation_id, since a
+      // retried/replayed sync already returned early against pos_operation_ledger above.
+      if (operation.order.customer_id) {
+        const account = await client.query<{ id: string; points_balance: number; lifetime_points: number }>(
+          'select id, points_balance, lifetime_points from public.loyalty_accounts where store_id=$1 and customer_id=$2',
+          [operation.storeId, operation.order.customer_id])
+        if (account.rows[0]) {
+          const { id: accountId, points_balance: balance, lifetime_points: lifetimePoints } = account.rows[0]
+          let balanceDelta = 0
+          if (operation.loyaltyRedemption) {
+            const rule = await client.query<{ points_cost: number }>(
+              'select points_cost from public.reward_rules where store_id=$1 and id=$2 and active=true',
+              [operation.storeId, operation.loyaltyRedemption.rewardRuleId])
+            if (rule.rows[0]) {
+              // Clamped to whatever balance is actually available, never blocking the sale: this
+              // device may have queued the sale while offline, so the balance it saw when the
+              // reward was picked in the cart can be stale by the time this finally syncs. The
+              // discount was already given and the guest already left with their order --
+              // reversing a completed, paid sale over a stale points balance would be worse than
+              // deducting fewer points than the reward technically cost (same reasoning as
+              // oversold stock elsewhere in this file).
+              const deduct = Math.min(rule.rows[0].points_cost, balance)
+              if (deduct > 0) {
+                await client.query(`insert into public.loyalty_point_ledger(store_id,account_id,delta,reason,order_id)
+                  values ($1,$2,$3,'redeemed',$4)`, [operation.storeId, accountId, -deduct, operation.operationId])
+                balanceDelta -= deduct
+              }
+            }
+          }
+          // Tier is computed from lifetime_points *before* this order's own points are added
+          // (Ahmed's PR description), falling back to the base 1x rate when no tier qualifies —
+          // e.g. no tiers configured yet for this store.
+          const tiers = await client.query<{ min_lifetime_points: number; point_multiplier_bps: number }>(
+            'select min_lifetime_points, point_multiplier_bps from public.loyalty_tiers where store_id=$1 order by min_lifetime_points asc, name asc',
+            [operation.storeId])
+          const tier = tierForLifetimePoints(lifetimePoints, tiers.rows.map(row => ({ minLifetimePoints: row.min_lifetime_points, multiplierBps: row.point_multiplier_bps })))
+          const earned = pointsEarned(operation.totals.totalCents, tier ? tier.multiplierBps : BASE_MULTIPLIER_BPS)
+          if (earned > 0) {
+            await client.query(`insert into public.loyalty_point_ledger(store_id,account_id,delta,reason,order_id)
+              values ($1,$2,$3,'earned',$4)`, [operation.storeId, accountId, earned, operation.operationId])
+            balanceDelta += earned
+          }
+          if (balanceDelta !== 0 || earned > 0) {
+            await client.query('update public.loyalty_accounts set points_balance=points_balance+$2, lifetime_points=lifetime_points+$3 where id=$1',
+              [accountId, balanceDelta, earned])
+          }
+        }
+      }
       let position = BigInt((await client.query('select last_position::text from public.pos_sync_feed_state where store_id=$1', [operation.storeId])).rows[0].last_position)
       for (const productId of productIds) {
         const quantity = operation.items.filter(item => item.product_id === productId).reduce((sum, item) => sum + item.quantity, 0)

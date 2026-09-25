@@ -1,6 +1,6 @@
 import { calculateDiscountedLine, sumDiscountedLines, boundedInteger, discountNeedsManagerApproval, MAX_CENTS } from '../../../../packages/domain/src/money'
 import { posDb, type LocalOrder, type LocalOrderItem, type LocalPayment, type OutboxEntry } from './db'
-import { usePosStore, type CartItem } from './pos-store'
+import { usePosStore, redeemedReward, type CartItem } from './pos-store'
 
 // Evidence that a manager authorized a discount above the cashier's independent 20% authority.
 export interface ManagerApprovalEvidence { managerId: string; approvedAt: string }
@@ -54,7 +54,12 @@ export async function completeLocalSale(items: CartItem[], storeId: string, meth
       const payment: LocalPayment = { id: crypto.randomUUID(), order_id: operationId, method,
         amount_cents: totals.totalCents, tendered_cents: tenderedCents,
         change_cents: method === 'cash' ? tenderedCents - totals.totalCents : 0, reference }
-      const payload = { operation_id: operationId, order, items: orderItems, payment }
+      // Day 4 checkout wiring: if a line's discount came from redeeming a reward, tell the server
+      // which reward_rule to deduct points for — the discount amount itself already travels as an
+      // ordinary line discount above, exactly like a manual one.
+      const reward = redeemedReward(items)
+      const payload = { operation_id: operationId, order, items: orderItems, payment,
+        loyalty_redemption: reward ? { reward_rule_id: reward.ruleId } : undefined }
       const outbox: OutboxEntry = { store_id: storeId, operation_id: operationId, order_id: operationId, status: 'pending',
         failure_reason: null, failure_kind: null, reason_code: null, attempt_count: 0,
         lease_owner: null, lease_expires_at: null, accepted_checkpoint: null,

@@ -16,6 +16,17 @@ import type { LocalCustomer } from './db'
 
 export type { LineDiscount }
 
+// Where a line's discount came from — a manual cashier discount has no source. A reward or
+// promotion still produces a plain LineDiscount (Day 4 checkout wiring: both flow through the
+// exact same discount/approval machinery as a manual one), but the cart needs to remember which
+// one so the UI can label it honestly and, for a reward, so checkout.ts knows which reward_rule to
+// tell the server to deduct points for. Deliberately not part of cartSignature/manager-approval
+// evidence: the *amount* the source produced is what matters for money math, not its label.
+export type DiscountSource =
+  | { kind: 'reward'; ruleId: string; ruleName: string; pointsCost: number }
+  | { kind: 'promotion'; promotionId: string; name: string }
+  | null
+
 export interface CartItem {
   storeId: string
   productId: string
@@ -26,6 +37,7 @@ export interface CartItem {
   catalogVersion: number
   quantity: number
   discount: LineDiscount
+  discountSource?: DiscountSource
   // A free-text kitchen note ("no onions", "extra spicy"). Local/cart state only, same
   // convention as orderType below — no order_items column exists yet to persist it against,
   // and it deliberately isn't part of cartSignature since it doesn't affect money math or
@@ -73,6 +85,13 @@ export function approvalIsCurrent(approval: ManagerApproval | null, items: CartI
   return Boolean(approval) && approval!.permissionVersion === permissionVersion && approval!.cartSignature === cartSignature(items)
 }
 
+// At most one reward can be redeemed per check (reward_rules has no multi-redemption concept) —
+// this is what checkout.ts reads to tell the server which reward_rule to deduct points for.
+export function redeemedReward(items: CartItem[]): Extract<DiscountSource, { kind: 'reward' }> | null {
+  for (const item of items) if (item.discountSource?.kind === 'reward') return item.discountSource
+  return null
+}
+
 export type SyncStatus = 'idle' | 'syncing' | 'error'
 
 export interface PosStore {
@@ -108,7 +127,11 @@ export interface PosStore {
 
   // Line discounts (FEAT-CART-02) and the manager evidence that authorizes them (FEAT-AUTH-02).
   // Any cart mutation above clears managerApproval; setLineDiscount does too, since it changes the signature.
+  // A manual discount (setLineDiscount) always clears any reward/promotion source that line had —
+  // typing a new amount over a redeemed reward means the cashier is replacing it, not stacking it.
   setLineDiscount: (productId: string, discount: LineDiscount) => void
+  applyRewardDiscount: (productId: string, source: Extract<DiscountSource, { kind: 'reward' }>, discount: LineDiscount) => void
+  applyPromotionDiscount: (productId: string, source: Extract<DiscountSource, { kind: 'promotion' }>, discount: LineDiscount) => void
   managerApproval: ManagerApproval | null
   setManagerApproval: (approval: ManagerApproval) => void
   clearManagerApproval: () => void
@@ -198,7 +221,26 @@ export const usePosStore = create<PosStore>((set, get) => ({
 
   setLineDiscount: (productId, discount) =>
     set((state) => ({
-      items: state.items.map((i) => i.productId === productId ? { ...i, discount } : i),
+      items: state.items.map((i) => i.productId === productId ? { ...i, discount, discountSource: null } : i),
+      managerApproval: null,
+    })),
+
+  applyRewardDiscount: (productId, source, discount) =>
+    set((state) => ({
+      // Only one line may redeem a reward at a time — applying a new one anywhere first clears
+      // whichever line was carrying the previous one, matching reward_rules' single-redemption-
+      // per-check design (redeemedReward() above assumes at most one).
+      items: state.items.map((i) => {
+        if (i.productId === productId) return { ...i, discount, discountSource: source }
+        if (i.discountSource?.kind === 'reward') return { ...i, discount: null, discountSource: null }
+        return i
+      }),
+      managerApproval: null,
+    })),
+
+  applyPromotionDiscount: (productId, source, discount) =>
+    set((state) => ({
+      items: state.items.map((i) => i.productId === productId ? { ...i, discount, discountSource: source } : i),
       managerApproval: null,
     })),
 
