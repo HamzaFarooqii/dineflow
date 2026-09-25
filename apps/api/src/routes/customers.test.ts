@@ -76,6 +76,47 @@ test('loadCustomerSummary sums lifetime spend and counts visits, scoped to the s
   }
 })
 
+test('loadCustomerSummary excludes a refunded order from both lifetime spend and visit count', async () => {
+  const database = new PGlite()
+  try {
+    await database.exec(`create role anon; create role authenticated; create role service_role bypassrls;
+      create schema auth; create table auth.users(id uuid primary key,raw_user_meta_data jsonb);
+      create function auth.uid() returns uuid language sql as 'select null::uuid';
+      create function auth.jwt() returns jsonb language sql as 'select ''{}''::jsonb';`)
+    for (const name of chain) {
+      const sql = (await readFile(root + `supabase/migrations/${name}`, 'utf8')).replace('create extension if not exists pgcrypto;', '')
+      await database.exec(sql)
+    }
+    const owner = randomUUID(), store = randomUUID(), guest = randomUUID()
+    await database.query('insert into auth.users(id) values ($1)', [owner])
+    await database.query("insert into public.stores(id,name,code,created_by,timezone) values ($1,'One','crm-refund',$2,'UTC')", [store, owner])
+    await database.query(`insert into public.pos_customers(id,store_id,name,client_generated_at) values ($1,$2,'Refund Guest',now())`, [guest, store])
+
+    const keptOrder = randomUUID(), refundedOrder = randomUUID()
+    const insertOrder = async (id: string, total: number, when: string) => {
+      await database.query(`insert into public.pos_orders(id,store_id,receipt_number,currency,store_name_snapshot,timezone_snapshot,
+        subtotal_cents,discount_cents,tax_cents,total_cents,catalog_version,client_generated_at,customer_id)
+        values ($1,$2,$3,'USD','One','UTC',$4,0,0,$4,1,$5,$6)`, [id, store, id.slice(0, 8), total, when, guest])
+    }
+    await insertOrder(keptOrder, 2_000, '2026-09-20T10:00:00.000Z')
+    await insertOrder(refundedOrder, 5_000, '2026-09-22T10:00:00.000Z')
+    await database.query(`insert into public.pos_refunds(id,store_id,order_id,amount_cents,refunded_by) values ($1,$2,$3,5000,$4)`, [randomUUID(), store, refundedOrder, owner])
+
+    const fixture = db as unknown as { query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[]; rowCount: number }> }
+    fixture.query = async (sql: string, params?: unknown[]) => {
+      const result = await database.query(sql, params)
+      return { rows: result.rows, rowCount: Math.max(result.affectedRows ?? 0, result.rows.length) }
+    }
+
+    const result = await loadCustomerSummary(store, guest)
+    assert.equal(result.visit_count, 1)
+    assert.equal(result.lifetime_spend_cents, 2_000)
+    assert.deepEqual(result.recent_visits.map(visit => visit.order_id), [keptOrder])
+  } finally {
+    await database.close()
+  }
+})
+
 test('loadCustomerSummary is zero for a guest with no orders', async () => {
   const database = new PGlite()
   try {

@@ -87,15 +87,19 @@ export function CustomerFinder({ storeId, terminal, onSelect, onViewProfile }: {
     finally { setBusy(false) }
   }
   const matches = [...local, ...server.filter(remote => !local.some(customer => customer.id === remote.id))]
+  // Keyed on the joined, sorted id set (not local/server's array identity, which changes on
+  // every keystroke of the phone search) and debounced, so typing a phone number doesn't fire a
+  // fresh pair of loyalty queries per character.
+  const matchIdKey = [...new Set(matches.map(customer => customer.id))].sort().join(',')
   useEffect(() => {
     let active = true
-    if (terminal || !navigator.onLine || !matches.length) { setTierBadges(new Map()); return }
-    void loadTierBadges(storeId, matches.map(customer => customer.id)).then(badges => { if (active) setTierBadges(badges) }).catch(() => { if (active) setTierBadges(new Map()) })
-    return () => { active = false }
-    // matches is recomputed from local/server state every render; keying on their identities
-    // (not the derived array) avoids an infinite effect loop from a fresh array each time.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storeId, terminal, local, server])
+    if (terminal || !navigator.onLine || !matchIdKey) { setTierBadges(new Map()); return }
+    const ids = matchIdKey.split(',')
+    const timeout = setTimeout(() => {
+      void loadTierBadges(storeId, ids).then(badges => { if (active) setTierBadges(badges) }).catch(() => { if (active) setTierBadges(new Map()) })
+    }, 250)
+    return () => { active = false; clearTimeout(timeout) }
+  }, [storeId, terminal, matchIdKey])
   return <div className="crm-finder">
     <section className="crm-panel" aria-labelledby="crm-search-title"><h2 id="crm-search-title">Find a guest</h2>
       <p>Search by international phone number. Local matches appear immediately; online lookup adds saved restaurant matches.</p>

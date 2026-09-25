@@ -149,15 +149,19 @@ export interface CustomerSummary {
 // deriving totals from source rows rather than trusting a cached counter. Exported so it's
 // directly testable against PGlite, mirroring loadDailySummary's own test.
 export async function loadCustomerSummary(storeId: string, customerId: string): Promise<CustomerSummary> {
+  // Refunded orders are excluded, same convention as floor.ts's current-order lookup and
+  // reports.ts's loadDailySummary -- pos_orders.total_cents stays at the original charged
+  // amount even after a full refund, so a refunded visit must not count toward guest value.
+  const notRefunded = `not exists (select 1 from public.pos_refunds pr where pr.store_id = po.store_id and pr.order_id = po.id)`
   const [totals, visits] = await Promise.all([
     db.query<{ visit_count: string; lifetime_spend_cents: string }>(
       `select count(*)::text as visit_count, coalesce(sum(total_cents),0)::text as lifetime_spend_cents
-       from public.pos_orders where store_id=$1 and customer_id=$2`,
+       from public.pos_orders po where store_id=$1 and customer_id=$2 and ${notRefunded}`,
       [storeId, customerId],
     ),
     db.query<{ id: string; total_cents: string; client_generated_at: string }>(
       `select id, total_cents::text as total_cents, client_generated_at
-       from public.pos_orders where store_id=$1 and customer_id=$2
+       from public.pos_orders po where store_id=$1 and customer_id=$2 and ${notRefunded}
        order by client_generated_at desc limit 10`,
       [storeId, customerId],
     ),
@@ -173,7 +177,7 @@ export async function loadCustomerSummary(storeId: string, customerId: string): 
 async function summary(req: Request, res: Response, terminal = false) {
   try {
     const storeId = terminal ? (await requireCashierTerminal(req, db)).storeId : validUuid(req.query.store_id, 'Store ID')
-    if (!terminal) await requireStoreMember(req, storeId)
+    if (!terminal) await ownerStore(req, storeId)
     const customerId = validUuid(req.params.id, 'Customer ID')
     res.json(await loadCustomerSummary(storeId, customerId))
   } catch (reason) { sendApiError(res, reason) }
