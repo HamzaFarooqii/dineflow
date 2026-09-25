@@ -452,6 +452,7 @@ html{font-family:'Archivo',sans-serif;color:var(--mise-ink);background:var(--mis
 
 .dialog-overlay{position:fixed;inset:0;background:rgba(27,25,23,.5);display:grid;place-items:center;padding:20px;z-index:60}
 .dialog-panel{position:relative;width:min(480px,100%);max-height:calc(100vh - 40px);overflow-y:auto;background:var(--mise-surface);border-radius:var(--mise-r4);box-shadow:var(--mise-e3);padding:24px}
+.dialog-panel.wide{width:min(940px,100%)}
 .dialog-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px}
 .dialog-head h2{margin:0;font:600 var(--mise-text-h2) 'Archivo',sans-serif;color:var(--mise-ink)}
 .dialog-close{display:grid;place-items:center;width:32px;height:32px;border:0;border-radius:var(--mise-r2);background:transparent;color:var(--mise-ink-muted)}

@@ -763,7 +763,7 @@
     box-shadow: 0 -4px 18px rgba(20, 19, 18, .2);
   }
   .cashier-mobile-nav a { display: grid; place-items: center; align-content: center; gap: var(--mise-space-2); color: var(--mise-service-ink-muted); text-decoration: none; font: 500 10px 'Archivo', sans-serif; border-top: 3px solid transparent; }
-  .cashier-mobile-nav a span { font-size: 17px; }
+  .cashier-mobile-nav a svg { margin-bottom: 1px; }
   .cashier-mobile-nav a.active { color: var(--mise-service-ink); background: var(--mise-service-elevated); border-top-color: var(--mise-saffron); }
 }
 @media (max-width: 620px) {

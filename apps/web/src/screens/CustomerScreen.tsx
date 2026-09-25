@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { createLocalCustomer, searchLocalCustomers, searchServerCustomers } from '../lib/customers'
 import type { LocalCustomer } from '../lib/db'
@@ -6,6 +6,7 @@ import { pushPendingOrders } from '../lib/order-sync'
 import { usePosStore } from '../lib/pos-store'
 import { requireSupabase } from '../lib/supabase'
 import { currentAccess } from '../terminal-auth/cache'
+import { Dialog } from '../components/Dialog'
 import './customer.css'
 
 export function CustomerFinder({ storeId, terminal, onSelect }: { storeId: string; terminal: boolean; onSelect?: (customer: LocalCustomer) => void }) {
@@ -77,28 +78,9 @@ export function CustomerFinder({ storeId, terminal, onSelect }: { storeId: strin
 
 export function CustomerSelector({ storeId, terminal, onClose }: { storeId: string; terminal: boolean; onClose: () => void }) {
   const selectCustomer = usePosStore(state => state.selectCustomer)
-  const closeButton = useRef<HTMLButtonElement>(null)
-  const dialog = useRef<HTMLElement>(null)
-  useEffect(() => {
-    closeButton.current?.focus()
-    const key = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
-      if (event.key === 'Tab' && dialog.current) {
-        const focusable = [...dialog.current.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), a[href]')]
-        if (!focusable.length) return
-        const first = focusable[0], last = focusable.at(-1)!
-        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus() }
-        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
-      }
-    }
-    document.addEventListener('keydown', key)
-    return () => document.removeEventListener('keydown', key)
-  }, [onClose])
-  return <div className="crm-overlay" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
-    <section ref={dialog} className="crm-dialog" role="dialog" aria-modal="true" aria-labelledby="crm-dialog-title">
-      <div className="crm-dialog-head"><div><p className="kicker">CURRENT CHECK</p><h2 id="crm-dialog-title">Add guest</h2></div><button ref={closeButton} type="button" className="text-action" onClick={onClose}>Close</button></div>
-      <CustomerFinder storeId={storeId} terminal={terminal} onSelect={customer => { selectCustomer(customer); onClose() }} />
-    </section></div>
+  return <Dialog title="Add guest" kicker="CURRENT CHECK" onClose={onClose} className="wide">
+    <CustomerFinder storeId={storeId} terminal={terminal} onSelect={customer => { selectCustomer(customer); onClose() }} />
+  </Dialog>
 }
 
 export function CustomerScreen({ terminal = false }: { terminal?: boolean }) {

@@ -1,3 +1,5 @@
+import { Search } from '../../components/icons'
+
 export type InventoryFilter = 'all' | 'in_stock' | 'low_stock' | 'out_of_stock' | 'expiring_soon'
 export type InventorySort = 'name' | 'stock_level' | 'recently_updated' | 'expiry'
 
@@ -24,7 +26,7 @@ export function InventoryToolbar({ search, onSearchChange, filter, onFilterChang
 }) {
   return <div className="inventory-toolbar">
     <div className="inventory-toolbar-row">
-      <label className="search" htmlFor="inventory-search"><span aria-hidden="true">⌕</span>
+      <label className="search" htmlFor="inventory-search"><Search aria-hidden="true" size={16} />
         <input id="inventory-search" type="search" placeholder="Search inventory by name" value={search} onChange={event => onSearchChange(event.target.value)} />
       </label>
       <label className="inventory-sort-select">Sort
