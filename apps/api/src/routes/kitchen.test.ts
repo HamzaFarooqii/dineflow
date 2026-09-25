@@ -31,6 +31,7 @@ const chain = [
   '202609240002_ingredient_inventory.sql',
   '202609240003_inventory_audit_columns.sql',
   '202609240004_inventory_terminal_audit.sql',
+  '202609250002_inventory_batch_tracking.sql',
 ]
 
 async function seededDatabase() {
@@ -174,6 +175,58 @@ test('consumeRecipeIngredients is a no-op for a product with no recipe', async (
 
     const client = clientFor(database)
     await assert.doesNotReject(consumeRecipeIngredients(client, store, itemId, product, 1))
+  } finally {
+    await database.close()
+  }
+})
+
+test('consumeRecipeIngredients depletes the soonest-expiring batch (FEFO) when it fully covers the quantity', async () => {
+  const database = await seededDatabase()
+  try {
+    const { store, product, ingredient, itemId } = await seedRecipeFixture(database, { currentStock: 10, quantitySold: 3 })
+    const soonBatch = randomUUID(), laterBatch = randomUUID()
+    await database.query(`insert into public.ingredient_batches(id,store_id,ingredient_id,quantity,remaining_quantity,cost_per_unit_cents,expires_at)
+      values ($1,$2,$3,5,5,50,'2026-10-01T00:00:00Z')`, [soonBatch, store, ingredient])
+    await database.query(`insert into public.ingredient_batches(id,store_id,ingredient_id,quantity,remaining_quantity,cost_per_unit_cents,expires_at)
+      values ($1,$2,$3,5,5,50,'2026-11-01T00:00:00Z')`, [laterBatch, store, ingredient])
+
+    const client = clientFor(database)
+    await consumeRecipeIngredients(client, store, itemId, product, 3) // consumes 6kg (2kg/yield * 3 sold)
+
+    const soon = await database.query<{ remaining_quantity: string }>('select remaining_quantity::text as remaining_quantity from public.ingredient_batches where id=$1', [soonBatch])
+    const later = await database.query<{ remaining_quantity: string }>('select remaining_quantity::text as remaining_quantity from public.ingredient_batches where id=$1', [laterBatch])
+    const movement = await database.query<{ batch_id: string | null }>('select batch_id from public.stock_movements where ingredient_id=$1', [ingredient])
+
+    // 6kg needed exceeds either single batch's 5kg, so neither batch alone covers it -- the
+    // consumption must fall back to ingredient-level tracking only, not split across both.
+    assert.equal(Number(soon.rows[0].remaining_quantity), 5, 'a batch is never partially depleted when it cannot cover the full quantity alone')
+    assert.equal(Number(later.rows[0].remaining_quantity), 5)
+    assert.equal(movement.rows[0].batch_id, null)
+  } finally {
+    await database.close()
+  }
+})
+
+test('consumeRecipeIngredients depletes a single batch that fully covers the quantity, picking the soonest expiry', async () => {
+  const database = await seededDatabase()
+  try {
+    const { store, product, ingredient, itemId } = await seedRecipeFixture(database, { currentStock: 10, quantitySold: 1 })
+    const soonBatch = randomUUID(), laterBatch = randomUUID()
+    await database.query(`insert into public.ingredient_batches(id,store_id,ingredient_id,quantity,remaining_quantity,cost_per_unit_cents,expires_at)
+      values ($1,$2,$3,5,5,50,'2026-10-01T00:00:00Z')`, [soonBatch, store, ingredient])
+    await database.query(`insert into public.ingredient_batches(id,store_id,ingredient_id,quantity,remaining_quantity,cost_per_unit_cents,expires_at)
+      values ($1,$2,$3,5,5,50,'2026-11-01T00:00:00Z')`, [laterBatch, store, ingredient])
+
+    const client = clientFor(database)
+    await consumeRecipeIngredients(client, store, itemId, product, 1) // consumes 2kg (2kg/yield * 1 sold)
+
+    const soon = await database.query<{ remaining_quantity: string }>('select remaining_quantity::text as remaining_quantity from public.ingredient_batches where id=$1', [soonBatch])
+    const later = await database.query<{ remaining_quantity: string }>('select remaining_quantity::text as remaining_quantity from public.ingredient_batches where id=$1', [laterBatch])
+    const movement = await database.query<{ batch_id: string | null }>('select batch_id from public.stock_movements where ingredient_id=$1', [ingredient])
+
+    assert.equal(Number(soon.rows[0].remaining_quantity), 3, 'the soonest-expiring batch is depleted first')
+    assert.equal(Number(later.rows[0].remaining_quantity), 5, 'the later-expiring batch is untouched')
+    assert.equal(movement.rows[0].batch_id, soonBatch)
   } finally {
     await database.close()
   }

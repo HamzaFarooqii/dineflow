@@ -1,25 +1,32 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import {
-  createIngredient, fetchIngredientBatches, fetchIngredients, fetchStockMovements, recordIngredientBatch,
+  createIngredient, fetchExpiringBatchCount, fetchIngredientBatches, fetchIngredients, fetchStockMovements,
   type Ingredient, type IngredientBatch, type StockMovement,
 } from '../../lib/inventory'
-import { loadRecipeData } from '../menu/recipe-api'
+import { loadRecipeData, createUnit } from '../menu/recipe-api'
 import type { RecipeUnit } from '../menu/recipe-draft'
 import { posDb } from '../../lib/db'
 import { requireSupabase } from '../../lib/supabase'
 import { currentAccess, refreshTerminal, type TerminalCache } from '../../terminal-auth/cache'
 import { ManagerApprovalModal, type ManagerApprovalEvidence } from '../../terminal-auth/ManagerApprovalModal'
+import { InventorySummary } from './InventorySummary'
+import { InventoryToolbar, type InventoryFilter, type InventorySort } from './InventoryToolbar'
 import { IngredientList } from './IngredientList'
+import { InventoryDetailHeader } from './InventoryDetailHeader'
+import { ReceiveStockForm } from './ReceiveStockForm'
 import { BatchList } from './BatchList'
-import { StockLedger } from './StockLedger'
 import { WastageForm } from './WastageForm'
+import { StockLedger } from './StockLedger'
+import { UnitSelector } from './UnitSelector'
 import './inventory.css'
 
 export function InventoryScreen({ terminal = false }: { terminal?: boolean }) {
   const [storeId, setStoreId] = useState('')
+  const [currency, setCurrency] = useState('USD')
   const [terminalCache, setTerminalCache] = useState<TerminalCache | undefined>()
   const [ingredients, setIngredients] = useState<Ingredient[]>([])
   const [units, setUnits] = useState<RecipeUnit[]>([])
+  const [expiringBatchCount, setExpiringBatchCount] = useState<number | null>(null)
   const [selected, setSelected] = useState<Ingredient | null>(null)
   const [batches, setBatches] = useState<IngredientBatch[]>([])
   const [movements, setMovements] = useState<StockMovement[]>([])
@@ -27,6 +34,12 @@ export function InventoryScreen({ terminal = false }: { terminal?: boolean }) {
   const [error, setError] = useState('')
   const [detailBusy, setDetailBusy] = useState(false)
   const [detailError, setDetailError] = useState('')
+  const [receiveOpen, setReceiveOpen] = useState(false)
+  const [wastageOpen, setWastageOpen] = useState(false)
+
+  const [search, setSearch] = useState('')
+  const [filter, setFilter] = useState<InventoryFilter>('all')
+  const [sort, setSort] = useState<InventorySort>('name')
 
   const [addOpen, setAddOpen] = useState(false)
   const [newName, setNewName] = useState('')
@@ -35,10 +48,6 @@ export function InventoryScreen({ terminal = false }: { terminal?: boolean }) {
   const [newReorderThreshold, setNewReorderThreshold] = useState('')
   const [addBusy, setAddBusy] = useState(false)
   const [addError, setAddError] = useState('')
-
-  const [batchQuantity, setBatchQuantity] = useState('')
-  const [batchCost, setBatchCost] = useState('')
-  const [batchExpiry, setBatchExpiry] = useState('')
 
   // A cashier terminal never writes inventory on its own authority — every mutation (add
   // ingredient, receive batch, wastage) is deferred behind a manager's PIN, reusing the exact
@@ -50,6 +59,9 @@ export function InventoryScreen({ terminal = false }: { terminal?: boolean }) {
   const pendingWrite = useRef<((approval: ManagerApprovalEvidence) => Promise<void>) | null>(null)
   const [accessRefreshBusy, setAccessRefreshBusy] = useState(false)
   const [accessRefreshError, setAccessRefreshError] = useState('')
+
+  const unitsById = useMemo(() => new Map(units.map(unit => [unit.id, unit])), [units])
+  const selectedUnit = selected ? unitsById.get(selected.unit_id) : undefined
 
   async function withApproval(reason: string, action: (approval: ManagerApprovalEvidence | null) => Promise<void>) {
     if (!terminal) { await action(null); return }
@@ -99,10 +111,19 @@ export function InventoryScreen({ terminal = false }: { terminal?: boolean }) {
           if (!membershipStoreId) throw new Error('Store access is unavailable.')
           id = membershipStoreId
         }
-        await posDb.store_config.get(id)
-        if (active) setStoreId(id)
-        const [list, recipeData] = await Promise.all([fetchIngredients(id, terminal), loadRecipeData(id)])
-        if (active) { setIngredients(list); setUnits(recipeData.units); if (!newUnitId) setNewUnitId(recipeData.units[0]?.id ?? '') }
+        const config = await posDb.store_config.get(id)
+        if (active) { setStoreId(id); if (config?.currency) setCurrency(config.currency) }
+        const [list, recipeData, expiringCount] = await Promise.all([
+          fetchIngredients(id, terminal),
+          loadRecipeData(id),
+          fetchExpiringBatchCount(id, terminal).catch(() => null),
+        ])
+        if (active) {
+          setIngredients(list)
+          setUnits(recipeData.units)
+          if (!newUnitId) setNewUnitId(recipeData.units[0]?.id ?? '')
+          if (expiringCount !== null) setExpiringBatchCount(expiringCount)
+        }
       } catch (reason) {
         if (active) setError(reason instanceof Error ? reason.message : 'Could not load inventory.')
       } finally { if (active) setLoading(false) }
@@ -117,7 +138,8 @@ export function InventoryScreen({ terminal = false }: { terminal?: boolean }) {
     setDetailError('')
     setBatches([])
     setMovements([])
-    setBatchQuantity(''); setBatchCost(''); setBatchExpiry('')
+    setReceiveOpen(false)
+    setWastageOpen(false)
     setDetailBusy(true)
     try {
       const [batchList, page] = await Promise.all([
@@ -139,6 +161,10 @@ export function InventoryScreen({ terminal = false }: { terminal?: boolean }) {
   async function refreshMovements(ingredientId: string) {
     const page = await fetchStockMovements(storeId, ingredientId, terminal)
     setMovements(page.movements)
+  }
+
+  async function refreshExpiringCount() {
+    try { setExpiringBatchCount(await fetchExpiringBatchCount(storeId, terminal)) } catch { /* leave the last known count showing */ }
   }
 
   async function handleAddIngredient(event: FormEvent) {
@@ -166,90 +192,75 @@ export function InventoryScreen({ terminal = false }: { terminal?: boolean }) {
     })
   }
 
-  async function handleAddBatch(event: FormEvent) {
-    event.preventDefault()
-    if (!selected) return
-    const quantity = Number(batchQuantity)
-    const costPerUnitCents = Math.round(Number(batchCost) * 100)
-    if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(costPerUnitCents) || costPerUnitCents < 0) {
-      setDetailError('Enter a positive quantity and a valid cost per unit.')
-      return
-    }
-    setDetailError('')
-    const ingredientId = selected.id
-    await withApproval('Authorize receiving this batch', async approval => {
-      setDetailBusy(true)
-      try {
-        const result = await recordIngredientBatch(storeId, ingredientId, {
-          quantity,
-          cost_per_unit_cents: costPerUnitCents,
-          expires_at: batchExpiry || null,
-        }, terminal, approval)
-        setBatches(current => [result.batch, ...current])
-        applyUpdatedIngredient(result.ingredient)
-        await refreshMovements(ingredientId)
-        setBatchQuantity(''); setBatchCost(''); setBatchExpiry('')
-      } catch (reason) {
-        setDetailError(reason instanceof Error ? reason.message : 'Could not record this batch.')
-      } finally { setDetailBusy(false) }
-    })
+  async function handleStockReceived(result: { batch: IngredientBatch; ingredient: Ingredient }) {
+    setBatches(current => [result.batch, ...current])
+    applyUpdatedIngredient(result.ingredient)
+    await Promise.all([refreshMovements(result.ingredient.id), refreshExpiringCount()])
   }
 
   async function handleWastageRecorded(updated: Ingredient) {
     applyUpdatedIngredient(updated)
-    if (selected) await refreshMovements(selected.id)
+    if (selected) {
+      await Promise.all([refreshMovements(selected.id), refreshExpiringCount()])
+      const batchList = await fetchIngredientBatches(storeId, selected.id, terminal)
+      setBatches(batchList)
+    }
   }
 
   return <section className="floor-page inventory-page">
     <div className="floor-page-head">
       <div><p className="kicker">STOCK & INGREDIENTS</p><h1>Inventory</h1><p>Track ingredients, batches, and stock movements.</p></div>
-      <div className="inventory-head-actions">
-        {terminal && <button type="button" className="text-action" disabled={accessRefreshBusy} onClick={() => void handleRefreshAccess()}
-          title="Pull the latest employee/manager list, e.g. after a manager was just added">{accessRefreshBusy ? 'Refreshing…' : 'Refresh access'}</button>}
-        <button type="button" className={addOpen ? 'secondary-cta active' : 'secondary-cta'} onClick={() => setAddOpen(value => !value)}>{addOpen ? 'Cancel' : '+ Add ingredient'}</button>
-      </div>
+      {terminal && <button type="button" className="text-action" disabled={accessRefreshBusy} onClick={() => void handleRefreshAccess()}
+        title="Pull the latest employee/manager list, e.g. after a manager was just added">{accessRefreshBusy ? 'Refreshing…' : 'Refresh access'}</button>}
     </div>
     {accessRefreshError && <p className="form-notice error" role="alert">{accessRefreshError}</p>}
     {error && <p className="form-notice error" role="alert">{error}</p>}
     {loading && !error && <p role="status">Loading inventory…</p>}
-    {!loading && !error && addOpen && <form className="floor-inline-form" onSubmit={event => void handleAddIngredient(event)}>
-      <label>Name<input type="text" maxLength={120} value={newName} onChange={event => setNewName(event.target.value)} /></label>
-      <label>Unit<select value={newUnitId} onChange={event => setNewUnitId(event.target.value)}>
-        {units.map(unit => <option key={unit.id} value={unit.id}>{unit.name} ({unit.abbreviation})</option>)}
-      </select></label>
-      <label>Cost/unit<input type="number" min={0} step="0.01" value={newCost} onChange={event => setNewCost(event.target.value)} /></label>
-      <label>Reorder threshold (optional)<input type="number" min={0} step="any" value={newReorderThreshold} onChange={event => setNewReorderThreshold(event.target.value)} /></label>
-      <div className="floor-inline-form-actions">
-        <button type="submit" className="secondary-cta" disabled={addBusy || !newName.trim() || !newUnitId}>{addBusy ? 'Adding…' : 'Add ingredient'}</button>
+
+    {!loading && !error && <>
+      <InventorySummary ingredients={ingredients} expiringBatchCount={expiringBatchCount} currency={currency} />
+      <InventoryToolbar search={search} onSearchChange={setSearch} filter={filter} onFilterChange={setFilter}
+        sort={sort} onSortChange={setSort} addOpen={addOpen} onAddIngredient={() => setAddOpen(value => !value)} />
+
+      {addOpen && <form className="floor-inline-form" onSubmit={event => void handleAddIngredient(event)}>
+        <label>Name<input type="text" maxLength={120} value={newName} onChange={event => setNewName(event.target.value)} /></label>
+        <label>Unit<UnitSelector units={units} value={newUnitId} onChange={setNewUnitId} onCreateUnit={unit => createUnit(storeId, unit).then(created => { setUnits(current => [...current, created]); return created })} /></label>
+        <label>Cost/unit<input type="number" min={0} step="0.01" value={newCost} onChange={event => setNewCost(event.target.value)} /></label>
+        <label>Reorder threshold (optional)<input type="number" min={0} step="any" value={newReorderThreshold} onChange={event => setNewReorderThreshold(event.target.value)} /></label>
+        <div className="floor-inline-form-actions">
+          <button type="submit" className="secondary-cta" disabled={addBusy || !newName.trim() || !newUnitId}>{addBusy ? 'Adding…' : 'Add ingredient'}</button>
+        </div>
+        {addError && <p className="form-notice error" role="alert">{addError}</p>}
+      </form>}
+
+      <div className="inventory-layout">
+        <IngredientList ingredients={ingredients} units={units} currency={currency} search={search} filter={filter} sort={sort}
+          selectedId={selected?.id ?? null} onSelect={ingredient => void selectIngredient(ingredient)} />
+
+        {selected && <div className="inventory-detail">
+          <InventoryDetailHeader ingredient={selected} unit={selectedUnit} currency={currency}
+            receiveOpen={receiveOpen} onToggleReceive={() => setReceiveOpen(value => !value)}
+            wastageOpen={wastageOpen} onToggleWastage={() => setWastageOpen(value => !value)} />
+          {detailError && <p className="form-notice error" role="alert">{detailError}</p>}
+          {detailBusy && <p role="status">Loading ingredient details…</p>}
+
+          {receiveOpen && <ReceiveStockForm storeId={storeId} ingredient={selected} unit={selectedUnit} currency={currency} terminal={terminal}
+            requestApproval={withApproval} onReceived={handleStockReceived} />}
+
+          {!detailBusy && <>
+            <h3>Batches</h3>
+            <BatchList batches={batches} unit={selectedUnit} currency={currency} />
+
+            {wastageOpen && <WastageForm key={selected.id} storeId={storeId} ingredient={selected} unit={selectedUnit} batches={batches}
+              terminal={terminal} requestApproval={withApproval} onRecorded={updated => void handleWastageRecorded(updated)} />}
+
+            <h3>Stock Activity</h3>
+            <StockLedger movements={movements} currentStock={Number(selected.current_stock)} unit={selectedUnit} />
+          </>}
+        </div>}
       </div>
-      {addError && <p className="form-notice error" role="alert">{addError}</p>}
-    </form>}
-    {!loading && !error && <div className="inventory-layout">
-      <IngredientList ingredients={ingredients} selectedId={selected?.id ?? null} onSelect={ingredient => void selectIngredient(ingredient)} />
-      {selected && <div className="inventory-detail">
-        <h2>{selected.name}</h2>
-        {detailError && <p className="form-notice error" role="alert">{detailError}</p>}
+    </>}
 
-        <h3>Receive a batch</h3>
-        <form className="floor-inline-form" onSubmit={event => void handleAddBatch(event)}>
-          <label>Quantity<input type="number" min={0} step="any" value={batchQuantity} onChange={event => setBatchQuantity(event.target.value)} /></label>
-          <label>Cost/unit<input type="number" min={0} step="0.01" value={batchCost} onChange={event => setBatchCost(event.target.value)} /></label>
-          <label>Expires (optional)<input type="date" value={batchExpiry} onChange={event => setBatchExpiry(event.target.value)} /></label>
-          <div className="floor-inline-form-actions">
-            <button type="submit" className="secondary-cta" disabled={detailBusy || !batchQuantity || !batchCost}>{detailBusy ? 'Saving…' : 'Receive batch'}</button>
-          </div>
-        </form>
-
-        <h3>Batches</h3>
-        <BatchList batches={batches} />
-
-        <h3>Record wastage</h3>
-        <WastageForm key={selected.id} storeId={storeId} ingredient={selected} terminal={terminal} requestApproval={withApproval} onRecorded={updated => void handleWastageRecorded(updated)} />
-
-        <h3>Stock movements</h3>
-        <StockLedger movements={movements} />
-      </div>}
-    </div>}
     {approvalOpen && terminal && terminalCache && <ManagerApprovalModal
       cache={terminalCache}
       title="Manager approval required"

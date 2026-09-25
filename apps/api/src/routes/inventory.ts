@@ -80,7 +80,8 @@ async function requireWriter(req: Request, storeId: string, terminal: boolean): 
 export interface IngredientRow {
   id: string; store_id: string; name: string; unit_id: string
   cost_per_unit_cents: number; current_stock: string; reorder_threshold: string | null; active: boolean
-  created_by_user_id: string | null; created_by_name: string | null
+  created_by_user_id: string | null; created_by_name: string | null; updated_at: string
+  active_batch_count: number; nearest_expiry: string | null
 }
 
 // created_by_name is a display label for who performed the write: a signed-in owner/manager
@@ -88,9 +89,14 @@ export interface IngredientRow {
 // ("Name (manager)", from terminal_employees) on a cashier terminal — the cashier who initiated
 // it is tracked in created_by_employee_id but not surfaced here, since the record of interest is
 // who authorized the change, not who was standing at the terminal.
+//
+// active_batch_count/nearest_expiry are computed here (one lateral join per ingredient) rather
+// than left for the frontend to derive by fetching every ingredient's batches individually — that
+// would be an N+1 fetch for something the list view and the "Expiring Soon" filter both need.
 const INGREDIENT_SELECT = `
   i.id, i.store_id, i.name, i.unit_id, i.cost_per_unit_cents, i.current_stock::text as current_stock,
-  i.reorder_threshold::text as reorder_threshold, i.active, i.created_by_user_id,
+  i.reorder_threshold::text as reorder_threshold, i.active, i.created_by_user_id, i.updated_at,
+  coalesce(batch_agg.active_batch_count, 0) as active_batch_count, batch_agg.nearest_expiry,
   case
     when p.full_name is not null and p.full_name <> '' then p.full_name || coalesce(' (' || sm.role || ')', '')
     when mgr.name is not null then mgr.name || ' (manager)'
@@ -99,7 +105,12 @@ const INGREDIENT_SELECT = `
   from public.ingredients i
   left join public.profiles p on p.id = i.created_by_user_id
   left join public.store_memberships sm on sm.store_id = i.store_id and sm.user_id = i.created_by_user_id
-  left join public.terminal_employees mgr on mgr.id = i.manager_id`
+  left join public.terminal_employees mgr on mgr.id = i.manager_id
+  left join lateral (
+    select count(*)::int as active_batch_count, min(b.expires_at) as nearest_expiry
+    from public.ingredient_batches b
+    where b.store_id = i.store_id and b.ingredient_id = i.id and b.remaining_quantity > 0
+  ) batch_agg on true`
 
 // --- Ingredients: list + create + update + deactivate ---------------------------------------
 
@@ -184,6 +195,7 @@ async function updateIngredient(req: Request, res: Response, terminal = false) {
       updates.push(`reorder_threshold = $${index++}`); values.push(reorderThreshold)
     }
     if (!updates.length) throw new ApiError(422, 'validation_failed', 'Nothing to update.')
+    updates.push('updated_at = now()')
     values.push(ingredientId, storeId)
     const result = await db.query<{ id: string }>(
       `update public.ingredients set ${updates.join(', ')} where id = $${index++} and store_id = $${index} returning id`,
@@ -218,7 +230,29 @@ async function deactivateIngredient(req: Request, res: Response, terminal = fals
 // with no trigger behind it, so every write path that changes stock must update it in the same
 // transaction as its stock_movements insert, or the two drift out of sync.
 
-interface BatchRow { id: string; store_id: string; ingredient_id: string; quantity: string; received_at: string; expires_at: string | null; cost_per_unit_cents: number }
+interface BatchRow {
+  id: string; store_id: string; ingredient_id: string; quantity: string; remaining_quantity: string
+  received_at: string; expires_at: string | null; cost_per_unit_cents: number; reference: string | null
+  received_by_name: string | null
+}
+
+// received_by_name is read off the batch's own originating purchase movement (stock_movements
+// where batch_id = this batch and reason = 'purchase') rather than duplicating created_by
+// columns onto ingredient_batches itself -- that movement already carries the same
+// created_by_user_id/created_by_employee_id attribution every other write in this module uses.
+const BATCH_SELECT = `
+  b.id, b.store_id, b.ingredient_id, b.quantity::text as quantity, b.remaining_quantity::text as remaining_quantity,
+  b.received_at, b.expires_at, b.cost_per_unit_cents, b.reference,
+  case
+    when p.full_name is not null and p.full_name <> '' then p.full_name || coalesce(' (' || sm.role || ')', '')
+    when mgr.name is not null then mgr.name || ' (manager)'
+    else null
+  end as received_by_name
+  from public.ingredient_batches b
+  left join public.stock_movements m on m.store_id = b.store_id and m.batch_id = b.id and m.reason = 'purchase'
+  left join public.profiles p on p.id = m.created_by_user_id
+  left join public.store_memberships sm on sm.store_id = m.store_id and sm.user_id = m.created_by_user_id
+  left join public.terminal_employees mgr on mgr.id = m.manager_id`
 interface StockMovementRow {
   id: string; store_id: string; ingredient_id: string; batch_id: string | null; delta: string; reason: string
   note: string | null; kitchen_ticket_item_id: string | null; created_at: string
@@ -243,6 +277,11 @@ async function fetchMovementById(storeId: string, movementId: string): Promise<S
   return result.rows[0]
 }
 
+async function fetchBatchById(storeId: string, batchId: string): Promise<BatchRow> {
+  const result = await db.query<BatchRow>(`select ${BATCH_SELECT} where b.store_id = $1 and b.id = $2`, [storeId, batchId])
+  return result.rows[0]
+}
+
 async function recordBatch(req: Request, res: Response, terminal = false) {
   const client = await db.connect()
   try {
@@ -256,16 +295,17 @@ async function recordBatch(req: Request, res: Response, terminal = false) {
     if (expiresAt !== null && Number.isNaN(Date.parse(expiresAt))) throw new ApiError(422, 'validation_failed', 'expires_at must be a valid date.')
     const receivedAt = body.received_at !== undefined && body.received_at !== null ? String(body.received_at) : null
     if (receivedAt !== null && Number.isNaN(Date.parse(receivedAt))) throw new ApiError(422, 'validation_failed', 'received_at must be a valid date.')
+    const reference = body.reference !== undefined && body.reference !== null ? nonEmptyText(body.reference, 'reference', 200) : null
 
     await client.query('begin')
     const ingredient = await client.query('select 1 from public.ingredients where id = $1 and store_id = $2 and active = true for update', [ingredientId, storeId])
     if (!ingredient.rowCount) throw new ApiError(404, 'ingredient_not_found', 'Ingredient not found in this store.')
 
-    const batch = await client.query<BatchRow>(
-      `insert into public.ingredient_batches (store_id, ingredient_id, quantity, cost_per_unit_cents, expires_at, received_at)
-       values ($1,$2,$3,$4,$5, coalesce($6::timestamptz, now()))
-       returning id, store_id, ingredient_id, quantity::text as quantity, received_at, expires_at, cost_per_unit_cents`,
-      [storeId, ingredientId, quantity, costPerUnitCents, expiresAt, receivedAt],
+    const batch = await client.query<{ id: string }>(
+      `insert into public.ingredient_batches (store_id, ingredient_id, quantity, remaining_quantity, cost_per_unit_cents, expires_at, received_at, reference)
+       values ($1,$2,$3,$3,$4,$5, coalesce($6::timestamptz, now()), $7)
+       returning id`,
+      [storeId, ingredientId, quantity, costPerUnitCents, expiresAt, receivedAt, reference],
     )
     const movementInsert = await client.query<{ id: string }>(
       `insert into public.stock_movements (store_id, ingredient_id, batch_id, delta, reason,
@@ -273,10 +313,10 @@ async function recordBatch(req: Request, res: Response, terminal = false) {
        values ($1,$2,$3,$4,'purchase',$5,$6,$7,$8) returning id`,
       [storeId, ingredientId, batch.rows[0].id, quantity, writer.userId, writer.employeeId, writer.managerId, writer.managerApprovedAt],
     )
-    await client.query(`update public.ingredients set current_stock = current_stock + $1 where id = $2 and store_id = $3`, [quantity, ingredientId, storeId])
+    await client.query(`update public.ingredients set current_stock = current_stock + $1, updated_at = now() where id = $2 and store_id = $3`, [quantity, ingredientId, storeId])
     await client.query('commit')
     res.status(201).json({
-      batch: batch.rows[0],
+      batch: await fetchBatchById(storeId, batch.rows[0].id),
       movement: await fetchMovementById(storeId, movementInsert.rows[0].id),
       ingredient: await fetchIngredientById(storeId, ingredientId),
     })
@@ -300,10 +340,7 @@ async function listBatches(req: Request, res: Response, terminal = false) {
     }
     const ingredientId = idParam(req)
     const result = await db.query<BatchRow>(
-      `select id, store_id, ingredient_id, quantity::text as quantity, received_at, expires_at, cost_per_unit_cents
-       from public.ingredient_batches
-       where store_id = $1 and ingredient_id = $2
-       order by received_at desc, id desc`,
+      `select ${BATCH_SELECT} where b.store_id = $1 and b.ingredient_id = $2 order by b.received_at desc, b.id desc`,
       [storeId, ingredientId],
     )
     res.json({ batches: result.rows })
@@ -374,6 +411,38 @@ export function assertWastageWithinStock(currentStock: number, quantity: number)
   }
 }
 
+// Batch association is a refinement on top of the ingredient-level accounting above, not a
+// replacement for it: current_stock (and assertWastageWithinStock) stays the source of truth for
+// "is this wastage even possible." A wastage entry is only tied to a specific batch when a single
+// batch can fully account for the wasted quantity -- splitting one entry across several batches
+// would mean inventing multi-batch accounting this schema was never designed for, so a quantity
+// that spans more than the best-matching batch's remaining stock is recorded at the ingredient
+// level only (batch_id stays null), exactly like every wastage entry worked before batch tracking
+// existed. Auto-selection is FEFO (soonest expiry first), falling back to FIFO (oldest received)
+// for batches with no expiry date -- the safest default for a restaurant trying to waste the
+// stock most at risk of spoiling first.
+export async function selectWastageBatch(client: import('pg').PoolClient, storeId: string, ingredientId: string, quantity: number, explicitBatchId: string | null): Promise<string | null> {
+  if (explicitBatchId !== null) {
+    const batch = await client.query<{ remaining_quantity: string }>(
+      'select remaining_quantity::text as remaining_quantity from public.ingredient_batches where id=$1 and store_id=$2 and ingredient_id=$3 for update',
+      [explicitBatchId, storeId, ingredientId],
+    )
+    if (!batch.rows[0]) throw new ApiError(422, 'validation_failed', 'The selected batch does not belong to this ingredient.')
+    const remaining = Number(batch.rows[0].remaining_quantity)
+    if (quantity > remaining) throw new ApiError(422, 'validation_failed', `Cannot waste ${quantity} from this batch: only ${remaining} remaining in it.`)
+    return explicitBatchId
+  }
+  const candidate = await client.query<{ id: string; remaining_quantity: string }>(
+    `select id, remaining_quantity::text as remaining_quantity from public.ingredient_batches
+     where store_id=$1 and ingredient_id=$2 and remaining_quantity > 0
+     order by expires_at asc nulls last, received_at asc
+     limit 1 for update`,
+    [storeId, ingredientId],
+  )
+  if (!candidate.rows[0] || quantity > Number(candidate.rows[0].remaining_quantity)) return null
+  return candidate.rows[0].id
+}
+
 async function recordWastage(req: Request, res: Response, terminal = false) {
   const client = await db.connect()
   try {
@@ -383,6 +452,8 @@ async function recordWastage(req: Request, res: Response, terminal = false) {
     const body = req.body as Record<string, unknown>
     const quantity = positiveNumber(body.quantity, 'quantity')
     const note = body.note !== undefined && body.note !== null ? nonEmptyText(body.note, 'note', 500) : null
+    const explicitBatchId = body.batch_id !== undefined && body.batch_id !== null ? String(body.batch_id) : null
+    if (explicitBatchId !== null && !UUID_RE.test(explicitBatchId)) throw new ApiError(422, 'validation_failed', 'A valid batch_id is required.')
 
     await client.query('begin')
     const ingredient = await client.query<{ current_stock: string }>(
@@ -392,14 +463,18 @@ async function recordWastage(req: Request, res: Response, terminal = false) {
     if (!ingredient.rowCount) throw new ApiError(404, 'ingredient_not_found', 'Ingredient not found in this store.')
     const currentStock = Number(ingredient.rows[0].current_stock)
     assertWastageWithinStock(currentStock, quantity)
+    const batchId = await selectWastageBatch(client, storeId, ingredientId, quantity, explicitBatchId)
 
     const movementInsert = await client.query<{ id: string }>(
-      `insert into public.stock_movements (store_id, ingredient_id, delta, reason, note,
+      `insert into public.stock_movements (store_id, ingredient_id, batch_id, delta, reason, note,
                                             created_by_user_id, created_by_employee_id, manager_id, manager_approved_at)
-       values ($1,$2,$3,'wastage',$4,$5,$6,$7,$8) returning id`,
-      [storeId, ingredientId, -quantity, note, writer.userId, writer.employeeId, writer.managerId, writer.managerApprovedAt],
+       values ($1,$2,$3,$4,'wastage',$5,$6,$7,$8,$9) returning id`,
+      [storeId, ingredientId, batchId, -quantity, note, writer.userId, writer.employeeId, writer.managerId, writer.managerApprovedAt],
     )
-    await client.query(`update public.ingredients set current_stock = current_stock - $1 where id = $2 and store_id = $3`, [quantity, ingredientId, storeId])
+    if (batchId) {
+      await client.query('update public.ingredient_batches set remaining_quantity = remaining_quantity - $1 where id = $2 and store_id = $3', [quantity, batchId, storeId])
+    }
+    await client.query(`update public.ingredients set current_stock = current_stock - $1, updated_at = now() where id = $2 and store_id = $3`, [quantity, ingredientId, storeId])
     await client.query('commit')
     res.status(201).json({
       movement: await fetchMovementById(storeId, movementInsert.rows[0].id),
@@ -411,6 +486,36 @@ async function recordWastage(req: Request, res: Response, terminal = false) {
   } finally { client.release() }
 }
 
+// Store-wide summary for the Inventory overview cards. Total-ingredient count, low-stock count,
+// and inventory value are all computed client-side from the already-loaded ingredient list (no
+// new data needed there); expiring-batch count is the one figure that genuinely can't be, since
+// batches are only ever fetched per-ingredient -- this is a real, if small, new read rather than
+// an N+1 fetch-every-ingredient's-batches workaround.
+// '3 days' mirrors packages/domain/src/batch-status.ts's EXPIRING_SOON_WINDOW_MS -- change both
+// together. An already-expired batch also satisfies this (its expires_at is in the past), which
+// is intentional: both need the same manager attention.
+export async function countExpiringBatches(storeId: string): Promise<number> {
+  const result = await db.query<{ count: string }>(
+    `select count(*) from public.ingredient_batches
+     where store_id = $1 and remaining_quantity > 0 and expires_at is not null and expires_at <= now() + interval '3 days'`,
+    [storeId],
+  )
+  return Number(result.rows[0].count)
+}
+
+async function getExpiringBatchCount(req: Request, res: Response, terminal = false) {
+  try {
+    const storeId = storeIdParam(req)
+    if (terminal) {
+      const session = await requireCashierTerminal(req, db)
+      if (session.storeId !== storeId) throw new ApiError(403, 'cross_store_reference', 'This terminal belongs to a different store.')
+    } else {
+      await requireStoreMember(req, storeId)
+    }
+    res.json({ expiring_batches_count: await countExpiringBatches(storeId) })
+  } catch (reason) { sendApiError(res, reason) }
+}
+
 inventoryRouter.get('/ingredients', (req, res) => listIngredients(req, res))
 inventoryRouter.post('/ingredients', (req, res) => createIngredient(req, res))
 inventoryRouter.patch('/ingredients/:id', (req, res) => updateIngredient(req, res))
@@ -419,6 +524,7 @@ inventoryRouter.post('/ingredients/:id/batches', (req, res) => recordBatch(req, 
 inventoryRouter.get('/ingredients/:id/batches', (req, res) => listBatches(req, res))
 inventoryRouter.get('/ingredients/:id/movements', (req, res) => listMovements(req, res))
 inventoryRouter.post('/ingredients/:id/wastage', (req, res) => recordWastage(req, res))
+inventoryRouter.get('/summary', (req, res) => getExpiringBatchCount(req, res))
 
 terminalInventoryRouter.get('/ingredients', (req, res) => listIngredients(req, res, true))
 terminalInventoryRouter.post('/ingredients', (req, res) => createIngredient(req, res, true))
@@ -428,3 +534,4 @@ terminalInventoryRouter.post('/ingredients/:id/batches', (req, res) => recordBat
 terminalInventoryRouter.get('/ingredients/:id/batches', (req, res) => listBatches(req, res, true))
 terminalInventoryRouter.get('/ingredients/:id/movements', (req, res) => listMovements(req, res, true))
 terminalInventoryRouter.post('/ingredients/:id/wastage', (req, res) => recordWastage(req, res, true))
+terminalInventoryRouter.get('/summary', (req, res) => getExpiringBatchCount(req, res, true))

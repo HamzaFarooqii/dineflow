@@ -203,13 +203,31 @@ export async function consumeRecipeIngredients(client: import('pg').PoolClient, 
     if (already.rowCount) continue
 
     const consumeQuantity = (Number(line.line_quantity) / yieldQuantity) * quantitySold
-    await client.query(
-      `insert into public.stock_movements (store_id, ingredient_id, delta, reason, kitchen_ticket_item_id)
-       values ($1,$2,$3,'consumption',$4)`,
-      [storeId, line.ingredient_id, -consumeQuantity, kitchenTicketItemId],
+    // Best-effort FEFO batch depletion, same single-batch-only rule as inventory.ts's
+    // selectWastageBatch: only associate a specific batch when it alone can cover the quantity,
+    // since splitting one consumption across several batches would need multi-batch accounting
+    // this schema doesn't have. Never blocks or errors -- if no batch qualifies, the movement is
+    // still recorded at the ingredient level exactly as it always was.
+    const candidateBatch = await client.query<{ id: string; remaining_quantity: string }>(
+      `select id, remaining_quantity::text as remaining_quantity from public.ingredient_batches
+       where store_id=$1 and ingredient_id=$2 and remaining_quantity > 0
+       order by expires_at asc nulls last, received_at asc
+       limit 1 for update`,
+      [storeId, line.ingredient_id],
     )
+    const batchRow = candidateBatch.rows[0]
+    const batchId = batchRow && consumeQuantity <= Number(batchRow.remaining_quantity) ? batchRow.id : null
+
     await client.query(
-      `update public.ingredients set current_stock = current_stock - $1 where store_id=$2 and id=$3`,
+      `insert into public.stock_movements (store_id, ingredient_id, batch_id, delta, reason, kitchen_ticket_item_id)
+       values ($1,$2,$3,$4,'consumption',$5)`,
+      [storeId, line.ingredient_id, batchId, -consumeQuantity, kitchenTicketItemId],
+    )
+    if (batchId) {
+      await client.query('update public.ingredient_batches set remaining_quantity = remaining_quantity - $1 where id=$2 and store_id=$3', [consumeQuantity, batchId, storeId])
+    }
+    await client.query(
+      `update public.ingredients set current_stock = current_stock - $1, updated_at = now() where store_id=$2 and id=$3`,
       [consumeQuantity, storeId, line.ingredient_id],
     )
   }

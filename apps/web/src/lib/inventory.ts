@@ -13,6 +13,9 @@ export interface Ingredient {
   active: boolean
   created_by_user_id: string | null
   created_by_name: string | null
+  updated_at: string
+  active_batch_count: number
+  nearest_expiry: string | null
 }
 
 export interface IngredientBatch {
@@ -20,9 +23,12 @@ export interface IngredientBatch {
   store_id: string
   ingredient_id: string
   quantity: string
+  remaining_quantity: string
   received_at: string
   expires_at: string | null
   cost_per_unit_cents: number
+  reference: string | null
+  received_by_name: string | null
 }
 
 export interface StockMovement {
@@ -92,7 +98,7 @@ export async function deactivateIngredient(storeId: string, ingredientId: string
   return inventoryRequest<Ingredient>(`/ingredients/${ingredientId}/deactivate`, 'PATCH', storeId, terminal, terminal ? managerEvidenceBody(approval) : undefined)
 }
 
-export async function recordIngredientBatch(storeId: string, ingredientId: string, input: { quantity: number; cost_per_unit_cents: number; expires_at?: string | null; received_at?: string | null }, terminal = false, approval: ManagerApprovalEvidence | null = null): Promise<{ batch: IngredientBatch; movement: StockMovement; ingredient: Ingredient }> {
+export async function recordIngredientBatch(storeId: string, ingredientId: string, input: { quantity: number; cost_per_unit_cents: number; expires_at?: string | null; received_at?: string | null; reference?: string | null }, terminal = false, approval: ManagerApprovalEvidence | null = null): Promise<{ batch: IngredientBatch; movement: StockMovement; ingredient: Ingredient }> {
   return inventoryRequest(`/ingredients/${ingredientId}/batches`, 'POST', storeId, terminal, { ...input, ...(terminal ? managerEvidenceBody(approval) : {}) })
 }
 
@@ -121,6 +127,18 @@ export async function fetchStockMovements(storeId: string, ingredientId: string,
   return { movements: body.movements ?? [], next_cursor: body.next_cursor ?? null }
 }
 
-export async function recordWastage(storeId: string, ingredientId: string, input: { quantity: number; note?: string | null }, terminal = false, approval: ManagerApprovalEvidence | null = null): Promise<{ movement: StockMovement; ingredient: Ingredient }> {
+export async function recordWastage(storeId: string, ingredientId: string, input: { quantity: number; note?: string | null; batch_id?: string | null }, terminal = false, approval: ManagerApprovalEvidence | null = null): Promise<{ movement: StockMovement; ingredient: Ingredient }> {
   return inventoryRequest(`/ingredients/${ingredientId}/wastage`, 'POST', storeId, terminal, { ...input, ...(terminal ? managerEvidenceBody(approval) : {}) })
+}
+
+export async function fetchExpiringBatchCount(storeId: string, terminal = false): Promise<number> {
+  const query = new URLSearchParams({ store_id: storeId })
+  const response = await fetch(`${configuredApiUrl()}${terminal ? '/pos/inventory' : '/inventory'}/summary?${query}`, {
+    credentials: terminal ? 'include' : 'same-origin',
+    headers: terminal ? {} : { Authorization: `Bearer ${await accessToken()}` },
+    signal: AbortSignal.timeout(15_000),
+  })
+  const body = await response.json().catch(() => ({})) as { expiring_batches_count?: number; message?: string }
+  if (!response.ok) throw new Error(body.message ?? `Inventory summary could not be loaded (${response.status}).`)
+  return body.expiring_batches_count ?? 0
 }

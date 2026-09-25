@@ -13,10 +13,10 @@ export const STOCK_MOVEMENT_REASONS: readonly StockMovementReason[] = [
 ]
 
 export const STOCK_MOVEMENT_REASON_LABELS: Record<StockMovementReason, string> = {
-  purchase: 'Purchase',
-  consumption: 'Consumption',
+  purchase: 'Stock Received',
+  consumption: 'Sale Consumption',
   wastage: 'Wastage',
-  adjustment: 'Adjustment',
+  adjustment: 'Manual Adjustment',
 }
 
 // Maps each reason to one of styles.css's --mise-* semantic token pairs (Section E), matching
