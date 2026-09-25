@@ -9,6 +9,7 @@ import { floorRouter, terminalFloorRouter } from './routes/floor.js'
 import { kitchenRouter, terminalKitchenRouter } from './routes/kitchen.js'
 import { inventoryRouter, terminalInventoryRouter } from './routes/inventory.js'
 import { promotionsRouter } from './routes/promotions.js'
+import { loyaltyRouter, terminalLoyaltyRouter } from './routes/loyalty.js'
 import { terminalAuthRouter, type TerminalAuthOptions } from './terminal-auth/routes.js'
 
 export function createApp(options: TerminalAuthOptions) {
@@ -26,6 +27,7 @@ export function createApp(options: TerminalAuthOptions) {
   app.use('/kitchen', kitchenRouter)
   app.use('/inventory', inventoryRouter)
   app.use('/promotions', promotionsRouter)
+  app.use('/loyalty', loyaltyRouter)
   app.use(auditRouter)
   app.use('/pos/catalog', terminalCatalogRouter)
   app.use('/pos/orders', terminalOrdersRouter)
@@ -33,5 +35,6 @@ export function createApp(options: TerminalAuthOptions) {
   app.use('/pos/floor', terminalFloorRouter)
   app.use('/pos/kitchen', terminalKitchenRouter)
   app.use('/pos/inventory', terminalInventoryRouter)
+  app.use('/pos/loyalty', terminalLoyaltyRouter)
   return app
 }

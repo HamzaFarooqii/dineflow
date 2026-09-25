@@ -1,9 +1,10 @@
 import { formatCents } from '../../../../../packages/domain/src/money'
-import { formatCostPerUnit, formatQuantity } from '../../../../../packages/domain/src/inventory-quantity'
+import { formatCostPerUnit } from '../../../../../packages/domain/src/inventory-quantity'
 import type { RecipeUnit, UnitKind } from '../menu/recipe-draft'
 import type { Ingredient } from '../../lib/inventory'
 import { InventoryStatusBadge } from './InventoryStatusBadge'
 import { MetricCard } from '../../components/MetricCard'
+import { Quantity } from './Quantity'
 
 const KIND_SUBTITLE: Record<UnitKind, string> = { mass: 'Weight inventory', volume: 'Liquid inventory', count: 'Count inventory' }
 
@@ -32,11 +33,11 @@ export function InventoryDetailHeader({ ingredient, unit, currency, receiveOpen,
       <InventoryStatusBadge ingredient={ingredient} />
     </div>
     <div className="inventory-detail-stats">
-      <MetricCard label="Current Stock" value={unit ? formatQuantity(ingredient.current_stock, unit) : ingredient.current_stock} />
+      <MetricCard label="Current Stock" value={<Quantity value={ingredient.current_stock} unit={unit} />} />
       <MetricCard label="Average Cost" value={unit ? formatCostPerUnit(formatCents(ingredient.cost_per_unit_cents, currency), unit) : '—'} />
       <MetricCard label="Estimated Stock Value" value={formatCents(estimatedValueCents, currency)} />
     </div>
-    {ingredient.reorder_threshold !== null && unit && <p className="inventory-detail-reorder">Reorder at {formatQuantity(ingredient.reorder_threshold, unit)}</p>}
+    {ingredient.reorder_threshold !== null && unit && <p className="inventory-detail-reorder">Reorder at <Quantity value={ingredient.reorder_threshold} unit={unit} /></p>}
     <div className="inventory-detail-actions">
       <button type="button" className={receiveOpen ? 'secondary-cta active' : 'secondary-cta'} onClick={onToggleReceive}>{receiveOpen ? 'Cancel' : 'Receive Stock'}</button>
       <button type="button" className={wastageOpen ? 'secondary-cta active' : 'secondary-cta'} onClick={onToggleWastage}>{wastageOpen ? 'Cancel' : 'Record Wastage'}</button>

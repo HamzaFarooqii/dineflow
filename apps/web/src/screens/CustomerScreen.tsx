@@ -7,6 +7,8 @@ import { pushPendingOrders } from '../lib/order-sync'
 import { usePosStore } from '../lib/pos-store'
 import { requireSupabase } from '../lib/supabase'
 import { currentAccess } from '../terminal-auth/cache'
+import { LoyaltyBalance } from './loyalty/LoyaltyBalance'
+import { RewardRulesSection } from './loyalty/RewardRulesSection'
 import { Dialog } from '../components/Dialog'
 import { PageHeader } from '../components/PageHeader'
 import { StatusBadge, type BadgeTone } from '../components/StatusBadge'
@@ -14,33 +16,6 @@ import './customer.css'
 
 const CUSTOMER_SYNC_TONE: Record<LocalCustomer['sync_status'], BadgeTone> = { synced: 'success', pending: 'warning', failed: 'danger' }
 const CUSTOMER_SYNC_LABEL: Record<LocalCustomer['sync_status'], string> = { synced: 'Saved', pending: 'Pending sync', failed: 'Needs review' }
-
-// Loyalty tier badge (Day 4 task 4, Bisma's half — sequenced after Hamza's loyalty schema
-// landed): reads loyalty_accounts/loyalty_tiers directly via Supabase RLS (member-read policies
-// already grant this), the same way this screen already reads store_memberships directly, rather
-// than through apps/api/src/routes/loyalty.ts, which is Ahmed's Day 4 task and not built yet.
-// Only available in manager mode -- a cashier terminal has no Supabase session to query with.
-const TIER_TONES: readonly BadgeTone[] = ['info', 'saffron', 'success', 'warning']
-async function loadTierBadges(storeId: string, customerIds: string[]): Promise<Map<string, { name: string; tone: BadgeTone }>> {
-  const badges = new Map<string, { name: string; tone: BadgeTone }>()
-  if (!customerIds.length) return badges
-  const client = requireSupabase()
-  const [tiersResult, accountsResult] = await Promise.all([
-    client.from('loyalty_tiers').select('id,name,min_lifetime_points').eq('store_id', storeId).order('min_lifetime_points', { ascending: true }),
-    client.from('loyalty_accounts').select('customer_id,lifetime_points').eq('store_id', storeId).in('customer_id', customerIds),
-  ])
-  const tiers = tiersResult.data ?? []
-  if (!tiers.length) return badges
-  for (const account of accountsResult.data ?? []) {
-    let match: { name: string } | null = null
-    let toneIndex = -1
-    tiers.forEach((tier, index) => {
-      if (account.lifetime_points >= tier.min_lifetime_points) { match = tier; toneIndex = index }
-    })
-    if (match) badges.set(account.customer_id, { name: (match as { name: string }).name, tone: TIER_TONES[toneIndex % TIER_TONES.length] })
-  }
-  return badges
-}
 
 export function CustomerFinder({ storeId, terminal, onSelect, onViewProfile }: { storeId: string; terminal: boolean; onSelect?: (customer: LocalCustomer) => void; onViewProfile?: (customer: LocalCustomer) => void }) {
   const [query, setQuery] = useState('')
@@ -53,7 +28,6 @@ export function CustomerFinder({ storeId, terminal, onSelect, onViewProfile }: {
   const [searching, setSearching] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
-  const [tierBadges, setTierBadges] = useState<Map<string, { name: string; tone: BadgeTone }>>(new Map())
   const normalizedName = name.trim().replace(/\s+/g, ' ')
   const nameError = normalizedName.length > 30 ? 'Guest name must be 30 characters or fewer.' : ''
   useEffect(() => {
@@ -87,19 +61,6 @@ export function CustomerFinder({ storeId, terminal, onSelect, onViewProfile }: {
     finally { setBusy(false) }
   }
   const matches = [...local, ...server.filter(remote => !local.some(customer => customer.id === remote.id))]
-  // Keyed on the joined, sorted id set (not local/server's array identity, which changes on
-  // every keystroke of the phone search) and debounced, so typing a phone number doesn't fire a
-  // fresh pair of loyalty queries per character.
-  const matchIdKey = [...new Set(matches.map(customer => customer.id))].sort().join(',')
-  useEffect(() => {
-    let active = true
-    if (terminal || !navigator.onLine || !matchIdKey) { setTierBadges(new Map()); return }
-    const ids = matchIdKey.split(',')
-    const timeout = setTimeout(() => {
-      void loadTierBadges(storeId, ids).then(badges => { if (active) setTierBadges(badges) }).catch(() => { if (active) setTierBadges(new Map()) })
-    }, 250)
-    return () => { active = false; clearTimeout(timeout) }
-  }, [storeId, terminal, matchIdKey])
   return <div className="crm-finder">
     <section className="crm-panel" aria-labelledby="crm-search-title"><h2 id="crm-search-title">Find a guest</h2>
       <p>Search by phone number (with country code) or by name. Local matches appear immediately; online lookup adds saved restaurant matches.</p>
@@ -107,8 +68,8 @@ export function CustomerFinder({ storeId, terminal, onSelect, onViewProfile }: {
       <button type="button" className="secondary-cta" disabled={!query.trim() || searching || !navigator.onLine} onClick={() => void onlineSearch()}>{searching ? 'Searching…' : 'Search online'}</button>
       {query.trim() && <div className="crm-results" role="region" aria-live="polite" aria-label="Guest matches">
         {matches.length ? <ul>{matches.map(customer => <li key={customer.id}><span><strong>{customer.name}</strong><small>{customer.phone_normalized ? `+${customer.phone_normalized}` : 'No phone'}</small>{customer.failure_reason && <small role="status">{customer.failure_reason}</small>}</span>
-          {tierBadges.get(customer.id) && <StatusBadge tone={tierBadges.get(customer.id)!.tone}>{tierBadges.get(customer.id)!.name}</StatusBadge>}
           <StatusBadge tone={CUSTOMER_SYNC_TONE[customer.sync_status]}>{CUSTOMER_SYNC_LABEL[customer.sync_status]}</StatusBadge>
+          <LoyaltyBalance storeId={storeId} terminal={terminal} customer={customer} />
           {onViewProfile && <button type="button" className="text-action" onClick={() => onViewProfile(customer)}>View profile</button>}
           {onSelect && <button type="button" className="secondary-cta" onClick={() => onSelect(customer)}>Select {customer.name}</button>}</li>)}</ul> : <p className="crm-empty">No local matches. Search online or create a new guest.</p>}
       </div>}
@@ -204,5 +165,6 @@ export function CustomerScreen({ terminal = false }: { terminal?: boolean }) {
       onSelect={terminal ? customer => { selectCustomer(customer); navigate('/pos/register') } : undefined}
       onViewProfile={terminal ? undefined : customer => setProfileCustomer(customer)} />}
     {profileCustomer && <CustomerProfile storeId={storeId} customer={profileCustomer} terminal={terminal} onClose={() => setProfileCustomer(null)} />}
+    {storeId && !terminal && <RewardRulesSection storeId={storeId} />}
   </section>
 }

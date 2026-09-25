@@ -11,27 +11,7 @@
   color: var(--mise-ink);
 }
 
-.mise-log-head { margin-bottom: var(--mise-space-24); }
-.mise-log-head .kicker {
-  font: 500 10px 'IBM Plex Mono', monospace;
-  letter-spacing: .18em;
-  text-transform: uppercase;
-  color: var(--mise-ink-muted);
-  margin: 0 0 var(--mise-space-8);
-}
-.mise-log-head h1 {
-  font: 600 32px/1.1 'Archivo', sans-serif;
-  letter-spacing: -.02em;
-  color: var(--mise-ink);
-  margin: 0 0 var(--mise-space-8);
-}
-.mise-log-head p {
-  max-width: 62ch;
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.55;
-  color: var(--mise-ink-secondary);
-}
+/* Header now renders through the shared <PageHeader> -- .mise-log-head is retired. */
 
 .mise-log-page > p[role='status'] {
   font-size: 13px;
@@ -57,6 +37,9 @@
   border-bottom: 1px solid var(--mise-border-hairline);
 }
 .mise-log-list li:last-child { border-bottom: 0; }
+/* Grid items stretch to fill their column by default -- keep the badge pill-width instead of
+   letting it stretch across the fixed 178px first column. */
+.mise-log-list .status-badge { width: max-content; }
 
 .mise-log-row { display: grid; gap: var(--mise-space-4); min-width: 0; }
 .mise-log-row strong {
@@ -79,31 +62,7 @@
 }
 .mise-log-actor { display: block; color: var(--mise-ink-secondary); }
 
-/* Same badge vocabulary as closed checks and the sync queue:
-   success = restored, danger = access removed, info = routine record change. */
-.mise-log-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--mise-space-8);
-  width: max-content;
-  padding: 6px var(--mise-space-8);
-  border-radius: var(--mise-r2);
-  background: var(--mise-info-fill);
-  color: var(--mise-info);
-  font: 500 11px 'Archivo', sans-serif;
-  letter-spacing: .02em;
-  white-space: nowrap;
-}
-.mise-log-tag::before {
-  content: '';
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-  flex-shrink: 0;
-}
-.mise-log-tag.success { background: var(--mise-success-fill); color: var(--mise-success); }
-.mise-log-tag.danger { background: var(--mise-danger-fill); color: var(--mise-danger); }
+/* The action tag now renders through the shared <StatusBadge> -- .mise-log-tag is retired. */
 
 .mise-log-empty {
   margin: 0;
@@ -142,7 +101,6 @@
 
 @media (max-width: 760px) {
   .mise-log-page { padding: var(--mise-space-24) var(--mise-space-8) 48px; }
-  .mise-log-head h1 { font-size: 27px; }
   .mise-log-list li {
     grid-template-columns: minmax(0, 1fr);
     gap: var(--mise-space-8);

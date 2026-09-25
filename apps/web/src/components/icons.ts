@@ -13,4 +13,5 @@ export {
   Pencil, Trash2, Filter, ArrowUpDown, Clock, Calendar,
   TrendingUp, TrendingDown, Minus,
   Wallet, RefreshCw, Award, Receipt, Tag,
+  Monitor, History, Shield, Play,
 } from 'lucide-react'

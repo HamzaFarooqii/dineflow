@@ -1,9 +1,11 @@
 import { BATCH_STATUS_LABELS, BATCH_STATUS_TONE, computeBatchStatus, daysUntilExpiry } from '../../../../../packages/domain/src/batch-status'
 import { formatCents } from '../../../../../packages/domain/src/money'
-import { formatQuantity } from '../../../../../packages/domain/src/inventory-quantity'
+import { formatQuantityNumber } from '../../../../../packages/domain/src/inventory-quantity'
 import type { RecipeUnit } from '../menu/recipe-draft'
 import type { IngredientBatch } from '../../lib/inventory'
 import { StatusBadge } from '../../components/StatusBadge'
+import { EmptyState } from '../../components/EmptyState'
+import { Quantity } from './Quantity'
 
 // Short, human-scannable identifier -- a batch has no natural "number" of its own, so this reads
 // the first 8 characters of its id the same way order receipts already shorten identifiers
@@ -13,42 +15,56 @@ export function batchLabel(batchId: string): string {
 }
 
 function expiryCopy(expiresAt: string | null): string {
-  if (!expiresAt) return '—'
+  if (!expiresAt) return 'No expiry set'
   const days = daysUntilExpiry(expiresAt)
   const date = new Date(expiresAt).toLocaleDateString()
-  if (days === null) return date
-  if (days < 0) return `${date} (expired ${Math.abs(days)}d ago)`
-  if (days === 0) return `${date} (today)`
-  return `${date} (${days}d remaining)`
+  if (days === null) return `Expires ${date}`
+  if (days < 0) return `Expired ${date} (${Math.abs(days)}d ago)`
+  if (days === 0) return `Expires today (${date})`
+  return `Expires ${date} (${days}d left)`
 }
 
+// One card per batch instead of a 10-column table -- the same facts, but with the two numbers a
+// manager actually scans for (how much is left, out of how much came in) pulled out as the
+// headline, a remaining-vs-received bar for an at-a-glance read, and everything else (received
+// date/by, reference, cost) folded into a quieter meta line underneath.
 export function BatchList({ batches, unit, currency }: { batches: IngredientBatch[]; unit: RecipeUnit | undefined; currency: string }) {
-  return <table className="inventory-table batch-table">
-    <thead><tr>
-      <th>Batch</th><th>Received</th><th>Received Qty</th><th>Remaining</th><th>Cost/unit</th><th>Total Cost</th><th>Expires</th><th>Received by</th><th>Reference</th><th>Status</th>
-    </tr></thead>
-    <tbody>
-      {batches.map(batch => {
-        const status = computeBatchStatus({
-          remainingQuantity: Number(batch.remaining_quantity),
-          originalQuantity: Number(batch.quantity),
-          expiresAt: batch.expires_at,
-        })
-        const totalCostCents = Math.round(Number(batch.quantity) * batch.cost_per_unit_cents)
-        return <tr key={batch.id}>
-          <td data-label="Batch">{batchLabel(batch.id)}</td>
-          <td data-label="Received">{new Date(batch.received_at).toLocaleDateString()}</td>
-          <td data-label="Received Qty">{unit ? formatQuantity(batch.quantity, unit) : batch.quantity}</td>
-          <td data-label="Remaining">{unit ? formatQuantity(batch.remaining_quantity, unit) : batch.remaining_quantity}</td>
-          <td data-label="Cost/unit">{unit ? `${formatCents(batch.cost_per_unit_cents, currency)} / ${unit.abbreviation}` : formatCents(batch.cost_per_unit_cents, currency)}</td>
-          <td data-label="Total Cost">{formatCents(totalCostCents, currency)}</td>
-          <td data-label="Expires">{expiryCopy(batch.expires_at)}</td>
-          <td data-label="Received by">{batch.received_by_name ?? '—'}</td>
-          <td data-label="Reference">{batch.reference ?? '—'}</td>
-          <td data-label="Status"><StatusBadge tone={BATCH_STATUS_TONE[status]}>{BATCH_STATUS_LABELS[status]}</StatusBadge></td>
-        </tr>
-      })}
-      {batches.length === 0 && <tr><td colSpan={10} className="floor-empty">No batches received yet. Receive your first stock delivery to start tracking inventory.</td></tr>}
-    </tbody>
-  </table>
+  if (batches.length === 0) {
+    return <EmptyState title="No batches received yet" description="Receive your first stock delivery to start tracking inventory." />
+  }
+  return <div className="batch-list">
+    {batches.map(batch => {
+      const status = computeBatchStatus({
+        remainingQuantity: Number(batch.remaining_quantity),
+        originalQuantity: Number(batch.quantity),
+        expiresAt: batch.expires_at,
+      })
+      const original = Number(batch.quantity)
+      const remaining = Number(batch.remaining_quantity)
+      const usedPct = original > 0 ? Math.min(100, Math.max(0, Math.round(((original - remaining) / original) * 100))) : 0
+      const totalCostCents = Math.round(original * batch.cost_per_unit_cents)
+      return <article key={batch.id} className="batch-card">
+        <div className="batch-card-top">
+          <span className="batch-card-id">{batchLabel(batch.id)}</span>
+          <StatusBadge tone={BATCH_STATUS_TONE[status]}>{BATCH_STATUS_LABELS[status]}</StatusBadge>
+        </div>
+        <div className="batch-card-qty">
+          <strong><Quantity value={batch.remaining_quantity} unit={unit} /></strong>
+          <span>remaining of {formatQuantityNumber(batch.quantity)}</span>
+        </div>
+        <div className="batch-card-bar" role="progressbar" aria-label="Remaining stock in this batch" aria-valuenow={100 - usedPct} aria-valuemin={0} aria-valuemax={100}>
+          <div style={{ width: `${100 - usedPct}%` }} />
+        </div>
+        <div className="batch-card-costs">
+          <span>{unit ? `${formatCents(batch.cost_per_unit_cents, currency)} / ${unit.abbreviation}` : formatCents(batch.cost_per_unit_cents, currency)}</span>
+          <span>{formatCents(totalCostCents, currency)} total</span>
+        </div>
+        <div className="batch-card-meta">
+          <span>Received {new Date(batch.received_at).toLocaleDateString()}{batch.received_by_name ? ` by ${batch.received_by_name}` : ''}</span>
+          <span>{expiryCopy(batch.expires_at)}</span>
+          {batch.reference && <span>Ref: {batch.reference}</span>}
+        </div>
+      </article>
+    })}
+  </div>
 }
