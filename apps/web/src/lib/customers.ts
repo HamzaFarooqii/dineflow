@@ -3,6 +3,24 @@ import { accessToken, configuredApiUrl } from './catalog'
 import { posDb, type LocalCustomer } from './db'
 export { createLocalCustomer, searchLocalCustomers } from './customer-local'
 
+export interface CustomerSummary {
+  customer_id: string
+  visit_count: number
+  lifetime_spend_cents: number
+  recent_visits: Array<{ order_id: string; total_cents: number; visited_at: string }>
+}
+export async function fetchCustomerSummary(storeId: string, customerId: string, terminal: boolean): Promise<CustomerSummary> {
+  const query = new URLSearchParams()
+  if (!terminal) query.set('store_id', storeId)
+  const response = await fetch(`${configuredApiUrl()}${terminal ? '/pos/customers' : '/customers'}/${customerId}/summary?${query}`, {
+    credentials: terminal ? 'include' : 'same-origin',
+    headers: terminal ? {} : { Authorization: `Bearer ${await accessToken()}` }, signal: AbortSignal.timeout(15_000),
+  })
+  const body = await response.json().catch(() => ({})) as CustomerSummary & { message?: string }
+  if (!response.ok) throw new Error(body.message ?? `Guest history could not be loaded (${response.status}).`)
+  return body
+}
+
 type SearchResult = { customers: Array<{ id: string; store_id: string; name: string; phone_normalized: string | null }>; next_cursor: string | null }
 export async function searchServerCustomers(storeId: string, rawPhone: string, terminal: boolean, cursor: string | null = null): Promise<SearchResult> {
   const phone = normalizedPhone(rawPhone)

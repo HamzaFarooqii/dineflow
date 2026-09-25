@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { createLocalCustomer, searchLocalCustomers, searchServerCustomers } from '../lib/customers'
+import { createLocalCustomer, fetchCustomerSummary, searchLocalCustomers, searchServerCustomers, type CustomerSummary } from '../lib/customers'
+import { formatCents } from '../../../../packages/domain/src/money'
 import type { LocalCustomer } from '../lib/db'
 import { pushPendingOrders } from '../lib/order-sync'
 import { usePosStore } from '../lib/pos-store'
@@ -14,7 +15,34 @@ import './customer.css'
 const CUSTOMER_SYNC_TONE: Record<LocalCustomer['sync_status'], BadgeTone> = { synced: 'success', pending: 'warning', failed: 'danger' }
 const CUSTOMER_SYNC_LABEL: Record<LocalCustomer['sync_status'], string> = { synced: 'Saved', pending: 'Pending sync', failed: 'Needs review' }
 
-export function CustomerFinder({ storeId, terminal, onSelect }: { storeId: string; terminal: boolean; onSelect?: (customer: LocalCustomer) => void }) {
+// Loyalty tier badge (Day 4 task 4, Bisma's half — sequenced after Hamza's loyalty schema
+// landed): reads loyalty_accounts/loyalty_tiers directly via Supabase RLS (member-read policies
+// already grant this), the same way this screen already reads store_memberships directly, rather
+// than through apps/api/src/routes/loyalty.ts, which is Ahmed's Day 4 task and not built yet.
+// Only available in manager mode -- a cashier terminal has no Supabase session to query with.
+const TIER_TONES: readonly BadgeTone[] = ['info', 'saffron', 'success', 'warning']
+async function loadTierBadges(storeId: string, customerIds: string[]): Promise<Map<string, { name: string; tone: BadgeTone }>> {
+  const badges = new Map<string, { name: string; tone: BadgeTone }>()
+  if (!customerIds.length) return badges
+  const client = requireSupabase()
+  const [tiersResult, accountsResult] = await Promise.all([
+    client.from('loyalty_tiers').select('id,name,min_lifetime_points').eq('store_id', storeId).order('min_lifetime_points', { ascending: true }),
+    client.from('loyalty_accounts').select('customer_id,lifetime_points').eq('store_id', storeId).in('customer_id', customerIds),
+  ])
+  const tiers = tiersResult.data ?? []
+  if (!tiers.length) return badges
+  for (const account of accountsResult.data ?? []) {
+    let match: { name: string } | null = null
+    let toneIndex = -1
+    tiers.forEach((tier, index) => {
+      if (account.lifetime_points >= tier.min_lifetime_points) { match = tier; toneIndex = index }
+    })
+    if (match) badges.set(account.customer_id, { name: (match as { name: string }).name, tone: TIER_TONES[toneIndex % TIER_TONES.length] })
+  }
+  return badges
+}
+
+export function CustomerFinder({ storeId, terminal, onSelect, onViewProfile }: { storeId: string; terminal: boolean; onSelect?: (customer: LocalCustomer) => void; onViewProfile?: (customer: LocalCustomer) => void }) {
   const [query, setQuery] = useState('')
   const [local, setLocal] = useState<LocalCustomer[]>([])
   const [server, setServer] = useState<LocalCustomer[]>([])
@@ -25,6 +53,7 @@ export function CustomerFinder({ storeId, terminal, onSelect }: { storeId: strin
   const [searching, setSearching] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+  const [tierBadges, setTierBadges] = useState<Map<string, { name: string; tone: BadgeTone }>>(new Map())
   const normalizedName = name.trim().replace(/\s+/g, ' ')
   const nameError = normalizedName.length > 30 ? 'Guest name must be 30 characters or fewer.' : ''
   useEffect(() => {
@@ -58,6 +87,15 @@ export function CustomerFinder({ storeId, terminal, onSelect }: { storeId: strin
     finally { setBusy(false) }
   }
   const matches = [...local, ...server.filter(remote => !local.some(customer => customer.id === remote.id))]
+  useEffect(() => {
+    let active = true
+    if (terminal || !navigator.onLine || !matches.length) { setTierBadges(new Map()); return }
+    void loadTierBadges(storeId, matches.map(customer => customer.id)).then(badges => { if (active) setTierBadges(badges) }).catch(() => { if (active) setTierBadges(new Map()) })
+    return () => { active = false }
+    // matches is recomputed from local/server state every render; keying on their identities
+    // (not the derived array) avoids an infinite effect loop from a fresh array each time.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storeId, terminal, local, server])
   return <div className="crm-finder">
     <section className="crm-panel" aria-labelledby="crm-search-title"><h2 id="crm-search-title">Find a guest</h2>
       <p>Search by international phone number. Local matches appear immediately; online lookup adds saved restaurant matches.</p>
@@ -65,7 +103,9 @@ export function CustomerFinder({ storeId, terminal, onSelect }: { storeId: strin
       <button type="button" className="secondary-cta" disabled={!query.trim() || searching || !navigator.onLine} onClick={() => void onlineSearch()}>{searching ? 'Searching…' : 'Search online'}</button>
       {query.trim() && <div className="crm-results" role="region" aria-live="polite" aria-label="Guest matches">
         {matches.length ? <ul>{matches.map(customer => <li key={customer.id}><span><strong>{customer.name}</strong><small>{customer.phone_normalized ? `+${customer.phone_normalized}` : 'No phone'}</small>{customer.failure_reason && <small role="status">{customer.failure_reason}</small>}</span>
+          {tierBadges.get(customer.id) && <StatusBadge tone={tierBadges.get(customer.id)!.tone}>{tierBadges.get(customer.id)!.name}</StatusBadge>}
           <StatusBadge tone={CUSTOMER_SYNC_TONE[customer.sync_status]}>{CUSTOMER_SYNC_LABEL[customer.sync_status]}</StatusBadge>
+          {onViewProfile && <button type="button" className="text-action" onClick={() => onViewProfile(customer)}>View profile</button>}
           {onSelect && <button type="button" className="secondary-cta" onClick={() => onSelect(customer)}>Select {customer.name}</button>}</li>)}</ul> : <p className="crm-empty">No local matches. Search online or create a new guest.</p>}
       </div>}
       {nextCursor && <button type="button" className="text-action" disabled={searching} onClick={() => void onlineSearch(nextCursor)}>Load more matches</button>}
@@ -89,11 +129,40 @@ export function CustomerSelector({ storeId, terminal, onClose }: { storeId: stri
   </Dialog>
 }
 
+function CustomerProfile({ storeId, customer, terminal, onClose }: { storeId: string; customer: LocalCustomer; terminal: boolean; onClose: () => void }) {
+  const [summary, setSummary] = useState<CustomerSummary | null>(null)
+  const [error, setError] = useState('')
+  useEffect(() => {
+    let active = true
+    void fetchCustomerSummary(storeId, customer.id, terminal)
+      .then(result => { if (active) setSummary(result) })
+      .catch(reason => { if (active) setError(reason instanceof Error ? reason.message : 'Could not load this guest’s history.') })
+    return () => { active = false }
+  }, [storeId, customer.id, terminal])
+  return <Dialog title={customer.name} kicker="GUEST PROFILE" onClose={onClose}>
+    {error && <p className="form-notice error" role="alert">{error}</p>}
+    {!summary && !error && <p role="status">Loading guest history…</p>}
+    {summary && <dl className="crm-profile">
+      <div><dt>Lifetime spend</dt><dd>{formatCents(summary.lifetime_spend_cents)}</dd></div>
+      <div><dt>Visits</dt><dd>{summary.visit_count}</dd></div>
+    </dl>}
+    {summary && <>
+      <h3>Recent visits</h3>
+      {summary.recent_visits.length
+        ? <ul className="crm-profile-visits">{summary.recent_visits.map(visit => <li key={visit.order_id}>
+            <span>{new Date(visit.visited_at).toLocaleDateString()}</span><b>{formatCents(visit.total_cents)}</b>
+          </li>)}</ul>
+        : <p className="crm-empty">No completed visits yet.</p>}
+    </>}
+  </Dialog>
+}
+
 export function CustomerScreen({ terminal = false }: { terminal?: boolean }) {
   const navigate = useNavigate()
   const selectCustomer = usePosStore(state => state.selectCustomer)
   const [storeId, setStoreId] = useState('')
   const [error, setError] = useState('')
+  const [profileCustomer, setProfileCustomer] = useState<LocalCustomer | null>(null)
   useEffect(() => {
     let active = true
     const load = async () => {
@@ -127,6 +196,9 @@ export function CustomerScreen({ terminal = false }: { terminal?: boolean }) {
     />
     {error && <p className="form-notice error" role="alert">{error}</p>}
     {!storeId && !error && <p role="status">Checking guest access…</p>}
-    {storeId && <CustomerFinder storeId={storeId} terminal={terminal} onSelect={terminal ? customer => { selectCustomer(customer); navigate('/pos/register') } : undefined} />}
+    {storeId && <CustomerFinder storeId={storeId} terminal={terminal}
+      onSelect={terminal ? customer => { selectCustomer(customer); navigate('/pos/register') } : undefined}
+      onViewProfile={terminal ? undefined : customer => setProfileCustomer(customer)} />}
+    {profileCustomer && <CustomerProfile storeId={storeId} customer={profileCustomer} terminal={terminal} onClose={() => setProfileCustomer(null)} />}
   </section>
 }
