@@ -437,6 +437,7 @@ html{font-family:'Archivo',sans-serif;color:var(--mise-ink);background:var(--mis
 .metric-card-footer span{font-size:var(--mise-text-micro);color:var(--mise-ink-muted);line-height:1.35}
 .metric-card.featured{border-left:3px solid var(--mise-action)}
 .metric-card.featured strong{font-size:var(--mise-text-numeric-lg);font-weight:600}
+.metric-card.rejected{border-left:3px solid var(--mise-danger)}
 .delta-tag{display:inline-flex;align-items:center;gap:var(--mise-space-4);font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:10px;font-weight:500;padding:2px var(--mise-space-8);border-radius:var(--mise-r1);white-space:nowrap}
 .delta-tag-up{background:var(--mise-success-fill);color:var(--mise-success)}
 .delta-tag-down{background:var(--mise-danger-fill);color:var(--mise-danger)}

@@ -283,42 +283,10 @@ h2 .panel-icon {
   line-height: 1.45;
 }
 
-.status-amount {
-  background: var(--mise-surface);
-  border: 1px solid var(--mise-border-hairline);
-  border-radius: var(--mise-r2);
-  padding: var(--mise-space-12);
-  display: grid;
-  gap: var(--mise-space-4);
-}
-
-.status-amount small {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: var(--mise-ink-muted);
-  font-weight: 600;
-}
-
-.status-amount strong {
-  font-family: 'IBM Plex Mono', monospace;
-  font-variant-numeric: tabular-nums;
-  font-weight: 500;
-  font-size: 22px;
-  color: var(--mise-ink);
-  line-height: 1.1;
-}
-
-.status-amount span {
-  font-family: 'IBM Plex Mono', monospace;
-  font-variant-numeric: tabular-nums;
-  font-size: 12px;
-  color: var(--mise-ink-secondary);
-}
-
-.status-amount.rejected {
-  border-left: 3px solid var(--mise-danger);
-}
+/* The Pending/Rejected/Refunded tiles now render through the shared <MetricCard> (styles.css) --
+   .status-amount was the same small-label/big-number/detail recipe built independently a fifth
+   time. MetricCard's optional className="rejected" (styles.css's .metric-card.rejected) keeps the
+   danger-tinted left border this variant needs. */
 
 /* ── Two-column analytics ───────────────────────────────────────────────── */
 .dashboard-columns {

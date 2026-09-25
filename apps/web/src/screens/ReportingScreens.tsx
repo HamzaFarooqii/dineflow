@@ -408,8 +408,8 @@ export function OwnerDashboardScreen({ greetingName }: { greetingName?: string }
             <h2><RefreshCw aria-hidden="true" size={16} className="panel-icon" />Sync queue status</h2>
             <p>Sales are recorded immediately in browser storage and uploaded when connected.</p>
           </div>
-          <StatusAmount label="Pending sync" count={report.pendingCount} cents={report.pendingAmountCents} currency={config.currency} />
-          <StatusAmount label="Rejected" count={report.rejectedCount} cents={report.rejectedAmountCents} currency={config.currency} rejected />
+          <MetricCard label="Pending sync" value={report.pendingCount} detail={<Money cents={report.pendingAmountCents} currency={config.currency} />} />
+          <MetricCard label="Rejected" value={report.rejectedCount} detail={<Money cents={report.rejectedAmountCents} currency={config.currency} />} className="rejected" />
         </section>
       </div>
 
@@ -542,13 +542,11 @@ export function ReportsScreen() {
   }, [state, day])
   return (
     <section className="reporting-page reports-detail">
-      <header className="reporting-heading">
-        <div>
-          <p className="kicker">THIS BROWSER / REGISTER-LOCAL</p>
-          <h1>Daily sales report.</h1>
-          <p>Calendar days use the saved store timezone and the recorded sale time.</p>
-        </div>
-        {state && (
+      <PageHeader
+        kicker="THIS BROWSER / REGISTER-LOCAL"
+        title="Daily sales report."
+        subtitle="Calendar days use the saved store timezone and the recorded sale time."
+        actions={state && (
           <div className="reports-heading-controls">
             <label className="day-picker">
               Report date
@@ -559,7 +557,7 @@ export function ReportsScreen() {
             </button>
           </div>
         )}
-      </header>
+      />
       {error && <AccessMessage message={error} embedded />}
       {!error && !state && <ReportLinesSkeleton />}
       {state && (
@@ -578,15 +576,15 @@ export function ReportsScreen() {
               <h2>Unresolved sales</h2>
               <p>Included in recorded totals and shown separately here.</p>
             </div>
-            <StatusAmount label="Pending" count={state.report.pendingCount} cents={state.report.pendingAmountCents} currency={state.config.currency} />
-            <StatusAmount label="Rejected" count={state.report.rejectedCount} cents={state.report.rejectedAmountCents} currency={state.config.currency} rejected />
+            <MetricCard label="Pending" value={state.report.pendingCount} detail={<Money cents={state.report.pendingAmountCents} currency={state.config.currency} />} />
+            <MetricCard label="Rejected" value={state.report.rejectedCount} detail={<Money cents={state.report.rejectedAmountCents} currency={state.config.currency} />} className="rejected" />
           </section>
           <section className="unresolved-panel">
             <div>
               <h2>Refunds</h2>
               <p>Original sales remain in gross figures; refunds reduce net sales and takings.</p>
             </div>
-            <StatusAmount label="Refunded" count={state.report.refundedCount} cents={state.report.refundedAmountCents} currency={state.config.currency} rejected />
+            <MetricCard label="Refunded" value={state.report.refundedCount} detail={<Money cents={state.report.refundedAmountCents} currency={state.config.currency} />} className="rejected" />
           </section>
 
           <section className="dashboard-panel">
@@ -922,15 +920,6 @@ function ReportLinesSkeleton() {
   )
 }
 
-function StatusAmount({ label, count, cents, currency, rejected = false }: { label: string; count: number; cents: number; currency: string; rejected?: boolean }) {
-  return (
-    <article className={rejected ? 'status-amount rejected' : 'status-amount'}>
-      <small>{label}</small>
-      <strong>{count}</strong>
-      <span><Money cents={cents} currency={currency} /></span>
-    </article>
-  )
-}
 
 function ReportLine({ label, hint, cents, currency, emphasized = false }: { label: string; hint: string; cents: number; currency: string; emphasized?: boolean }) {
   return (
