@@ -1,6 +1,7 @@
 import { formatCents } from '../../../../../packages/domain/src/money'
 import type { RecipeLineCost } from '../../../../../packages/domain/src/recipe-cost'
-import type { RecipeDraftLine, RecipeIngredientOption, RecipeUnit } from './recipe-draft'
+import { IngredientSelector } from './IngredientSelector'
+import type { RecipeDraftLine, RecipeIngredientOption, RecipeUnit, UnitKind } from './recipe-draft'
 
 interface Props {
   index: number
@@ -13,37 +14,34 @@ interface Props {
   disabled: boolean
   onChange: (line: RecipeDraftLine) => void
   onRemove: () => void
+  onCreateUnit: (unit: { name: string; abbreviation: string; kind: UnitKind }) => Promise<RecipeUnit>
+  onCreateIngredient: (input: { name: string; unit_id: string; cost_per_unit_cents: number }) => Promise<RecipeIngredientOption>
 }
 
 /** One ingredient line of a recipe: ingredient, quantity, unit, and its live cost. */
-export function RecipeIngredientLine({ index, line, ingredients, units, cost, error, currency, disabled, onChange, onRemove }: Props) {
+export function RecipeIngredientLine({ index, line, ingredients, units, cost, error, currency, disabled, onChange, onRemove, onCreateUnit, onCreateIngredient }: Props) {
   const selected = ingredients.find(ingredient => ingredient.id === line.ingredientId)
-  // Inactive ingredients can't be newly picked, but one already on a saved recipe stays visible.
-  const options = ingredients.filter(ingredient => ingredient.active || ingredient.id === line.ingredientId)
   const unitLabel = (id: string) => units.find(unit => unit.id === id)?.abbreviation ?? ''
   const label = `ingredient line ${index + 1}`
 
   return (
     <div className="recipe-line">
       <div className="recipe-line-top pc-field">
-        <select
-          aria-label={`Ingredient for ${label}`}
-          className={error && !line.ingredientId ? 'err' : ''}
+        <IngredientSelector
+          ingredients={ingredients}
           value={line.ingredientId}
+          units={units}
+          currency={currency}
           disabled={disabled}
-          onChange={event => {
-            const ingredient = ingredients.find(option => option.id === event.target.value)
+          hasError={Boolean(error) && !line.ingredientId}
+          onCreateUnit={onCreateUnit}
+          onCreateIngredient={onCreateIngredient}
+          onChange={(ingredientId, unitId) => {
+            const ingredient = ingredients.find(option => option.id === ingredientId)
             // Default the line to the ingredient's own unit — the only unit costing accepts today.
-            onChange({ ...line, ingredientId: event.target.value, unitId: ingredient?.unit_id ?? line.unitId })
+            onChange({ ...line, ingredientId, unitId: unitId ?? ingredient?.unit_id ?? line.unitId })
           }}
-        >
-          <option value="">Choose ingredient…</option>
-          {options.map(ingredient => (
-            <option key={ingredient.id} value={ingredient.id}>
-              {ingredient.name}{ingredient.active ? '' : ' (inactive)'}
-            </option>
-          ))}
-        </select>
+        />
         <button type="button" className="recipe-line-remove" onClick={onRemove} disabled={disabled} aria-label={`Remove ${label}`}>×</button>
       </div>
       <div className="recipe-line-bottom pc-field">

@@ -403,6 +403,21 @@ consumes stock automatically yet — that's Hamza's follow-up once your migratio
       ingredients in the Inventory UI — the API supports both, nothing calls them yet.
 - [ ] Deliberately dropped: full Ticket CRUD (create/edit ticket contents from scratch) — see
       the reasoning above; not tracked as outstanding, it's an intentional scope decision.
+- [x] **Post-sprint UX fix (found via owner feedback, not in the original plan):** the recipe
+      builder's ingredient picker only ever offered a plain dropdown of ingredients already
+      created on the separate Inventory screen — building a recipe for a brand-new dish (e.g.
+      French Toast: bread, milk, sugar, egg) meant leaving the recipe drawer, creating each
+      ingredient on Inventory first, then coming back. Added `IngredientSelector.tsx`
+      (`apps/web/src/screens/menu/`): a search-as-you-type picker mirroring the existing
+      `UnitSelector`'s shape, with a "+ Create new ingredient…" inline form (name, unit — reusing
+      `UnitSelector` so a new unit can be created in the same flow — and cost per unit) that
+      calls the same `createIngredient` endpoint Inventory uses, no separate ingredient system.
+      Cost per unit is now a required field on inline creation (not defaulted to $0) — a silently
+      free ingredient would understate food cost with no warning, since a $0 line reports as
+      "costed," not "missing." The "no ingredients exist yet, add them on Inventory first" dead
+      end and the resulting disabled "+ Add ingredient" button are gone; food-cost math itself
+      (`packages/domain/src/recipe-cost.ts`) is unchanged. Verified via `tsc -b`, `vite build`,
+      and the full `apps/web` test suite (40/40).
 
 **Ahmed — done:**
 - [x] `units` + `recipes` schema, applied and recorded in `APPLIED.md`.

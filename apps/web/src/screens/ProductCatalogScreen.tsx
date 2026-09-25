@@ -12,6 +12,7 @@ import { formatCents, parseCents } from '../../../../packages/domain/src/money'
 import { foodCostBps, formatFoodCostPercent } from '../../../../packages/domain/src/recipe-cost'
 import { posDb, type LocalCategory, type LocalProduct, type LocalTaxRate } from '../lib/db'
 import { activeStoreId, accessToken, configuredApiUrl, loadCatalog } from '../lib/catalog'
+import { createIngredient } from '../lib/inventory'
 import { requireSupabase } from '../lib/supabase'
 import { MetricCard } from '../components/MetricCard'
 import { StatusBadge } from '../components/StatusBadge'
@@ -252,6 +253,12 @@ export function ProductCatalogScreen() {
   const handleCreateUnit = async (unit: { name: string; abbreviation: string; kind: UnitKind }) => {
     const created = await createUnit(storeId, unit)
     setRecipeData((d) => d && { ...d, units: [...d.units, created].sort((a, b) => a.name.localeCompare(b.name)) })
+    return created
+  }
+
+  const handleCreateIngredient = async (input: { name: string; unit_id: string; cost_per_unit_cents: number }) => {
+    const created = await createIngredient(storeId, input)
+    setRecipeData((d) => d && { ...d, ingredients: [...d.ingredients, created].sort((a, b) => a.name.localeCompare(b.name)) })
     return created
   }
 
@@ -1030,6 +1037,7 @@ export function ProductCatalogScreen() {
                   currency={currency}
                   disabled={busy}
                   onCreateUnit={handleCreateUnit}
+                  onCreateIngredient={handleCreateIngredient}
                 />
               </div>
 
@@ -1121,6 +1129,7 @@ export function ProductCatalogScreen() {
                     currency={currency}
                     disabled={recipeBusy}
                     onCreateUnit={handleCreateUnit}
+                    onCreateIngredient={handleCreateIngredient}
                   />
                 </div>
               </div>

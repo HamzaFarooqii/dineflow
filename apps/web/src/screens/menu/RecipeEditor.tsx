@@ -8,7 +8,7 @@ import { useState } from 'react'
 import { formatCents } from '../../../../../packages/domain/src/money'
 import { foodCostBps, formatFoodCostPercent } from '../../../../../packages/domain/src/recipe-cost'
 import type { RecipeData } from './recipe-api'
-import { costDraft, newDraftLine, type RecipeDraft, type RecipeDraftErrors, type RecipeUnit, type UnitKind } from './recipe-draft'
+import { costDraft, newDraftLine, type RecipeDraft, type RecipeDraftErrors, type RecipeIngredientOption, type RecipeUnit, type UnitKind } from './recipe-draft'
 import { RecipeIngredientLine } from './RecipeIngredientLine'
 import './recipe-editor.css'
 
@@ -25,9 +25,10 @@ interface Props {
   currency: string
   disabled: boolean
   onCreateUnit: (unit: { name: string; abbreviation: string; kind: UnitKind }) => Promise<RecipeUnit>
+  onCreateIngredient: (input: { name: string; unit_id: string; cost_per_unit_cents: number }) => Promise<RecipeIngredientOption>
 }
 
-export function RecipeEditor({ draft, onChange, errors, data, dataError, menuPriceCents, currency, disabled, onCreateUnit }: Props) {
+export function RecipeEditor({ draft, onChange, errors, data, dataError, menuPriceCents, currency, disabled, onCreateUnit, onCreateIngredient }: Props) {
   const [creatingUnit, setCreatingUnit] = useState(false)
   const [unitForm, setUnitForm] = useState({ name: '', abbreviation: '', kind: 'count' as UnitKind })
   const [unitBusy, setUnitBusy] = useState(false)
@@ -40,7 +41,6 @@ export function RecipeEditor({ draft, onChange, errors, data, dataError, menuPri
   const cost = costDraft(draft, ingredients)
   const bps = menuPriceCents === null ? null : foodCostBps(cost.portionCostCents, menuPriceCents)
   const yieldUnit = units.find(unit => unit.id === draft.yieldUnitId)
-  const activeIngredients = ingredients.filter(ingredient => ingredient.active)
 
   const submitUnit = async () => {
     const name = unitForm.name.trim(), abbreviation = unitForm.abbreviation.trim()
@@ -129,8 +129,6 @@ export function RecipeEditor({ draft, onChange, errors, data, dataError, menuPri
         <p className="recipe-lines-label">Ingredients</p>
         {!ingredientsReady ? (
           <p className="pc-field-hint">Ingredient inventory isn’t set up yet. Save the yield now — ingredient lines and costs become available once ingredients exist.</p>
-        ) : activeIngredients.length === 0 && draft.lines.length === 0 ? (
-          <p className="pc-field-hint">No ingredients exist yet. Add them on the Inventory screen, then build this recipe.</p>
         ) : draft.lines.length === 0 ? (
           <p className="pc-field-hint">No ingredients on this recipe yet.</p>
         ) : (
@@ -145,6 +143,8 @@ export function RecipeEditor({ draft, onChange, errors, data, dataError, menuPri
               error={errors.lines?.[line.key]}
               currency={currency}
               disabled={disabled}
+              onCreateUnit={onCreateUnit}
+              onCreateIngredient={onCreateIngredient}
               onChange={next => onChange({ ...draft, lines: draft.lines.map(existing => existing.key === line.key ? next : existing) })}
               onRemove={() => onChange({ ...draft, lines: draft.lines.filter(existing => existing.key !== line.key) })}
             />
@@ -154,7 +154,7 @@ export function RecipeEditor({ draft, onChange, errors, data, dataError, menuPri
           type="button"
           className="pc-btn-ghost recipe-add-line"
           onClick={() => onChange({ ...draft, lines: [...draft.lines, newDraftLine()] })}
-          disabled={disabled || !ingredientsReady || activeIngredients.length === 0}
+          disabled={disabled || !ingredientsReady}
         >
           + Add ingredient
         </button>
