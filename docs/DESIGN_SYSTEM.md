@@ -81,8 +81,17 @@ inline, the first time a screen needs one that isn't already re-exported.
 
 `Monitor` (terminal/device) and `History` (activity log) were added during the Settings pass —
 `CardIcon` in `SettingsOverview.tsx` and the `.list-icon` tiles in `ManagerSetup.tsx` render these
-instead of the old "▣"/"♧"/"▤" glyphs. The Landing page (`App.tsx`'s `Landing()`/`RegisterMini()`)
-is the one screen still on hand-picked Unicode glyphs (⌁ ◷ ♧ ⬡ ▷ ▣ ▦ ▤ ⌕) — its own redesign pass.
+instead of the old "▣"/"♧"/"▤" glyphs. `Shield` and `Play` were added for the Landing pass. Landing's
+feature-strip icons and `RegisterMini`'s fake sidebar/search icons now reuse the same lucide icons
+as the real logged-in nav (`ShoppingCart`/`UtensilsCrossed`/`ClipboardList`/`Search`) instead of
+their own separate glyphs, so the marketing mockup actually previews the real product's icon set.
+
+**Intentionally not migrated**: `Mark()` (`App.tsx`) — the "⌁" brand mark rendered next to the
+"Dineflow" wordmark everywhere (Landing header/footer, the auth pages, the logged-in sidebar). This
+is the app's logo glyph, not a generic UI icon standing in for a concept — swapping it for a lucide
+icon would replace the brand mark with an arbitrary generic one, not actually fix anything. Every
+other Unicode glyph on Landing (feature icons, the "watch" play glyph, `RegisterMini`'s fake nav)
+is migrated; `Mark()` is the one deliberate exception.
 
 ## Spacing, radius, elevation
 
