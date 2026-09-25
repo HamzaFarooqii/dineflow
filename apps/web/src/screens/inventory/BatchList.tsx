@@ -1,10 +1,11 @@
 import { BATCH_STATUS_LABELS, BATCH_STATUS_TONE, computeBatchStatus, daysUntilExpiry } from '../../../../../packages/domain/src/batch-status'
 import { formatCents } from '../../../../../packages/domain/src/money'
-import { formatQuantity } from '../../../../../packages/domain/src/inventory-quantity'
+import { formatQuantityNumber } from '../../../../../packages/domain/src/inventory-quantity'
 import type { RecipeUnit } from '../menu/recipe-draft'
 import type { IngredientBatch } from '../../lib/inventory'
 import { StatusBadge } from '../../components/StatusBadge'
 import { EmptyState } from '../../components/EmptyState'
+import { Quantity } from './Quantity'
 
 // Short, human-scannable identifier -- a batch has no natural "number" of its own, so this reads
 // the first 8 characters of its id the same way order receipts already shorten identifiers
@@ -48,8 +49,8 @@ export function BatchList({ batches, unit, currency }: { batches: IngredientBatc
           <StatusBadge tone={BATCH_STATUS_TONE[status]}>{BATCH_STATUS_LABELS[status]}</StatusBadge>
         </div>
         <div className="batch-card-qty">
-          <strong>{unit ? formatQuantity(batch.remaining_quantity, unit) : batch.remaining_quantity}</strong>
-          <span>remaining of {unit ? formatQuantity(batch.quantity, unit) : batch.quantity}</span>
+          <strong><Quantity value={batch.remaining_quantity} unit={unit} /></strong>
+          <span>remaining of {formatQuantityNumber(batch.quantity)}</span>
         </div>
         <div className="batch-card-bar" role="progressbar" aria-label="Remaining stock in this batch" aria-valuenow={100 - usedPct} aria-valuemin={0} aria-valuemax={100}>
           <div style={{ width: `${100 - usedPct}%` }} />

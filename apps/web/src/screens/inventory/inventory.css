@@ -3,6 +3,10 @@
 /* Summary cards now render through the shared <MetricCard>/.metric-grid primitive
    (apps/web/src/components/MetricCard.tsx, styles.css) -- see InventorySummary.tsx. */
 
+/* ── Quantity (see Quantity.tsx): number + a visibly separate unit tag ────── */
+.qty{font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;white-space:nowrap}
+.qty-unit{margin-left:5px;padding:2px 5px;border-radius:var(--mise-r1);background:var(--mise-surface-sunken);color:var(--mise-ink-muted);font:700 9px 'Archivo',sans-serif;text-transform:uppercase;letter-spacing:.04em;vertical-align:1px;white-space:nowrap}
+
 /* ── Toolbar: search, sort, add, filter pills ─────────────────────────────── */
 .inventory-toolbar{display:grid;gap:12px;margin-bottom:20px}
 .inventory-toolbar-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}

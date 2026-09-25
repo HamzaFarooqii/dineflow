@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react'
 import { STOCK_MOVEMENT_REASON_LABELS, STOCK_MOVEMENT_REASON_TONE, type StockMovementReason } from '../../../../../packages/domain/src/stock-movement-reason'
-import { formatQuantity } from '../../../../../packages/domain/src/inventory-quantity'
+import { formatQuantityNumber } from '../../../../../packages/domain/src/inventory-quantity'
 import type { RecipeUnit } from '../menu/recipe-draft'
 import type { StockMovement } from '../../lib/inventory'
 import { batchLabel } from './BatchList'
 import { StatusBadge } from '../../components/StatusBadge'
 import { EmptyState } from '../../components/EmptyState'
+import { Quantity } from './Quantity'
 
 type MovementFilter = 'all' | StockMovementReason
 const FILTERS: { value: MovementFilter; label: string }[] = [
@@ -64,8 +65,10 @@ export function StockLedger({ movements, currentStock, unit }: { movements: Stoc
             <span className="activity-row-note">{movement.note ?? (movement.batch_id ? batchLabel(movement.batch_id) : 'No note')}</span>
           </div>
           <div className="activity-row-end">
-            <b className={delta > 0 ? 'activity-up' : delta < 0 ? 'activity-down' : undefined}>{sign}{unit ? formatQuantity(movement.delta, unit) : movement.delta}</b>
-            <small>{unit ? formatQuantity(previousStock, unit) : previousStock} → {unit ? formatQuantity(newStock, unit) : newStock}</small>
+            <b className={delta > 0 ? 'activity-up' : delta < 0 ? 'activity-down' : undefined}>
+              {sign}<Quantity value={movement.delta} unit={unit} />
+            </b>
+            <small>{formatQuantityNumber(previousStock)} → <Quantity value={newStock} unit={unit} /></small>
           </div>
           <div className="activity-row-meta">
             <span>{new Date(movement.created_at).toLocaleString()}</span>
