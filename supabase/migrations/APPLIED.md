@@ -41,6 +41,7 @@ schema no longer matches history, and it needs manual reconciliation, not a sile
 | 202609240004_inventory_terminal_audit.sql | `a3f05e1ba073c4f0383111d8cdada1d5792c312276eb31346e109ec6e9d679a7` | yes | `ingredients.manager_id` and `stock_movements.manager_id` columns exist |
 | 202609250001_loyalty_foundation.sql | `d193d4d27a2644ec12a1c0bbf097aa11bb24654da7bd4a472ed3d28c5504a911` | yes | `public.loyalty_tiers`, `public.loyalty_accounts`, `public.loyalty_point_ledger`, `public.reward_rules` tables exist, each with a member-read RLS policy |
 | 202609250002_inventory_batch_tracking.sql | `d52b2be0f5a83724d91636dcdf208f931412c73aa3c0db3b3ad638c9d8d221eb` | yes | `ingredient_batches.remaining_quantity`/`reference` and `ingredients.updated_at` columns exist |
+| 202609250003_promotions.sql | `48068dcdc514b663d5736735f11813f9e8f4ada69352de2ee9e54ccdc59e69f5` | yes | `public.promotions` table exists with a member-read RLS policy |
 
 Note: `202609230002_table_waiter_assignment.sql` was renamed from `..._0001_...` (Lead
 integration fixup, PR #4) — it and Ahmed's kitchen-display migration were both authored the
