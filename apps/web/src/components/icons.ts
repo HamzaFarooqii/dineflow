@@ -12,5 +12,5 @@ export {
   LogOut, CircleUser, Store, Wifi, WifiOff,
   Pencil, Trash2, Filter, ArrowUpDown, Clock, Calendar,
   TrendingUp, TrendingDown, Minus,
-  Wallet, RefreshCw, Award, Receipt,
+  Wallet, RefreshCw, Award, Receipt, Tag,
 } from 'lucide-react'
