@@ -5,7 +5,7 @@ import { usePosStore, redeemedReward, type CartItem } from './pos-store'
 // Evidence that a manager authorized a discount above the cashier's independent 20% authority.
 export interface ManagerApprovalEvidence { managerId: string; approvedAt: string }
 
-export async function completeLocalSale(items: CartItem[], storeId: string, method: 'cash' | 'card', tenderedCents: number, reference: string | null, customerId: string | null = null, employeeId: string | null = null, approval: ManagerApprovalEvidence | null = null) {
+export async function completeLocalSale(items: CartItem[], storeId: string, method: 'cash' | 'card', tenderedCents: number, reference: string | null, customerId: string | null = null, employeeId: string | null = null, approval: ManagerApprovalEvidence | null = null, terminal = false) {
   if (!items.length) throw new Error('Add a product before checkout.')
   if (items.some(item => item.storeId !== storeId)) throw new Error('Cart contains a product from another store. Clear the cart and try again.')
   const config = await posDb.store_config.get(storeId)
@@ -14,7 +14,15 @@ export async function completeLocalSale(items: CartItem[], storeId: string, meth
   if (customerId && (!customer || customer.store_id !== storeId)) throw new Error('Selected customer does not belong to this store.')
   const lines = items.map(item => calculateDiscountedLine(item.unitPriceCents, item.quantity, item.taxRateBps, item.discount))
   const totals = sumDiscountedLines(lines)
-  if (!approval && lines.some(line => discountNeedsManagerApproval(line.subtotalCents, line.discountAppliedCents))) {
+  // The 20%-independent-authority cap exists for a cashier terminal, where discretion is
+  // deliberately limited and a manager's PIN raises it (ManagerApprovalModal, gated on `terminal`
+  // the same way in RegisterScreen.tsx's own needsApproval/approvalValid). The web register has no
+  // such cap to raise in the first place -- every Supabase session that can reach it already
+  // belongs to an owner or manager (cashiers only ever get a PIN/terminal session, never a
+  // Supabase one), so there's no third party for a modal to summon here. Enforcing the cashier
+  // cap on that same person's own web session just blocked every sale with a discount over 20%
+  // with no way to ever clear it, on any account, however senior.
+  if (terminal && !approval && lines.some(line => discountNeedsManagerApproval(line.subtotalCents, line.discountAppliedCents))) {
     throw new Error('A discount needs manager approval before this sale can complete.')
   }
   boundedInteger(tenderedCents, 'Tender', 0, MAX_CENTS)

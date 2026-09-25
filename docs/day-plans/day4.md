@@ -387,7 +387,20 @@ Promotions aren't applied at checkout yet — that's Hamza's checkout-wiring tas
 **Day 4 is now fully complete.** Every task in this plan — Hamza's, Ahmed's and Bisma's — is done,
 tested and on `develop`. Known, deliberately-scoped-out-of-Day-4 follow-ups for later: nobody can
 configure a loyalty tier yet (read-only API, no create/update UI); a redeemed-but-insufficient
-balance is clamped rather than blocked (see Hamza's checkout-wiring note above); the web register's
-manual->20%-discount manager-approval path is enforced at `checkout.ts`'s local-save step, not
-gated through a modal the way the terminal path is — pre-existing behavior, not something this
-task's reward/promotion additions changed.
+balance is clamped rather than blocked (see Hamza's checkout-wiring note above).
+
+**Post-Day-4 fix (found via manual testing):** the reward/promotion discounts this task wired up
+surfaced a real bug in the pre-existing cashier-discretion cap. `checkout.ts`'s
+`completeLocalSale` was unconditionally requiring `ManagerApprovalEvidence` for any discount over
+20% of a line's subtotal, but the only UI that can ever supply that evidence
+(`ManagerApprovalModal`) is shown exclusively on the terminal path (`RegisterScreen.tsx` gates it
+on `terminal`, same as its own `needsApproval`/`approvalValid`). On the web register there is no
+such modal to summon — every Supabase session that reaches it already belongs to an owner or
+manager, since cashiers only ever authenticate via PIN/terminal session — so any web user,
+including the owner, hit "A discount needs manager approval before this sale can complete" with no
+way to ever clear it once a reward or promotion discount exceeded 20%. Fixed by adding a `terminal`
+parameter to `completeLocalSale` (threaded through from `PaymentScreen.tsx`'s existing `terminal`
+prop) and gating the approval requirement on it, so the 20% independent-authority cap now applies
+only where a manager PIN can actually raise it — the cashier terminal. Verified via `tsc -b`,
+`vite build`, and the full `apps/web` test suite (40/40 passing, including an updated test for the
+terminal-gated cap and a new test confirming the web register no longer blocks large discounts).

@@ -42,7 +42,7 @@ export function PaymentScreen({ terminal = false }: { terminal?: boolean }) {
     setBusy(true); setError('')
     try {
       const approval = managerApproval ? { managerId: managerApproval.managerId, approvedAt: managerApproval.approvedAt } : null
-      const result = await completeLocalSale(items, storeId, method, tender, reference.trim() || null, selectedCustomer?.id ?? null, employeeId, approval)
+      const result = await completeLocalSale(items, storeId, method, tender, reference.trim() || null, selectedCustomer?.id ?? null, employeeId, approval, terminal)
       clearCart()
       void pushPendingOrders(storeId, terminal).catch(() => undefined)
       navigate(`${terminal ? '/pos/orders' : '/orders'}/${encodeURIComponent(result.operationId)}`, { replace: true, state: { committedOrderId: result.operationId } })

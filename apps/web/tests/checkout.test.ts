@@ -185,16 +185,26 @@ test('a cashier-level discount (20% or less) completes without manager approval 
   await posDb.delete()
 })
 
-test('a discount above 20% is refused without manager evidence and accepted with it', async () => {
+test('a discount above 20% is refused without manager evidence and accepted with it, on a cashier terminal', async () => {
   await posDb.delete(); await posDb.open()
   await posDb.store_config.put({ id: storeId, store_id: storeId, name: 'Test store', timezone: 'UTC', currency: 'USD', catalog_version: 1 })
   const discounted: CartItem[] = [{ ...cart[0], discount: { kind: 'percent', bps: 2_500 } }]
-  await assert.rejects(completeLocalSale(discounted, storeId, 'cash', 500, null), /manager approval/)
+  await assert.rejects(completeLocalSale(discounted, storeId, 'cash', 500, null, null, null, null, true), /manager approval/)
   assert.equal(await posDb.orders.count(), 0)
-  const sale = await completeLocalSale(discounted, storeId, 'cash', 500, null, null, null, { managerId: 'manager-1', approvedAt: '2026-09-17T10:00:00.000Z' })
+  const sale = await completeLocalSale(discounted, storeId, 'cash', 500, null, null, null, { managerId: 'manager-1', approvedAt: '2026-09-17T10:00:00.000Z' }, true)
   const order = await posDb.orders.get(sale.operationId)
   assert.equal(order?.manager_id, 'manager-1')
   assert.equal(order?.manager_approved_at, '2026-09-17T10:00:00.000Z')
+  await posDb.delete()
+})
+
+test('a discount above 20% completes without manager evidence on the web register, since every web session is already owner/manager', async () => {
+  await posDb.delete(); await posDb.open()
+  await posDb.store_config.put({ id: storeId, store_id: storeId, name: 'Test store', timezone: 'UTC', currency: 'USD', catalog_version: 1 })
+  const discounted: CartItem[] = [{ ...cart[0], discount: { kind: 'percent', bps: 2_500 } }]
+  const sale = await completeLocalSale(discounted, storeId, 'cash', 500, null)
+  const order = await posDb.orders.get(sale.operationId)
+  assert.equal(order?.manager_id, null)
   await posDb.delete()
 })
 
