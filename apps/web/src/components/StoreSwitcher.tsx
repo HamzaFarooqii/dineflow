@@ -12,6 +12,8 @@
  */
 import { useEffect, useState, type ChangeEvent } from 'react'
 import { activeStoreId, listActiveStores, setActiveStoreId, type ActiveStoreOption } from '../lib/catalog'
+import { SelectField } from './SelectField'
+import { Store } from './icons'
 
 export function StoreSwitcher() {
   const [stores, setStores] = useState<ActiveStoreOption[]>([])
@@ -55,15 +57,15 @@ export function StoreSwitcher() {
   }
 
   return (
-    <label className="store-switcher">
-      <span className="store-switcher-label">Store</span>
-      <select value={current} onChange={event => void handleChange(event)} disabled={switching} aria-label="Switch store">
+    <span className="store-switcher">
+      <Store aria-hidden="true" size={16} className="store-switcher-icon" />
+      <SelectField className="store-switcher-select" value={current} onChange={event => void handleChange(event)} disabled={switching} aria-label="Switch store">
         {stores.map(store => (
           <option key={store.store_id} value={store.store_id}>
             {store.store_name || 'Untitled store'}
           </option>
         ))}
-      </select>
-    </label>
+      </SelectField>
+    </span>
   )
 }
