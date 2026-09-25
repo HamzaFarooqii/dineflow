@@ -11,23 +11,8 @@
   color: var(--mise-ink);
 }
 
-.crm-page > .kicker {
-  font: 500 10px 'IBM Plex Mono', monospace;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--mise-ink-muted);
-  margin: 0 0 var(--mise-space-8);
-}
-
-.crm-page h1 {
-  font-family: 'Archivo', sans-serif;
-  font-weight: 600;
-  font-size: clamp(26px, 3vw, 34px);
-  letter-spacing: -0.025em;
-  line-height: 1.1;
-  color: var(--mise-ink);
-  margin: 0 0 var(--mise-space-8);
-}
+/* Header kicker/h1/subtitle now render through the shared <PageHeader> (styles.css's
+   .page-header/.kicker/.page-header-subtitle) instead of this screen's own rules. */
 
 .crm-page > p {
   font-size: 13px;
@@ -260,6 +245,7 @@
 }
 
 .crm-results li span {
+  flex: 1;
   min-width: 0;
   overflow-wrap: anywhere;
   display: grid;
@@ -340,6 +326,7 @@
   .crm-page { padding: var(--mise-space-16) var(--mise-space-12); }
   .crm-panel { padding: var(--mise-space-16); }
   .crm-results li { align-items: stretch; flex-direction: column; }
+  .crm-results li .status-badge { align-self: flex-start; }
   .crm-results li .secondary-cta { width: 100%; }
 }
 
