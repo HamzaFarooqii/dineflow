@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { createLocalCustomer, searchLocalCustomers, searchServerCustomers } from '../lib/customers'
+import { createLocalCustomer, fetchCustomerSummary, searchLocalCustomers, searchServerCustomers, type CustomerSummary } from '../lib/customers'
+import { formatCents } from '../../../../packages/domain/src/money'
 import type { LocalCustomer } from '../lib/db'
 import { pushPendingOrders } from '../lib/order-sync'
 import { usePosStore } from '../lib/pos-store'
@@ -16,7 +17,7 @@ import './customer.css'
 const CUSTOMER_SYNC_TONE: Record<LocalCustomer['sync_status'], BadgeTone> = { synced: 'success', pending: 'warning', failed: 'danger' }
 const CUSTOMER_SYNC_LABEL: Record<LocalCustomer['sync_status'], string> = { synced: 'Saved', pending: 'Pending sync', failed: 'Needs review' }
 
-export function CustomerFinder({ storeId, terminal, onSelect }: { storeId: string; terminal: boolean; onSelect?: (customer: LocalCustomer) => void }) {
+export function CustomerFinder({ storeId, terminal, onSelect, onViewProfile }: { storeId: string; terminal: boolean; onSelect?: (customer: LocalCustomer) => void; onViewProfile?: (customer: LocalCustomer) => void }) {
   const [query, setQuery] = useState('')
   const [local, setLocal] = useState<LocalCustomer[]>([])
   const [server, setServer] = useState<LocalCustomer[]>([])
@@ -32,7 +33,7 @@ export function CustomerFinder({ storeId, terminal, onSelect }: { storeId: strin
   useEffect(() => {
     let active = true
     setServer([]); setNextCursor(null); setError('')
-    void searchLocalCustomers(storeId, query).then(rows => { if (active) setLocal(rows) }).catch(reason => { if (active) { setLocal([]); setError(reason instanceof Error ? reason.message : 'Invalid phone search.') } })
+    void searchLocalCustomers(storeId, query).then(rows => { if (active) setLocal(rows) }).catch(reason => { if (active) { setLocal([]); setError(reason instanceof Error ? reason.message : 'Invalid search.') } })
     return () => { active = false }
   }, [storeId, query])
   const onlineSearch = async (cursor: string | null = null) => {
@@ -62,13 +63,14 @@ export function CustomerFinder({ storeId, terminal, onSelect }: { storeId: strin
   const matches = [...local, ...server.filter(remote => !local.some(customer => customer.id === remote.id))]
   return <div className="crm-finder">
     <section className="crm-panel" aria-labelledby="crm-search-title"><h2 id="crm-search-title">Find a guest</h2>
-      <p>Search by international phone number. Local matches appear immediately; online lookup adds saved restaurant matches.</p>
-      <label>Phone with country code<input type="tel" inputMode="tel" autoComplete="off" placeholder="+923001234567" value={query} onChange={event => { setQuery(event.target.value); setMessage('') }} /></label>
+      <p>Search by phone number (with country code) or by name. Local matches appear immediately; online lookup adds saved restaurant matches.</p>
+      <label>Phone or name<input type="text" autoComplete="off" placeholder="+923001234567 or Ayesha Khan" value={query} onChange={event => { setQuery(event.target.value); setMessage('') }} /></label>
       <button type="button" className="secondary-cta" disabled={!query.trim() || searching || !navigator.onLine} onClick={() => void onlineSearch()}>{searching ? 'Searching…' : 'Search online'}</button>
       {query.trim() && <div className="crm-results" role="region" aria-live="polite" aria-label="Guest matches">
         {matches.length ? <ul>{matches.map(customer => <li key={customer.id}><span><strong>{customer.name}</strong><small>{customer.phone_normalized ? `+${customer.phone_normalized}` : 'No phone'}</small>{customer.failure_reason && <small role="status">{customer.failure_reason}</small>}</span>
           <StatusBadge tone={CUSTOMER_SYNC_TONE[customer.sync_status]}>{CUSTOMER_SYNC_LABEL[customer.sync_status]}</StatusBadge>
           <LoyaltyBalance storeId={storeId} terminal={terminal} customer={customer} />
+          {onViewProfile && <button type="button" className="text-action" onClick={() => onViewProfile(customer)}>View profile</button>}
           {onSelect && <button type="button" className="secondary-cta" onClick={() => onSelect(customer)}>Select {customer.name}</button>}</li>)}</ul> : <p className="crm-empty">No local matches. Search online or create a new guest.</p>}
       </div>}
       {nextCursor && <button type="button" className="text-action" disabled={searching} onClick={() => void onlineSearch(nextCursor)}>Load more matches</button>}
@@ -92,11 +94,40 @@ export function CustomerSelector({ storeId, terminal, onClose }: { storeId: stri
   </Dialog>
 }
 
+function CustomerProfile({ storeId, customer, terminal, onClose }: { storeId: string; customer: LocalCustomer; terminal: boolean; onClose: () => void }) {
+  const [summary, setSummary] = useState<CustomerSummary | null>(null)
+  const [error, setError] = useState('')
+  useEffect(() => {
+    let active = true
+    void fetchCustomerSummary(storeId, customer.id, terminal)
+      .then(result => { if (active) setSummary(result) })
+      .catch(reason => { if (active) setError(reason instanceof Error ? reason.message : 'Could not load this guest’s history.') })
+    return () => { active = false }
+  }, [storeId, customer.id, terminal])
+  return <Dialog title={customer.name} kicker="GUEST PROFILE" onClose={onClose}>
+    {error && <p className="form-notice error" role="alert">{error}</p>}
+    {!summary && !error && <p role="status">Loading guest history…</p>}
+    {summary && <dl className="crm-profile">
+      <div><dt>Lifetime spend</dt><dd>{formatCents(summary.lifetime_spend_cents)}</dd></div>
+      <div><dt>Visits</dt><dd>{summary.visit_count}</dd></div>
+    </dl>}
+    {summary && <>
+      <h3>Recent visits</h3>
+      {summary.recent_visits.length
+        ? <ul className="crm-profile-visits">{summary.recent_visits.map(visit => <li key={visit.order_id}>
+            <span>{new Date(visit.visited_at).toLocaleDateString()}</span><b>{formatCents(visit.total_cents)}</b>
+          </li>)}</ul>
+        : <p className="crm-empty">No completed visits yet.</p>}
+    </>}
+  </Dialog>
+}
+
 export function CustomerScreen({ terminal = false }: { terminal?: boolean }) {
   const navigate = useNavigate()
   const selectCustomer = usePosStore(state => state.selectCustomer)
   const [storeId, setStoreId] = useState('')
   const [error, setError] = useState('')
+  const [profileCustomer, setProfileCustomer] = useState<LocalCustomer | null>(null)
   useEffect(() => {
     let active = true
     const load = async () => {
@@ -130,7 +161,10 @@ export function CustomerScreen({ terminal = false }: { terminal?: boolean }) {
     />
     {error && <p className="form-notice error" role="alert">{error}</p>}
     {!storeId && !error && <p role="status">Checking guest access…</p>}
-    {storeId && <CustomerFinder storeId={storeId} terminal={terminal} onSelect={terminal ? customer => { selectCustomer(customer); navigate('/pos/register') } : undefined} />}
+    {storeId && <CustomerFinder storeId={storeId} terminal={terminal}
+      onSelect={terminal ? customer => { selectCustomer(customer); navigate('/pos/register') } : undefined}
+      onViewProfile={terminal ? undefined : customer => setProfileCustomer(customer)} />}
+    {profileCustomer && <CustomerProfile storeId={storeId} customer={profileCustomer} terminal={terminal} onClose={() => setProfileCustomer(null)} />}
     {storeId && !terminal && <RewardRulesSection storeId={storeId} />}
   </section>
 }

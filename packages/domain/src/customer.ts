@@ -5,6 +5,13 @@ export function customerName(value: unknown): string {
   return name
 }
 
+// A guest search query is treated as a phone number once it looks like one (leading + or
+// digits/phone punctuation only); anything containing a letter is a name search instead.
+export function looksLikePhone(query: string): boolean {
+  const text = query.trim()
+  return text.length > 0 && /^[+\d][\d\s().-]*$/.test(text)
+}
+
 /** A country code must be supplied. We never infer one from the terminal locale. */
 export function normalizedPhone(value: unknown): string | null {
   if (value === null || value === undefined || value === '') return null

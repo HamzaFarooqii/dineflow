@@ -1,4 +1,4 @@
-import { customerName, normalizedPhone } from '../../../../packages/domain/src/customer'
+import { customerName, looksLikePhone, normalizedPhone } from '../../../../packages/domain/src/customer'
 import { posDb, type LocalCustomer, type OutboxEntry } from './db'
 
 export async function createLocalCustomer(storeId: string, rawName: string, rawPhone: string): Promise<LocalCustomer> {
@@ -20,9 +20,15 @@ export async function createLocalCustomer(storeId: string, rawName: string, rawP
   return customer
 }
 
-export async function searchLocalCustomers(storeId: string, rawPhone: string): Promise<LocalCustomer[]> {
-  const phone = normalizedPhone(rawPhone)
-  if (!phone) return []
-  return (await posDb.customers.where('store_id').equals(storeId).toArray())
-    .filter(customer => customer.phone_normalized?.startsWith(phone)).sort((a, b) => a.name.localeCompare(b.name))
+export async function searchLocalCustomers(storeId: string, rawQuery: string): Promise<LocalCustomer[]> {
+  const text = rawQuery.trim()
+  if (!text) return []
+  const all = await posDb.customers.where('store_id').equals(storeId).toArray()
+  if (looksLikePhone(text)) {
+    const phone = normalizedPhone(rawQuery)
+    if (!phone) return []
+    return all.filter(customer => customer.phone_normalized?.startsWith(phone)).sort((a, b) => a.name.localeCompare(b.name))
+  }
+  const needle = text.toLowerCase()
+  return all.filter(customer => customer.name.toLowerCase().includes(needle)).sort((a, b) => a.name.localeCompare(b.name))
 }

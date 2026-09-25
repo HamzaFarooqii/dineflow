@@ -29,6 +29,13 @@ function name(value: unknown): string {
   try { return customerName(value) }
   catch (reason) { throw new ApiError(422, 'validation_failed', reason instanceof Error ? reason.message : 'Invalid name.') }
 }
+function nameSearchTerm(value: unknown): string | null {
+  if (value === undefined || value === null || value === '') return null
+  const text = String(value).trim()
+  if (!text) return null
+  if (text.length > 30) throw new ApiError(422, 'validation_failed', 'Name search must be 30 characters or fewer.')
+  return text
+}
 function iso(value: unknown): string {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value) ||
       Number.isNaN(Date.parse(value)) || new Date(value).toISOString() !== value) throw new ApiError(422, 'validation_failed', 'Creation time must be a UTC ISO timestamp.')
@@ -59,15 +66,24 @@ async function search(req: Request, res: Response, terminal = false) {
     const storeId = terminal ? (await requireCashierTerminal(req, db)).storeId : validUuid(req.query.store_id, 'Store ID')
     if (!terminal) await ownerStore(req, storeId)
     if (terminal && req.query.store_id !== undefined && req.query.store_id !== storeId) throw new ApiError(403, 'cross_store_reference', 'This terminal belongs to a different store.')
-    const term = phone(req.query.phone)
-    if (!term) throw new ApiError(400, 'search_required', 'Enter a phone number with its country code to search.')
+    const phoneTerm = phone(req.query.phone)
+    const nameTerm = nameSearchTerm(req.query.name)
+    if (!phoneTerm && !nameTerm) throw new ApiError(400, 'search_required', 'Enter a phone number or a guest name to search.')
     const rawLimit = req.query.limit === undefined ? 20 : Number(req.query.limit)
     if (!Number.isInteger(rawLimit) || rawLimit < 1 || rawLimit > 50) throw new ApiError(400, 'validation_failed', 'Limit must be 1 to 50.')
     const after = cursor(req.query.cursor)
-    const result = await db.query<{ id: string; name: string; phone_normalized: string | null }>(`
-      select id,name,phone_normalized from public.pos_customers
-      where store_id=$1 and phone_normalized like $2 and ($3::uuid is null or id > $3::uuid)
-      order by id limit $4`, [storeId, `${term}%`, after?.id ?? null, rawLimit + 1])
+    // Escape name search's own wildcard characters so a guest named e.g. "50% Off" can't turn
+    // into an unintended ILIKE pattern -- phone search has no such characters to worry about.
+    const namePattern = nameTerm ? `${nameTerm.replace(/[%_\\]/g, char => `\\${char}`)}%` : null
+    const result = phoneTerm
+      ? await db.query<{ id: string; name: string; phone_normalized: string | null }>(`
+          select id,name,phone_normalized from public.pos_customers
+          where store_id=$1 and phone_normalized like $2 and ($3::uuid is null or id > $3::uuid)
+          order by id limit $4`, [storeId, `${phoneTerm}%`, after?.id ?? null, rawLimit + 1])
+      : await db.query<{ id: string; name: string; phone_normalized: string | null }>(`
+          select id,name,phone_normalized from public.pos_customers
+          where store_id=$1 and name ilike $2 and ($3::uuid is null or id > $3::uuid)
+          order by id limit $4`, [storeId, namePattern, after?.id ?? null, rawLimit + 1])
     const page = result.rows.slice(0, rawLimit)
     const last = page.at(-1)
     res.json({ customers: page.map(({ id, name: customerName, phone_normalized }) => ({ id, store_id: storeId, name: customerName, phone_normalized })),
@@ -136,7 +152,56 @@ async function push(req: Request, res: Response, terminal = false) {
     finally { client.release() }
   } catch (reason) { sendApiError(res, reason) }
 }
+export interface CustomerSummary {
+  customer_id: string
+  visit_count: number
+  lifetime_spend_cents: number
+  recent_visits: Array<{ order_id: string; total_cents: number; visited_at: string }>
+}
+
+// Visit history + lifetime spend for a guest, computed on read from pos_orders
+// (docs/day-plans/day4.md, Bisma's half: "aggregated from the existing pos_orders table ... don't
+// add a duplicate running-total column"). Same reasoning as reports.ts's loadDailySummary
+// deriving totals from source rows rather than trusting a cached counter. Exported so it's
+// directly testable against PGlite, mirroring loadDailySummary's own test.
+export async function loadCustomerSummary(storeId: string, customerId: string): Promise<CustomerSummary> {
+  // Refunded orders are excluded, same convention as floor.ts's current-order lookup and
+  // reports.ts's loadDailySummary -- pos_orders.total_cents stays at the original charged
+  // amount even after a full refund, so a refunded visit must not count toward guest value.
+  const notRefunded = `not exists (select 1 from public.pos_refunds pr where pr.store_id = po.store_id and pr.order_id = po.id)`
+  const [totals, visits] = await Promise.all([
+    db.query<{ visit_count: string; lifetime_spend_cents: string }>(
+      `select count(*)::text as visit_count, coalesce(sum(total_cents),0)::text as lifetime_spend_cents
+       from public.pos_orders po where store_id=$1 and customer_id=$2 and ${notRefunded}`,
+      [storeId, customerId],
+    ),
+    db.query<{ id: string; total_cents: string; client_generated_at: string }>(
+      `select id, total_cents::text as total_cents, client_generated_at
+       from public.pos_orders po where store_id=$1 and customer_id=$2 and ${notRefunded}
+       order by client_generated_at desc limit 10`,
+      [storeId, customerId],
+    ),
+  ])
+  return {
+    customer_id: customerId,
+    visit_count: Number(totals.rows[0]?.visit_count ?? 0),
+    lifetime_spend_cents: Number(totals.rows[0]?.lifetime_spend_cents ?? 0),
+    recent_visits: visits.rows.map(row => ({ order_id: row.id, total_cents: Number(row.total_cents), visited_at: row.client_generated_at })),
+  }
+}
+
+async function summary(req: Request, res: Response, terminal = false) {
+  try {
+    const storeId = terminal ? (await requireCashierTerminal(req, db)).storeId : validUuid(req.query.store_id, 'Store ID')
+    if (!terminal) await ownerStore(req, storeId)
+    const customerId = validUuid(req.params.id, 'Customer ID')
+    res.json(await loadCustomerSummary(storeId, customerId))
+  } catch (reason) { sendApiError(res, reason) }
+}
+
 customersRouter.get('/', (req, res) => void search(req, res))
 customersRouter.post('/push', (req, res) => void push(req, res))
+customersRouter.get('/:id/summary', (req, res) => void summary(req, res))
 terminalCustomersRouter.get('/', (req, res) => void search(req, res, true))
 terminalCustomersRouter.post('/push', (req, res) => void push(req, res, true))
+terminalCustomersRouter.get('/:id/summary', (req, res) => void summary(req, res, true))

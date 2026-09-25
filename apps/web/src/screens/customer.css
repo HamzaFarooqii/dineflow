@@ -321,6 +321,50 @@
   line-height: 1.45;
 }
 
+/* Guest profile dialog (visit history + lifetime spend) */
+.crm-profile {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--mise-space-16);
+  margin: 0 0 var(--mise-space-16);
+}
+
+.crm-profile dt {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--mise-ink-muted);
+  margin: 0 0 var(--mise-space-4);
+}
+
+.crm-profile dd {
+  margin: 0;
+  font: 600 20px 'IBM Plex Mono', monospace;
+  color: var(--mise-ink);
+}
+
+.crm-profile-visits {
+  list-style: none;
+  padding: 0;
+  margin: var(--mise-space-8) 0 0;
+  display: grid;
+  gap: var(--mise-space-8);
+}
+
+.crm-profile-visits li {
+  display: flex;
+  justify-content: space-between;
+  padding: var(--mise-space-8) 0;
+  border-bottom: 1px solid var(--mise-border-hairline);
+  font-size: 13px;
+  color: var(--mise-ink);
+}
+
+.crm-profile-visits b {
+  font-family: 'IBM Plex Mono', monospace;
+}
+
 @media (max-width: 768px) {
   .crm-finder { grid-template-columns: 1fr; }
   .crm-page { padding: var(--mise-space-16) var(--mise-space-12); }
