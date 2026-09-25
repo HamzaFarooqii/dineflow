@@ -1,16 +1,7 @@
 .inventory-head-actions{display:flex;align-items:center;gap:12px}
 
-/* ── Summary cards ─────────────────────────────────────────────────────── */
-/* Same visual recipe as reporting.css's .report-card, under inventory's own class names so this
-   screen's CSS stays self-contained (docs/DESIGN_SYSTEM.md: one card pattern, not reinvented). */
-.inventory-summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--mise-space-12);margin-bottom:var(--mise-space-16)}
-.inventory-summary-card{min-width:0;background:var(--mise-surface);border:1px solid var(--mise-border-hairline);border-radius:var(--mise-r3);padding:var(--mise-space-16);display:grid;gap:var(--mise-space-8);align-content:start}
-.inventory-summary-card small{font-size:11px;color:var(--mise-ink-muted);font-weight:600;text-transform:uppercase;letter-spacing:.07em}
-.inventory-summary-card strong{font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;font-size:clamp(21px,2.2vw,28px);font-weight:500;color:var(--mise-ink);line-height:1.15;letter-spacing:-.01em;overflow-wrap:anywhere}
-.inventory-summary-card-footer{display:flex;align-items:center;justify-content:space-between;gap:var(--mise-space-8)}
-.inventory-summary-card-footer span{font-size:11px;color:var(--mise-ink-muted);line-height:1.35}
-.inventory-summary-card.featured{border-left:3px solid var(--mise-action)}
-.inventory-summary-card.featured strong{font-size:clamp(24px,2.8vw,34px);font-weight:600}
+/* Summary cards now render through the shared <MetricCard>/.metric-grid primitive
+   (apps/web/src/components/MetricCard.tsx, styles.css) -- see InventorySummary.tsx. */
 
 /* ── Toolbar: search, sort, add, filter pills ─────────────────────────────── */
 .inventory-toolbar{display:grid;gap:12px;margin-bottom:20px}
@@ -78,14 +69,12 @@
 
 @media (max-width:900px){
   .inventory-layout{grid-template-columns:1fr}
-  .inventory-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 
 /* Tables degrade to stacked cards below tablet width -- each row becomes a card, each cell's
    data-label attribute (set in BatchList.tsx/StockLedger.tsx) supplies the visible label since
    the <thead> is hidden at this width. */
 @media (max-width:640px){
-  .inventory-summary-grid{grid-template-columns:1fr}
   .inventory-detail-stats{grid-template-columns:1fr}
   .batch-table thead,.stock-activity-table thead{display:none}
   .batch-table tr,.stock-activity-table tr{display:block;border:1px solid var(--mise-border-hairline);border-radius:var(--mise-r3);margin-bottom:10px;padding:8px 10px}

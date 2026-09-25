@@ -52,12 +52,9 @@
   margin: 0;
 }
 
-.heading-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--mise-space-8);
-  flex-shrink: 0;
-}
+/* .heading-actions retired -- OwnerDashboardScreen's header now renders through the shared
+   <PageHeader> primitive (.page-header-actions in styles.css). ReportsScreen and
+   CashierDashboardScreen still use .reporting-heading directly until their own redesign pass. */
 
 /* ── Buttons ────────────────────────────────────────────────────────────── */
 .report-primary {
@@ -111,85 +108,9 @@
   outline-offset: 2px;
 }
 
-/* ── KPI cards ──────────────────────────────────────────────────────────── */
-.report-card-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--mise-space-12);
-  margin-bottom: var(--mise-space-16);
-}
-
-.report-card {
-  min-width: 0;
-  background: var(--mise-surface);
-  border: 1px solid var(--mise-border-hairline);
-  border-radius: var(--mise-r3);
-  padding: var(--mise-space-16);
-  display: grid;
-  gap: var(--mise-space-8);
-  align-content: start;
-}
-
-.report-card small {
-  font-size: 11px;
-  color: var(--mise-ink-muted);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-}
-
-.report-card strong {
-  font-family: 'IBM Plex Mono', monospace;
-  font-variant-numeric: tabular-nums;
-  font-size: clamp(21px, 2.2vw, 28px);
-  font-weight: 500;
-  color: var(--mise-ink);
-  line-height: 1.15;
-  letter-spacing: -0.01em;
-  overflow-wrap: anywhere;
-}
-
-.report-card-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--mise-space-8);
-  flex-wrap: wrap;
-}
-
-.report-card-footer span {
-  font-size: 11px;
-  color: var(--mise-ink-muted);
-  line-height: 1.35;
-}
-
-/* The headline figure earns a heavier ink rule and a larger number — hierarchy
-   through weight and scale, never through colour or shadow. */
-.report-card.featured {
-  border-left: 3px solid var(--mise-action);
-}
-
-.report-card.featured strong {
-  font-size: clamp(24px, 2.8vw, 34px);
-  font-weight: 600;
-}
-
-.delta-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--mise-space-4);
-  font-family: 'IBM Plex Mono', monospace;
-  font-variant-numeric: tabular-nums;
-  font-size: 10px;
-  font-weight: 500;
-  padding: 2px var(--mise-space-8);
-  border-radius: var(--mise-r1);
-  white-space: nowrap;
-}
-
-.delta-badge.up { background: var(--mise-success-fill); color: var(--mise-success); }
-.delta-badge.down { background: var(--mise-danger-fill); color: var(--mise-danger); }
-.delta-badge.flat { background: var(--mise-surface-sunken); color: var(--mise-ink-muted); }
+/* KPI cards now render through the shared <MetricCard>/.metric-grid primitive (styles.css,
+   apps/web/src/components/MetricCard.tsx) -- both OwnerDashboardScreen and CashierDashboardScreen
+   render through it below instead of the .report-card/.delta-badge pair that used to live here. */
 
 /* ── Panels ─────────────────────────────────────────────────────────────── */
 .dashboard-subgrid {
@@ -223,6 +144,15 @@
   letter-spacing: -0.01em;
   margin: 0;
   color: var(--mise-ink);
+}
+
+/* Small leading icon on a panel heading -- inline with the h2's own text baseline rather than a
+   separate flex wrapper, so it drops into both .panel-header's h2 and .unresolved-panel's plain
+   <h2> without restructuring either container. */
+h2 .panel-icon {
+  vertical-align: -3px;
+  margin-right: 7px;
+  color: var(--mise-ink-muted);
 }
 
 .panel-header small {
@@ -1023,13 +953,6 @@
   .reporting-heading {
     align-items: stretch;
     flex-direction: column;
-  }
-  .heading-actions {
-    width: 100%;
-  }
-  .heading-actions .report-primary, .heading-actions .report-secondary {
-    flex: 1;
-    justify-content: center;
   }
   .dashboard-panel {
     padding: var(--mise-space-16);
