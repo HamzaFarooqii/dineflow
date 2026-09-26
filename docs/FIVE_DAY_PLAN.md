@@ -107,10 +107,15 @@ visit/spend history and their loyalty tier wherever they're attached.
 
 ---
 
-## Day 5 — Reporting, Integration, Hardening
+## Day 5 — Reporting, Integration, Hardening, and a Gap-Filling Pass
 
 Per `RULES.md` §13: not 100% new feature work. Real capacity to integration, bug-fixing,
-security review, polish.
+security review, polish. Before this day started, Hamza ran a gap-filling pass over the whole
+sprint (unit conversion, ingredient edit/deactivate, real staff roles + shifts, service charge,
+split bill — see `docs/MODULE_STATUS.md`'s header) that added real scope to Ahmed's and Bisma's
+plates alongside the reporting work originally scheduled here. Full division, file paths and
+acceptance criteria: **`docs/day-plans/day5-ahmed.md`** and **`docs/day-plans/day5-bisma.md`**.
+Summary:
 
 ### Hamza — Lead + final integration
 1. Cross-module end-to-end pass: dine-in order → recipe ingredients consume → stock movement
@@ -125,21 +130,29 @@ security review, polish.
 5. Update `docs/MODULE_STATUS.md` to its true final state, including what isn't actually done.
 6. Review Ahmed's and Bisma's report PRs (read-only, low conflict risk — merge in either order).
 
-### Ahmed — Kitchen + Food-Cost Reports
-Dish profitability, food-cost report, kitchen performance by station. **Branch:**
-`feature/ahmed/day5-kitchen-food-cost-reports`.
+### Ahmed — Loyalty tier UI, menu modifiers, Kitchen terminal mode, Kitchen + Food-Cost Reports
+Full detail in `docs/day-plans/day5-ahmed.md`. Loyalty tier-configuration UI (small, mirrors his
+own reward-rules CRUD); real menu modifier groups (schema is his to write, same as his Day 3
+`units`/`recipes`, but the checkout price-delta wiring is a Lead pairing session, not solo); giving
+`KitchenScreen` a terminal mode so the new `chef` role has somewhere to go; then the originally
+scheduled dish profitability, food-cost report, kitchen performance by station. **Branch:**
+`feature/ahmed/day5-loyalty-modifiers-reports`.
 
-### Bisma — Owner Dashboard + Customer + Inventory Reporting
-With no fourth developer to split inventory reporting off to, Bisma covers the owner
-dashboard, customer/loyalty reporting, *and* wastage/expiry/low-stock reporting — the largest
-single scope of the sprint for one person. If Day 5 is tight, the owner dashboard and
-customer reporting are the priority; inventory reporting can slip a day if it must, since it's
-the newest module and has the least existing precedent to build from. **Branch:**
-`feature/bisma/day5-reports`.
+### Bisma — Floor terminal mode, Owner Dashboard + Customer + Inventory + Hours-Worked Reporting
+Full detail in `docs/day-plans/day5-bisma.md`. Giving `FloorScreen` a terminal mode so the new
+`waiter` role has somewhere to go (small, self-contained, her own screen from Day 1/2). With no
+fourth developer to split inventory reporting off to, Bisma still covers the owner dashboard,
+customer/loyalty reporting, *and* wastage/expiry/low-stock reporting — the largest single scope of
+the sprint for one person, unchanged from the original plan; a small hours-worked report (on top
+of Hamza's new `GET /shifts` endpoint) was added to this same bucket rather than given a separate
+owner. If Day 5 is tight, the owner dashboard and customer reporting are the priority; inventory
+reporting can slip a day if it must, since it's the newest module and has the least existing
+precedent to build from. **Branch:** `feature/bisma/day5-reports`.
 
 ### Day 5 Definition of Done
 The end-to-end chain in Hamza's task 1 works, observed once. All report surfaces show real
-data with correct empty states. `docs/MODULE_STATUS.md` reflects reality, not the plan.
+data with correct empty states. The waiter and chef roles can each reach a real screen on the
+terminal. `docs/MODULE_STATUS.md` reflects reality, not the plan.
 
 ---
 
