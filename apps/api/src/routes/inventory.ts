@@ -223,6 +223,22 @@ async function deactivateIngredient(req: Request, res: Response, terminal = fals
   } catch (reason) { sendApiError(res, reason) }
 }
 
+// Mirrors deactivateIngredient exactly, the other direction -- a separate endpoint rather than an
+// `active` field on updateIngredient's generic PATCH, matching deactivate's own precedent.
+async function reactivateIngredient(req: Request, res: Response, terminal = false) {
+  try {
+    const storeId = storeIdParam(req)
+    await requireWriter(req, storeId, terminal)
+    const ingredientId = idParam(req)
+    const result = await db.query<{ id: string }>(
+      `update public.ingredients set active = true where id = $1 and store_id = $2 and active = false returning id`,
+      [ingredientId, storeId],
+    )
+    if (!result.rowCount) throw new ApiError(404, 'ingredient_not_found', 'Ingredient not found in this store.')
+    res.json(await fetchIngredientById(storeId, ingredientId))
+  } catch (reason) { sendApiError(res, reason) }
+}
+
 // --- Batches: record an incoming purchase ----------------------------------------------------
 //
 // One transaction: insert the batch, insert a matching stock_movements row (reason='purchase',
@@ -520,6 +536,7 @@ inventoryRouter.get('/ingredients', (req, res) => listIngredients(req, res))
 inventoryRouter.post('/ingredients', (req, res) => createIngredient(req, res))
 inventoryRouter.patch('/ingredients/:id', (req, res) => updateIngredient(req, res))
 inventoryRouter.patch('/ingredients/:id/deactivate', (req, res) => deactivateIngredient(req, res))
+inventoryRouter.patch('/ingredients/:id/reactivate', (req, res) => reactivateIngredient(req, res))
 inventoryRouter.post('/ingredients/:id/batches', (req, res) => recordBatch(req, res))
 inventoryRouter.get('/ingredients/:id/batches', (req, res) => listBatches(req, res))
 inventoryRouter.get('/ingredients/:id/movements', (req, res) => listMovements(req, res))
@@ -530,6 +547,7 @@ terminalInventoryRouter.get('/ingredients', (req, res) => listIngredients(req, r
 terminalInventoryRouter.post('/ingredients', (req, res) => createIngredient(req, res, true))
 terminalInventoryRouter.patch('/ingredients/:id', (req, res) => updateIngredient(req, res, true))
 terminalInventoryRouter.patch('/ingredients/:id/deactivate', (req, res) => deactivateIngredient(req, res, true))
+terminalInventoryRouter.patch('/ingredients/:id/reactivate', (req, res) => reactivateIngredient(req, res, true))
 terminalInventoryRouter.post('/ingredients/:id/batches', (req, res) => recordBatch(req, res, true))
 terminalInventoryRouter.get('/ingredients/:id/batches', (req, res) => listBatches(req, res, true))
 terminalInventoryRouter.get('/ingredients/:id/movements', (req, res) => listMovements(req, res, true))

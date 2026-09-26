@@ -6,6 +6,7 @@ import { StatusBadge } from '../../components/StatusBadge'
 // status chip pattern rather than reinventing it per screen, and don't build a component for a
 // single call site -- this one has two).
 export function InventoryStatusBadge({ ingredient }: { ingredient: Ingredient }) {
+  if (!ingredient.active) return <StatusBadge tone="muted">Inactive</StatusBadge>
   const status = ingredientStatus(ingredient)
   return <StatusBadge tone={INGREDIENT_STATUS_TONE[status]}>{INGREDIENT_STATUS_LABELS[status]}</StatusBadge>
 }

@@ -51,6 +51,16 @@ test('applyInventoryView filters by ingredient status', () => {
   assert.deepEqual(applyInventoryView(list, '', 'in_stock', 'name').map(item => item.name), ['Sugar'])
 })
 
+test('applyInventoryView hides an inactive ingredient from every filter except "inactive" itself', () => {
+  const list = [
+    ingredient({ name: 'Milk', current_stock: '0' }),
+    ingredient({ name: 'Old Flour', current_stock: '3', active: false }),
+  ]
+  assert.deepEqual(applyInventoryView(list, '', 'all', 'name').map(item => item.name), ['Milk'])
+  assert.deepEqual(applyInventoryView(list, '', 'out_of_stock', 'name').map(item => item.name), ['Milk'])
+  assert.deepEqual(applyInventoryView(list, '', 'inactive', 'name').map(item => item.name), ['Old Flour'])
+})
+
 test('applyInventoryView filters "expiring_soon" using nearest_expiry, independent of stock status', () => {
   const now = Date.parse('2026-09-25T00:00:00.000Z')
   const list = [

@@ -115,7 +115,9 @@ export function InventoryScreen({ terminal = false }: { terminal?: boolean }) {
         const config = await posDb.store_config.get(id)
         if (active) { setStoreId(id); if (config?.currency) setCurrency(config.currency) }
         const [list, recipeData, expiringCount] = await Promise.all([
-          fetchIngredients(id, terminal),
+          // includeInactive: a deactivated ingredient needs to stay findable (under the
+          // "Inactive" filter) to ever be reactivated -- excluding it entirely would strand it.
+          fetchIngredients(id, terminal, true),
           loadRecipeData(id),
           fetchExpiringBatchCount(id, terminal).catch(() => null),
         ])
@@ -241,9 +243,12 @@ export function InventoryScreen({ terminal = false }: { terminal?: boolean }) {
           selectedId={selected?.id ?? null} onSelect={ingredient => void selectIngredient(ingredient)} />
 
         {selected && <div className="inventory-detail">
-          <InventoryDetailHeader ingredient={selected} unit={selectedUnit} currency={currency}
+          <InventoryDetailHeader storeId={storeId} ingredient={selected} unit={selectedUnit} units={units} currency={currency} terminal={terminal}
             receiveOpen={receiveOpen} onToggleReceive={() => setReceiveOpen(value => !value)}
-            wastageOpen={wastageOpen} onToggleWastage={() => setWastageOpen(value => !value)} />
+            wastageOpen={wastageOpen} onToggleWastage={() => setWastageOpen(value => !value)}
+            requestApproval={withApproval}
+            onCreateUnit={unit => createUnit(storeId, unit).then(created => { setUnits(current => [...current, created]); return created })}
+            onUpdated={applyUpdatedIngredient} />
           {detailError && <p className="form-notice error" role="alert">{detailError}</p>}
           {detailBusy && <p role="status">Loading ingredient details…</p>}
 

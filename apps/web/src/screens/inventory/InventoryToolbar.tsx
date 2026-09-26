@@ -1,7 +1,7 @@
 import { Search } from '../../components/icons'
 import { SelectField } from '../../components/SelectField'
 
-export type InventoryFilter = 'all' | 'in_stock' | 'low_stock' | 'out_of_stock' | 'expiring_soon'
+export type InventoryFilter = 'all' | 'in_stock' | 'low_stock' | 'out_of_stock' | 'expiring_soon' | 'inactive'
 export type InventorySort = 'name' | 'stock_level' | 'recently_updated' | 'expiry'
 
 const FILTERS: { value: InventoryFilter; label: string }[] = [
@@ -10,6 +10,7 @@ const FILTERS: { value: InventoryFilter; label: string }[] = [
   { value: 'low_stock', label: 'Low Stock' },
   { value: 'out_of_stock', label: 'Out of Stock' },
   { value: 'expiring_soon', label: 'Expiring Soon' },
+  { value: 'inactive', label: 'Inactive' },
 ]
 
 // One filter row covers both the quick "Low Stock / Expiring Soon" shortcuts and the fuller

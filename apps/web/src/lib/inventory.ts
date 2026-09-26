@@ -97,6 +97,9 @@ export async function updateIngredient(storeId: string, ingredientId: string, pa
 export async function deactivateIngredient(storeId: string, ingredientId: string, terminal = false, approval: ManagerApprovalEvidence | null = null): Promise<Ingredient> {
   return inventoryRequest<Ingredient>(`/ingredients/${ingredientId}/deactivate`, 'PATCH', storeId, terminal, terminal ? managerEvidenceBody(approval) : undefined)
 }
+export async function reactivateIngredient(storeId: string, ingredientId: string, terminal = false, approval: ManagerApprovalEvidence | null = null): Promise<Ingredient> {
+  return inventoryRequest<Ingredient>(`/ingredients/${ingredientId}/reactivate`, 'PATCH', storeId, terminal, terminal ? managerEvidenceBody(approval) : undefined)
+}
 
 export async function recordIngredientBatch(storeId: string, ingredientId: string, input: { quantity: number; cost_per_unit_cents: number; expires_at?: string | null; received_at?: string | null; reference?: string | null }, terminal = false, approval: ManagerApprovalEvidence | null = null): Promise<{ batch: IngredientBatch; movement: StockMovement; ingredient: Ingredient }> {
   return inventoryRequest(`/ingredients/${ingredientId}/batches`, 'POST', storeId, terminal, { ...input, ...(terminal ? managerEvidenceBody(approval) : {}) })

@@ -18,6 +18,10 @@ export function applyInventoryView(ingredients: Ingredient[], search: string, fi
   const term = search.trim().toLowerCase()
   const filtered = ingredients.filter(ingredient => {
     if (term && !ingredient.name.toLowerCase().includes(term)) return false
+    if (filter === 'inactive') return !ingredient.active
+    // Every other filter (including "all") is about currently-stocked ingredients -- an inactive
+    // one only ever shows up under the explicit "Inactive" filter above, not mixed into these.
+    if (!ingredient.active) return false
     if (filter === 'all') return true
     if (filter === 'expiring_soon') return isExpiringSoon(ingredient, now)
     return ingredientStatus(ingredient) === filter
