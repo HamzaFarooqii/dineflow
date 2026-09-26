@@ -23,7 +23,7 @@ test('a live cashier session overrides a forged employee_id; a device-only push 
       '202609150003_team_profile_visibility.sql', '202609160001_customers_and_sale_attachment.sql',
       '202609170001_change_feed_product_entity.sql', '202609170002_cart_discounts.sql',
       '202609180001_terminal_name_uniqueness.sql', '202609180002_pos_orders_report_read_access.sql',
-      '202609210001_restaurant_foundation.sql', '202609230001_kitchen_display_system.sql']) {
+      '202609210001_restaurant_foundation.sql', '202609230001_kitchen_display_system.sql', '202609260003_service_charge.sql']) {
       await database.exec((await readFile(root + `supabase/migrations/${name}`, 'utf8')).replace('create extension if not exists pgcrypto;', ''))
     }
     const owner = randomUUID(), store = randomUUID(), device = randomUUID()
@@ -58,7 +58,8 @@ test('a live cashier session overrides a forged employee_id; a device-only push 
       const operationId = randomUUID()
       return { operationId, body: { operation_id: operationId,
         order: { id: operationId, store_id: store, receipt_number: receiptNumber, catalog_version: 1,
-          client_generated_at: new Date().toISOString(), subtotal_cents: 100, discount_cents: 0, tax_cents: 0, total_cents: 100,
+          client_generated_at: new Date().toISOString(), subtotal_cents: 100, discount_cents: 0, tax_cents: 0,
+          service_charge_bps: 0, service_charge_cents: 0, total_cents: 100,
           customer_id: null, employee_id: employeeId, manager_id: null, manager_approved_at: null },
         items: [{ id: randomUUID(), product_id: product, snapshot_name: 'Test item', snapshot_sku: 'SKU-1',
           snapshot_price_cents: 100, snapshot_tax_bps: 0, catalog_version: 1, quantity: 1,

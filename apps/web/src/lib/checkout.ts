@@ -1,4 +1,4 @@
-import { calculateDiscountedLine, sumDiscountedLines, boundedInteger, discountNeedsManagerApproval, MAX_CENTS } from '../../../../packages/domain/src/money'
+import { calculateDiscountedLine, calculateServiceCharge, sumDiscountedLines, boundedInteger, discountNeedsManagerApproval, MAX_CENTS } from '../../../../packages/domain/src/money'
 import { posDb, type LocalOrder, type LocalOrderItem, type LocalPayment, type OutboxEntry } from './db'
 import { usePosStore, redeemedReward, type CartItem } from './pos-store'
 
@@ -14,6 +14,9 @@ export async function completeLocalSale(items: CartItem[], storeId: string, meth
   if (customerId && (!customer || customer.store_id !== storeId)) throw new Error('Selected customer does not belong to this store.')
   const lines = items.map(item => calculateDiscountedLine(item.unitPriceCents, item.quantity, item.taxRateBps, item.discount))
   const totals = sumDiscountedLines(lines)
+  const serviceChargeBps = config.service_charge_bps ?? 0
+  const serviceChargeCents = calculateServiceCharge(totals.subtotalCents - totals.discountCents, serviceChargeBps)
+  const grandTotalCents = totals.totalCents + serviceChargeCents
   // The 20%-independent-authority cap exists for a cashier terminal, where discretion is
   // deliberately limited and a manager's PIN raises it (ManagerApprovalModal, gated on `terminal`
   // the same way in RegisterScreen.tsx's own needsApproval/approvalValid). The web register has no
@@ -26,8 +29,8 @@ export async function completeLocalSale(items: CartItem[], storeId: string, meth
     throw new Error('A discount needs manager approval before this sale can complete.')
   }
   boundedInteger(tenderedCents, 'Tender', 0, MAX_CENTS)
-  if (tenderedCents < totals.totalCents) throw new Error('Amount received must cover the sale.')
-  if (method === 'card' && tenderedCents !== totals.totalCents) throw new Error('Card amount must equal the sale total.')
+  if (tenderedCents < grandTotalCents) throw new Error('Amount received must cover the sale.')
+  if (method === 'card' && tenderedCents !== grandTotalCents) throw new Error('Card amount must equal the sale total.')
   const operationId = crypto.randomUUID()
   const now = new Date().toISOString()
   let receiptNumber = ''
@@ -46,7 +49,8 @@ export async function completeLocalSale(items: CartItem[], storeId: string, meth
       if (!Number.isSafeInteger(sequence)) throw new Error('Receipt sequence is exhausted.')
       receiptNumber = `${prefix}${String(sequence).padStart(6, '0')}`
       const order: LocalOrder = { id: operationId, store_id: storeId, receipt_number: receiptNumber,
-        subtotal_cents: totals.subtotalCents, discount_cents: totals.discountCents, tax_cents: totals.taxCents, total_cents: totals.totalCents,
+        subtotal_cents: totals.subtotalCents, discount_cents: totals.discountCents, tax_cents: totals.taxCents,
+        service_charge_bps: serviceChargeBps, service_charge_cents: serviceChargeCents, total_cents: grandTotalCents,
         catalog_version: config.catalog_version, client_generated_at: now, sync_status: 'pending',
         currency: config.currency, store_name_snapshot: config.name, timezone_snapshot: config.timezone,
         accepted_checkpoint: null, failure_reason: customer && customer.sync_status !== 'synced' ? 'Waiting for customer upload.' : null,
@@ -60,8 +64,8 @@ export async function completeLocalSale(items: CartItem[], storeId: string, meth
         discount_applied_cents: lines[index].discountAppliedCents, taxable_cents: lines[index].taxableCents,
         tax_cents: lines[index].taxCents, total_cents: lines[index].totalCents }))
       const payment: LocalPayment = { id: crypto.randomUUID(), order_id: operationId, method,
-        amount_cents: totals.totalCents, tendered_cents: tenderedCents,
-        change_cents: method === 'cash' ? tenderedCents - totals.totalCents : 0, reference }
+        amount_cents: grandTotalCents, tendered_cents: tenderedCents,
+        change_cents: method === 'cash' ? tenderedCents - grandTotalCents : 0, reference }
       // Day 4 checkout wiring: if a line's discount came from redeeming a reward, tell the server
       // which reward_rule to deduct points for — the discount amount itself already travels as an
       // ordinary line discount above, exactly like a manual one.
@@ -82,5 +86,5 @@ export async function completeLocalSale(items: CartItem[], storeId: string, meth
         product_id: item.productId, delta: -item.quantity, accepted_checkpoint: null })
       await posDb.outbox.add(outbox)
     })
-  return { operationId, receiptNumber, totalCents: totals.totalCents }
+  return { operationId, receiptNumber, totalCents: grandTotalCents }
 }

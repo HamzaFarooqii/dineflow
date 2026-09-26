@@ -21,6 +21,7 @@ export interface StoreConfig {
   timezone: string
   currency: string
   catalog_version: number
+  service_charge_bps: number
 }
 
 export interface LocalCategory {
@@ -80,6 +81,8 @@ export interface LocalOrder {
   subtotal_cents: number      // integer cents
   discount_cents?: number     // integer cents; absent on older records means zero
   tax_cents: number           // integer cents
+  service_charge_bps?: number    // basis points in effect at sale time; absent on older records means zero
+  service_charge_cents?: number  // integer cents; absent on older records (or a 0%-rate store) means zero
   total_cents: number         // integer cents
   catalog_version: number
   client_generated_at: string // ISO 8601

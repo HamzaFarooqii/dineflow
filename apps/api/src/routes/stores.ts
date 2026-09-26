@@ -10,7 +10,7 @@ async function getStore(req: import('express').Request, res: import('express').R
     if (!UUID_RE.test(storeId)) throw new ApiError(400, 'validation_failed', 'A valid store ID is required.')
     await requireStoreMember(req, storeId)
     const result = await db.query(
-      'select id, name, timezone, currency, address, country from public.stores where id=$1',
+      'select id, name, timezone, currency, address, country, service_charge_bps from public.stores where id=$1',
       [storeId],
     )
     if (!result.rows[0]) throw new ApiError(404, 'not_found', 'Store not found.')
@@ -66,6 +66,13 @@ async function patchStore(req: import('express').Request, res: import('express')
       if (country && !/^[A-Z]{2}$/.test(country)) throw new ApiError(422, 'validation_failed', 'Country must be a two-letter ISO code.')
       updates.push(`country = $${index++}`); values.push(country || null)
     }
+    if (body.service_charge_bps !== undefined) {
+      const serviceChargeBps = Number(body.service_charge_bps)
+      if (!Number.isInteger(serviceChargeBps) || serviceChargeBps < 0 || serviceChargeBps > 10_000) {
+        throw new ApiError(422, 'validation_failed', 'Service charge must be an integer number of basis points between 0 and 10000.')
+      }
+      updates.push(`service_charge_bps = $${index++}`); values.push(serviceChargeBps)
+    }
     if (!updates.length) throw new ApiError(422, 'validation_failed', 'No fields to update were provided.')
 
     const changingCurrency = newCurrency !== null && newCurrency !== currentCurrency
@@ -86,7 +93,7 @@ async function patchStore(req: import('express').Request, res: import('express')
       values.push(storeId)
       const result = await client.query(
         `update public.stores set ${updates.join(', ')}, updated_at = now() where id = $${index}
-         returning id, name, timezone, currency, address, country`,
+         returning id, name, timezone, currency, address, country, service_charge_bps`,
         values,
       )
       if (!result.rows[0]) throw new ApiError(404, 'not_found', 'Store not found.')

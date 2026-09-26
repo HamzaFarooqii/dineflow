@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { calculateDiscountedLine, discountNeedsManagerApproval, formatCents, parseCents } from '../../../../packages/domain/src/money'
+import { calculateDiscountedLine, calculateServiceCharge, discountNeedsManagerApproval, formatCents, parseCents } from '../../../../packages/domain/src/money'
 import { ORDER_TYPES, ORDER_TYPE_LABELS } from '../../../../packages/domain/src/order-type'
 import { redemptionValue } from '../../../../packages/domain/src/loyalty'
 import { promotionToLineDiscount } from '../../../../packages/domain/src/promotions'
@@ -26,6 +26,7 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
   const [stock, setStock] = useState<Record<string, number>>({})
   const [taxRates, setTaxRates] = useState<Record<string, number>>({})
   const [currency, setCurrency] = useState('USD')
+  const [serviceChargeBps, setServiceChargeBps] = useState(0)
   const [catalogVersion, setCatalogVersion] = useState(1)
   const [storeId, setStoreId] = useState('')
   const [query, setQuery] = useState('')
@@ -152,7 +153,7 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
             posDb.server_stock.toArray(), posDb.stock_adjustments.toArray(),
           ])
           if (!active) return
-          if (config) { setCurrency(config.currency); setCatalogVersion(config.catalog_version); setStoreContext(id, config.name) }
+          if (config) { setCurrency(config.currency); setCatalogVersion(config.catalog_version); setStoreContext(id, config.name); setServiceChargeBps(config.service_charge_bps ?? 0) }
           setProducts(available.filter(product => product.active))
           setCategories(cats.filter(category => category.active))
           setTaxRates(Object.fromEntries(rates.filter(rate => rate.active).map(rate => [rate.id, rate.rate_bps])))
@@ -356,7 +357,8 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
       <div className="totals"><span>Subtotal <b>{formatCents(total.subtotalCents, currency)}</b></span>
         {total.discountCents > 0 && <span className="totals-discount">Discount <b>−{formatCents(total.discountCents, currency)}</b></span>}
         <span>Tax <b>{formatCents(total.taxCents, currency)}</b></span>
-        <strong>Total <b>{formatCents(total.totalCents, currency)}</b></strong></div>
+        {serviceChargeBps > 0 && <span>Service charge <b>{formatCents(calculateServiceCharge(total.subtotalCents - total.discountCents, serviceChargeBps), currency)}</b></span>}
+        <strong>Total <b>{formatCents(total.totalCents + calculateServiceCharge(total.subtotalCents - total.discountCents, serviceChargeBps), currency)}</b></strong></div>
       {cartError && <p className="form-notice error" role="alert">{cartError}</p>}
       {!cartError && Boolean(cart.length) && needsCustomer && <p className="form-notice error" role="alert">Select or add a guest before proceeding to payment.</p>}
       <Link className={`cta ${proceedBlocked ? 'cta-disabled' : ''}`} to={!proceedBlocked ? terminal ? '/pos/payment' : '/payment' : terminal ? '/pos/register' : '/register'}

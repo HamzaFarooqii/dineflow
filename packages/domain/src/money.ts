@@ -70,6 +70,17 @@ export function sumDiscountedLines(lines: ReturnType<typeof calculateDiscountedL
   }), { subtotalCents: 0, discountCents: 0, taxCents: 0, totalCents: 0 })
 }
 
+/**
+ * A whole-bill service charge (basis points, same convention as tax), applied on the post-discount
+ * subtotal -- same base as tax itself, but a separate figure so it's never confused with tax on a
+ * receipt. Half-up rounding, matching every other bps calculation in this file.
+ */
+export function calculateServiceCharge(subtotalAfterDiscountCents: number, serviceChargeBps: number): number {
+  boundedInteger(subtotalAfterDiscountCents, 'Subtotal', 0, MAX_CENTS)
+  boundedInteger(serviceChargeBps, 'Service charge rate', 0, 10_000)
+  return Math.floor((subtotalAfterDiscountCents * serviceChargeBps + 5_000) / 10_000)
+}
+
 export function parseCents(input: string): number {
   const normalized = input.trim()
   if (!/^(?:0|[1-9]\d{0,7})(?:\.\d{1,2})?$/.test(normalized)) throw new Error('Enter a valid amount with up to two decimal places.')

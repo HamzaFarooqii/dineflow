@@ -26,6 +26,7 @@ const chain = [
   '202609230002_table_waiter_assignment.sql',
   '202609250001_loyalty_foundation.sql',
   '202609250003_promotions.sql',
+  '202609260003_service_charge.sql',
 ]
 
 test('order checkout awards and redeems loyalty points atomically with the sale', async t => {
@@ -103,7 +104,8 @@ test('order checkout awards and redeems loyalty points atomically with the sale'
     const totalCents = 5000 - discountCents
     return { operationId, body: { operation_id: operationId,
       order: { id: operationId, store_id: store, receipt_number: `LC-${operationId.slice(0, 8)}`, catalog_version: 1,
-        client_generated_at: new Date().toISOString(), subtotal_cents: 5000, discount_cents: discountCents, tax_cents: 0, total_cents: totalCents,
+        client_generated_at: new Date().toISOString(), subtotal_cents: 5000, discount_cents: discountCents, tax_cents: 0,
+        service_charge_bps: 0, service_charge_cents: 0, total_cents: totalCents,
         customer_id: customerId, employee_id: null, manager_id: null, manager_approved_at: null },
       items: [{ id: randomUUID(), product_id: product, snapshot_name: 'Test item', snapshot_sku: 'SKU-1',
         snapshot_price_cents: 5000, snapshot_tax_bps: 0, catalog_version: 1, quantity: 1,

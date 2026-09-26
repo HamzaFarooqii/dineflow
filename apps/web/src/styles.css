@@ -378,6 +378,9 @@ html{font-family:'Archivo',sans-serif;color:var(--mise-ink);background:var(--mis
 .pay-main label input:focus{border-color:var(--mise-saffron);box-shadow:0 0 0 3px var(--mise-saffron-fill)}
 .pay-main .money-input{min-height:56px;font-size:24px;letter-spacing:-.01em}
 .pay-main .card-confirm input{width:20px;height:20px;min-height:20px;padding:0;accent-color:var(--mise-ink)}
+.pay-main .split-bill{display:flex!important;flex-wrap:wrap;align-items:center;gap:10px;font-weight:500}
+.pay-main .split-bill input{width:64px;min-height:38px;padding:0 8px;font:500 15px 'IBM Plex Mono',monospace}
+.split-bill-hint{color:var(--mise-ink-muted);font-weight:500;font-size:12px}
 .quick,.quick-tender{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:10px}
 .quick button,.quick-tender button{min-height:44px;padding:0 8px;border:1px solid var(--mise-border-strong);border-radius:var(--mise-r2);background:var(--mise-surface);color:var(--mise-ink);font:500 13px 'IBM Plex Mono',monospace;transition:background .15s ease,border-color .15s ease}
 .quick button:hover,.quick-tender button:hover{background:var(--mise-surface-sunken);border-color:var(--mise-ink-muted)}

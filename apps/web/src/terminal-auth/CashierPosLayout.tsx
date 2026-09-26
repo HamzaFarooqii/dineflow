@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { currentAccess, readTerminal, type TerminalCache } from './cache'
 import { pushPendingOrders } from '../lib/order-sync'
 import { ClockButton } from './ClockButton'
+import { roleHasCapability, type StaffCapability } from '../../../../packages/domain/src/staff-role'
 import { LayoutDashboard, ShoppingCart, UtensilsCrossed, ClipboardList, Users, Package, Settings as SettingsIcon, Store } from '../components/icons'
 import './terminal-auth.css'
 import '../receipts/receipts.css'
@@ -12,13 +13,21 @@ import '../receipts/receipts.css'
 // redesign this used Unicode glyphs, and three of the five items (Products, Orders, Settings)
 // shared the exact same generic "○" placeholder glyph -- not just a different icon style from the
 // owner shell, but no real distinction between its own nav items either.
-const navigation = [
+//
+// `capability`: gates visibility per packages/domain/src/staff-role.ts (a manager always passes).
+// Dashboard and Settings have none -- general/hardware screens every role can reasonably see.
+// Floor and Kitchen aren't listed here at all yet: FloorScreen/KitchenScreen are still web-only
+// (no `terminal` mode, unlike RegisterScreen/InventoryScreen), even though the API already has
+// terminalFloorRouter/terminalKitchenRouter ready for it -- a real gap for the waiter/chef roles
+// this file's capability gating exists for, tracked in docs/day-plans/day5-ahmed.md (Kitchen) and
+// docs/day-plans/day5-bisma.md (Floor) rather than rushed through here.
+const navigation: { label: string; to: string; icon: typeof LayoutDashboard; capability?: StaffCapability }[] = [
   { label: 'Dashboard', to: '/pos/dashboard', icon: LayoutDashboard },
-  { label: 'Sell', to: '/pos/register', icon: ShoppingCart },
-  { label: 'Products', to: '/pos/products', icon: UtensilsCrossed },
-  { label: 'Orders', to: '/pos/orders', icon: ClipboardList },
-  { label: 'Customers', to: '/pos/customers', icon: Users },
-  { label: 'Inventory', to: '/pos/inventory', icon: Package },
+  { label: 'Sell', to: '/pos/register', icon: ShoppingCart, capability: 'register' },
+  { label: 'Products', to: '/pos/products', icon: UtensilsCrossed, capability: 'register' },
+  { label: 'Orders', to: '/pos/orders', icon: ClipboardList, capability: 'register' },
+  { label: 'Customers', to: '/pos/customers', icon: Users, capability: 'register' },
+  { label: 'Inventory', to: '/pos/inventory', icon: Package, capability: 'inventory' },
   { label: 'Settings', to: '/pos/settings', icon: SettingsIcon },
 ]
 
@@ -47,10 +56,11 @@ export function CashierPosLayout({ children }: { children: ReactNode }) {
     return () => { active = false; window.removeEventListener('online', sync); window.clearInterval(interval) }
   }, [])
   const cashier = terminal?.employees.find(employee => employee.id === terminal.session?.employee_id)
+  const visibleNav = navigation.filter(item => !item.capability || !cashier || roleHasCapability(cashier.role, item.capability))
   return <div className="cashier-pos-shell">
     <aside className="cashier-pos-sidebar">
       <Link className="cashier-pos-brand" to="/pos/register"><span>D</span> Dineflow</Link>
-      <nav aria-label="Cashier navigation">{navigation.map(item => {
+      <nav aria-label="Cashier navigation">{visibleNav.map(item => {
         const active = item.label === 'Sell'
           ? ['/pos/register', '/pos/payment'].includes(pathname)
           : item.label === 'Orders'

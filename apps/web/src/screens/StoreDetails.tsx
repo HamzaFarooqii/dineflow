@@ -21,6 +21,7 @@ interface StoreRecord {
   currency: string
   address: string | null
   country: string | null
+  service_charge_bps: number
 }
 
 export function StoreDetails() {
@@ -71,11 +72,19 @@ export function StoreDetails() {
     setMessage('')
     setSaving(true)
     try {
+      const serviceChargePercent = String(form.get('service_charge_percent') ?? '').trim()
+      const serviceChargeBps = serviceChargePercent === '' ? 0 : Math.round(Number(serviceChargePercent) * 100)
+      if (!Number.isFinite(serviceChargeBps) || serviceChargeBps < 0 || serviceChargeBps > 10_000) {
+        setError('Service charge must be a percentage between 0 and 100.')
+        setSaving(false)
+        return
+      }
       const body = {
         currency,
         timezone: String(form.get('timezone')).trim(),
         address: String(form.get('address')).trim() || null,
         country: String(form.get('country')).trim().toUpperCase() || null,
+        service_charge_bps: serviceChargeBps,
       }
       const token = await accessToken()
       const response = await fetch(`${configuredApiUrl()}/stores/${storeId}`, {
@@ -93,7 +102,7 @@ export function StoreDetails() {
       // cache stale even though the server save succeeded.
       const cachedConfig = await posDb.store_config.get(storeId)
       if (cachedConfig) {
-        await posDb.store_config.put({ ...cachedConfig, currency: data.currency, timezone: data.timezone })
+        await posDb.store_config.put({ ...cachedConfig, currency: data.currency, timezone: data.timezone, service_charge_bps: data.service_charge_bps })
       }
       setMessage('Restaurant details saved.')
     } catch (reason) {
@@ -179,6 +188,18 @@ export function StoreDetails() {
                 </div>
               </div>
               <p className="pc-field-hint">Currency can only be changed before any dishes or sales exist. Timezone changes apply immediately.</p>
+            </div>
+
+            <div className="pc-group">
+              <p className="pc-group-label">Service Charge</p>
+              <div className="pc-field">
+                <label htmlFor="sf-service-charge">
+                  Service charge <span className="pc-opt">optional, % of the post-discount subtotal</span>
+                </label>
+                <input id="sf-service-charge" name="service_charge_percent" type="number" min={0} max={100} step="0.01"
+                  defaultValue={store.service_charge_bps ? (store.service_charge_bps / 100).toFixed(2) : ''} placeholder="0" style={{ maxWidth: 160 }} />
+              </div>
+              <p className="pc-field-hint">Added to every sale on top of tax, e.g. 10 for a 10% service charge. Leave blank or 0 for none.</p>
             </div>
 
             <div className="pc-group">

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { formatCents, parseCents } from '../../../../packages/domain/src/money'
+import { calculateServiceCharge, formatCents, parseCents } from '../../../../packages/domain/src/money'
 import { completeLocalSale } from '../lib/checkout'
 import { posDb } from '../lib/db'
 import { pushPendingOrders } from '../lib/order-sync'
@@ -23,17 +23,33 @@ export function PaymentScreen({ terminal = false }: { terminal?: boolean }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [currency, setCurrency] = useState('USD')
+  const [serviceChargeBps, setServiceChargeBps] = useState(0)
+  const [splitCount, setSplitCount] = useState(1)
   const [employeeId, setEmployeeId] = useState<string | null>(null)
   const [employeeLoaded, setEmployeeLoaded] = useState(!terminal)
-  useEffect(() => { if (storeId) void posDb.store_config.get(storeId).then(config => { if (config) setCurrency(config.currency) }) }, [storeId])
+  useEffect(() => { if (storeId) void posDb.store_config.get(storeId).then(config => { if (config) { setCurrency(config.currency); setServiceChargeBps(config.service_charge_bps ?? 0) } }) }, [storeId])
   useEffect(() => { if (terminal) void readTerminal().then(cache => { setEmployeeId(cache?.session?.employee_id ?? null); setEmployeeLoaded(true) }) }, [terminal])
-  let total = 0
+  let lineTotal = 0
+  let serviceChargeCents = 0
   let amountError = ''
-  try { total = totals().totalCents } catch (reason) { amountError = reason instanceof Error ? reason.message : 'Sale amount is invalid.' }
+  try {
+    const cartTotals = totals()
+    lineTotal = cartTotals.totalCents
+    serviceChargeCents = calculateServiceCharge(cartTotals.subtotalCents - cartTotals.discountCents, serviceChargeBps)
+  } catch (reason) { amountError = reason instanceof Error ? reason.message : 'Sale amount is invalid.' }
+  // Amount actually owed, service charge included -- checkout.ts computes this exact figure again
+  // itself from the store's live service-charge rate and will reject a tender that falls short of
+  // it, so this screen must never show or accept less than what completeLocalSale will require.
+  const total = lineTotal + serviceChargeCents
   let tender = 0
   if (method === 'card') tender = total
   else if (received.trim()) { try { tender = parseCents(received) } catch (reason) { amountError = reason instanceof Error ? reason.message : 'Invalid cash amount.' } }
   const change = tender >= total ? tender - total : 0
+  // Split bill (equal N-way): a payment-collection aid only -- the sale is still recorded as one
+  // payment for the full total, same as a card machine splitting a physical bill across several
+  // cards while charging one merchant transaction. An itemized/per-seat split would need multiple
+  // payment rows against one order, a bigger structural change out of scope for this pass.
+  const perGuestCents = splitCount > 1 ? Math.ceil(total / splitCount) : 0
   const canComplete = items.length > 0 && Boolean(storeId) && !amountError && !busy && employeeLoaded &&
     (method === 'cash' ? tender >= total : cardConfirmed)
   const submit = async () => {
@@ -60,6 +76,11 @@ export function PaymentScreen({ terminal = false }: { terminal?: boolean }) {
       <button type="button" className={method === 'cash' ? 'selected' : ''} onClick={() => setMethod('cash')}>Cash</button>
       <button type="button" className={method === 'card' ? 'selected' : ''} onClick={() => setMethod('card')}>Card (external)</button>
     </fieldset>
+    <label className="split-bill">Split bill between
+      <input type="number" min={1} max={20} step={1} inputMode="numeric" value={splitCount}
+        onChange={event => setSplitCount(Math.min(20, Math.max(1, Math.round(Number(event.target.value)) || 1)))} /> guest{splitCount === 1 ? '' : 's'}
+      {splitCount > 1 && <span className="split-bill-hint">{formatCents(perGuestCents, currency)} each (still recorded as one payment for the full total)</span>}
+    </label>
     {method === 'cash' ? <label>Amount received<input className="money-input" type="text" inputMode="decimal" value={received}
       onChange={event => setReceived(event.target.value)} placeholder="0.00" autoComplete="off" /><span className="quick-tender" aria-label="Quick cash amounts">
         <button type="button" onClick={() => setReceived((total / 100).toFixed(2))}>Exact amount</button>
@@ -71,7 +92,13 @@ export function PaymentScreen({ terminal = false }: { terminal?: boolean }) {
     {amountError && <p className="form-notice error" role="alert">{amountError}</p>}
     {error && <p className="form-notice error" role="alert">{error}</p>}
   </div><aside className="payment-summary"><div className={`change ${change > 0 ? 'positive' : ''}`}><small>Change due</small><b>{formatCents(change, currency)}</b></div>
-    <div className="summary-lines"><span>Total <b>{formatCents(total, currency)}</b></span><strong>Amount to record <b>{formatCents(total, currency)}</b></strong></div>
+    <div className="summary-lines">
+      {serviceChargeCents > 0 && <>
+        <span>Total before service charge <b>{formatCents(lineTotal, currency)}</b></span>
+        <span>Service charge <b>{formatCents(serviceChargeCents, currency)}</b></span>
+      </>}
+      <strong>Amount to record <b>{formatCents(total, currency)}</b></strong>
+    </div>
     <button className="cta" type="button" disabled={!canComplete} onClick={() => void submit()}>{busy ? 'Closing check…' : 'Close check'}</button>
     <p className="screen-note">The receipt is saved locally before sync begins.</p></aside></section>
 }

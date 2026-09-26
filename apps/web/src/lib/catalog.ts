@@ -85,7 +85,7 @@ export async function setActiveStoreId(storeId: string): Promise<void> {
 }
 
 type Snapshot = {
-  store: { id: string; name: string; timezone: string; currency: string }
+  store: { id: string; name: string; timezone: string; currency: string; service_charge_bps: number }
   catalog_version: number
   checkpoint: string
   categories: { id: string; store_id: string; name: string; active: boolean }[]
@@ -122,7 +122,8 @@ export async function loadCatalog(storeId: string, terminal = false): Promise<'u
         throw new Error('Pending sync outcomes must be resolved before refreshing stock.')
       }
       await posDb.store_config.put({ id: storeId, store_id: storeId, name: snapshot.store.name,
-        timezone: snapshot.store.timezone, currency: snapshot.store.currency, catalog_version: snapshot.catalog_version })
+        timezone: snapshot.store.timezone, currency: snapshot.store.currency, catalog_version: snapshot.catalog_version,
+        service_charge_bps: snapshot.store.service_charge_bps ?? 0 })
       await posDb.categories.where('store_id').equals(storeId).delete()
       await posDb.tax_rates.where('store_id').equals(storeId).delete()
       const oldProducts = await posDb.products.where('store_id').equals(storeId).primaryKeys()

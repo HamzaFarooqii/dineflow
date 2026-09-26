@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { Router } from 'express'
 import { db } from '../db.js'
 import { ApiError, requireStoreMember, requireStoreManager, sendApiError } from './auth.js'
-import { boundedInteger, calculateDiscountedLine, discountNeedsManagerApproval, MAX_CENTS, sumDiscountedLines, type LineDiscount } from '../../../../packages/domain/src/money.js'
+import { boundedInteger, calculateDiscountedLine, calculateServiceCharge, discountNeedsManagerApproval, MAX_CENTS, sumDiscountedLines, type LineDiscount } from '../../../../packages/domain/src/money.js'
 import { ORDER_TYPES, type OrderType } from '../../../../packages/domain/src/order-type.js'
 import { BASE_MULTIPLIER_BPS, pointsEarned, tierForLifetimePoints } from '../../../../packages/domain/src/loyalty.js'
 import { requireCashierTerminal, requireDeviceTerminal } from '../terminal-auth/routes.js'
@@ -109,9 +109,21 @@ export function validateOperation(raw: unknown) {
       taxableCents: item.taxable_cents, taxCents: item.tax_cents, totalCents: item.total_cents })))
   } catch { throw new ApiError(422, 'total_mismatch', 'Order exceeds the supported money range.') }
   if (totals.subtotalCents !== order.subtotal_cents || totals.discountCents !== order.discount_cents ||
-      totals.taxCents !== order.tax_cents || totals.totalCents !== order.total_cents) {
+      totals.taxCents !== order.tax_cents) {
     throw new ApiError(422, 'total_mismatch', 'Order totals do not match line totals.')
   }
+  // service_charge_bps travels with the order the same way each item snapshots its own tax_bps --
+  // it's the rate that was in effect on the store when this sale was rung up, not whatever the
+  // store's live setting happens to be by the time an offline sale eventually syncs. The server
+  // only re-derives the resulting cents from that snapshotted rate, exactly as it re-derives tax.
+  if (!Number.isSafeInteger(order.service_charge_bps) || (order.service_charge_bps as number) < 0 || (order.service_charge_bps as number) > 10_000) {
+    throw new ApiError(422, 'validation_failed', 'service_charge_bps is invalid.')
+  }
+  const serviceChargeCents = calculateServiceCharge(totals.subtotalCents - totals.discountCents, order.service_charge_bps as number)
+  if (serviceChargeCents !== order.service_charge_cents || totals.totalCents + serviceChargeCents !== order.total_cents) {
+    throw new ApiError(422, 'total_mismatch', 'Order totals do not match line totals.')
+  }
+  const grandTotalCents = totals.totalCents + serviceChargeCents
   const parsedOrderType = orderTypeValue(order.order_type)
   const tableId = order.table_id === null || order.table_id === undefined ? null : id(order.table_id, 'Table ID')
   if (tableId && parsedOrderType !== 'dine_in') throw new ApiError(422, 'validation_failed', 'A table can only be set for a dine-in order.')
@@ -126,7 +138,7 @@ export function validateOperation(raw: unknown) {
   const amount = cents(payment.amount_cents, 'Payment amount')
   const tendered = cents(payment.tendered_cents, 'Tendered amount')
   const change = cents(payment.change_cents, 'Change amount')
-  if (amount !== totals.totalCents || (method === 'cash' && tendered !== amount + change) ||
+  if (amount !== grandTotalCents || (method === 'cash' && tendered !== amount + change) ||
       (method === 'card' && (tendered !== amount || change !== 0))) {
     throw new ApiError(422, 'total_mismatch', 'Payment does not balance with the order.')
   }
@@ -134,7 +146,8 @@ export function validateOperation(raw: unknown) {
   if (!Number.isSafeInteger(order.catalog_version) || (order.catalog_version as number) < 1 || (order.catalog_version as number) > MAX_CENTS) {
     throw new ApiError(422, 'validation_failed', 'Catalog version is invalid.')
   }
-  return { operationId, storeId, items: parsedItems, totals, loyaltyRedemption: parseLoyaltyRedemption(body, customerId),
+  return { operationId, storeId, items: parsedItems, totals: { ...totals, totalCents: grandTotalCents }, serviceChargeCents,
+    loyaltyRedemption: parseLoyaltyRedemption(body, customerId),
     order: { customer_id: customerId, receipt_number: text(order.receipt_number, 'Receipt number', 100),
       catalog_version: order.catalog_version as number, order_type: parsedOrderType, table_id: tableId,
       client_generated_at: generatedAt, employee_id: employeeId, manager_id: managerId, manager_approved_at: managerApprovedAt },
@@ -209,12 +222,12 @@ async function push(req: import('express').Request, res: import('express').Respo
         if (!manager.rowCount) throw new ApiError(422, 'validation_failed', 'Manager approval references an employee who is not an active manager for this store.')
       }
       await client.query(`insert into public.pos_orders(id,store_id,receipt_number,currency,store_name_snapshot,timezone_snapshot,
-        subtotal_cents,discount_cents,tax_cents,total_cents,catalog_version,client_generated_at,customer_id,employee_id,manager_id,manager_approved_at,
+        subtotal_cents,discount_cents,tax_cents,service_charge_cents,total_cents,catalog_version,client_generated_at,customer_id,employee_id,manager_id,manager_approved_at,
         order_type,table_id)
-        values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
+        values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
         [operation.operationId, operation.storeId, operation.order.receipt_number, store.rows[0].currency,
           store.rows[0].name, store.rows[0].timezone, operation.totals.subtotalCents, operation.totals.discountCents, operation.totals.taxCents,
-          operation.totals.totalCents, operation.order.catalog_version, operation.order.client_generated_at, operation.order.customer_id,
+          operation.serviceChargeCents, operation.totals.totalCents, operation.order.catalog_version, operation.order.client_generated_at, operation.order.customer_id,
           operation.order.employee_id, operation.order.manager_id, operation.order.manager_approved_at,
           operation.order.order_type, operation.order.table_id])
       for (const item of operation.items) {

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { calculateDiscountedLine, calculateLine, discountNeedsManagerApproval, formatCents, parseCents, sumDiscountedLines, sumLines } from './money.ts'
+import { calculateDiscountedLine, calculateLine, calculateServiceCharge, discountNeedsManagerApproval, formatCents, parseCents, sumDiscountedLines, sumLines } from './money.ts'
 
 test('rounds tax half up in integer cents', () => {
   assert.equal(calculateLine(10, 1, 500).taxCents, 1)
@@ -42,4 +42,11 @@ test('20% discount is within cashier authority; anything above needs manager app
   assert.equal(discountNeedsManagerApproval(1_000, 201), true)
   assert.equal(discountNeedsManagerApproval(1_000, 250), true)
   assert.equal(discountNeedsManagerApproval(1_000, 0), false)
+})
+test('calculateServiceCharge rounds half up in integer cents and is zero at a 0% rate', () => {
+  assert.equal(calculateServiceCharge(10_000, 1_000), 1_000) // 10% of $100.00
+  assert.equal(calculateServiceCharge(10, 500), 1) // 5% of 10¢ rounds 0.5 up to 1
+  assert.equal(calculateServiceCharge(10_000, 0), 0)
+  assert.throws(() => calculateServiceCharge(10_000, 10_001))
+  assert.throws(() => calculateServiceCharge(-1, 1_000))
 })
