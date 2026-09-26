@@ -6,6 +6,17 @@ out of the owner's "fill these gaps" review of the whole sprint. Your total load
 originally planned; that review added real scope, not busywork, and it's split three ways as
 evenly as the dependencies allow.
 
+**Execution note (weekend, Ahmed/Bisma on leave):** the owner also asked for a full visual
+redesign (`docs/day-plans` — see the new Ember tokens landed in `apps/web/src/styles.css`) on top
+of this. With the team split across two more calendar days and Ahmed/Bisma unavailable today,
+Hamza is executing today's slice of every role solo: **item 1 (tier-config UI) below, plus the
+Ember redesign applied to the Loyalty/Guests/Promotions/Menu screens**, done today as this file's
+"Day A" scope. **Items 2–4 below (modifiers, Kitchen terminal mode, food-cost/kitchen-performance
+reports) are "Day B"** — deferred to the real Ahmed once back, not rushed through solo, since
+modifiers in particular reaches into checkout math and deserves the pairing session already noted
+below rather than a same-day guess. Everything landed today is on `develop` directly, same
+direct-to-develop pattern this whole engagement has used.
+
 **Git ownership:** you run your own workflow end to end — branch, commit, push, open your own PR.
 Nothing here is pre-created for you. Branch name: `feature/ahmed/day5-loyalty-modifiers-reports`
 (or split into smaller branches per task if you prefer — your call).
