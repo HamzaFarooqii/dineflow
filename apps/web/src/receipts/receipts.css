@@ -27,8 +27,8 @@
 }
 .order-history.receipt-history > h1,
 .receipt-page > h1 {
-  font: 600 32px/1.1 'Archivo', sans-serif;
-  letter-spacing: -.02em;
+  font: 500 34px/1.1 var(--mise-font-display);
+  letter-spacing: -.01em;
   color: var(--mise-ink);
   margin: 0 0 var(--mise-space-8);
 }
