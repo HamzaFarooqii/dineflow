@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Archivo:ital,wdth,wght@0,62..125,400..700;1,62..125,400..700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Archivo:ital,wdth,wght@0,62..125,400..700;1,62..125,400..700&family=IBM+Plex+Mono:wght@400;500;600&family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;1,9..144,500&display=swap');
 /* ── MISE design system (docs/DESIGN_SYSTEM.md) ──────────────────────────────
    Applied across the whole app -- Floor, Kitchen, Inventory, Menu/Recipes,
    Register, and the shell all render on these tokens. (A comment used to live
@@ -11,23 +11,35 @@
    shell and each module get a visual pass, without changing the existing
    color values screens already depend on. */
 :root{
-  --mise-canvas:#F2F0EC; --mise-surface:#FFFFFF; --mise-surface-sunken:#E9E6E0;
-  --mise-border-hairline:#E0DCD5; --mise-border-strong:#C9C3BA;
-  --mise-ink:#1B1917; --mise-ink-secondary:#55504A; --mise-ink-muted:#6F6860;
-  --mise-ink-disabled:#9C948A; --mise-ink-inverse:#FAF8F5;
-  --mise-action:#1F1B17; --mise-action-hover:#36302A;
-  --mise-saffron:#E5A73C; --mise-saffron-deep:#9A6A12; --mise-saffron-fill:#FBEFD8;
-  --mise-success:#1F7A4D; --mise-success-fill:#E3F2E9;
-  --mise-warning:#C2600D; --mise-warning-fill:#FCEBD8;
-  --mise-danger:#B3271F; --mise-danger-fill:#FBE6E3;
-  --mise-info:#1F5C8C; --mise-info-fill:#E4EEF6;
-  --mise-accent-violet:#6B4A8F; --mise-accent-violet-fill:#EFE9F4;
-  --mise-service-base:#141312; --mise-service-surface:#1E1C1A; --mise-service-elevated:#2A2724;
-  --mise-service-border:#3A3633; --mise-service-ink:#F5F2ED; --mise-service-ink-muted:#A8A199;
-  --mise-r1:2px; --mise-r2:4px; --mise-r3:8px; --mise-r4:12px;
+  /* ── Ember (docs/day-plans -- post-Day-5 visual redesign) ──────────────────
+     A warm, moodier hospitality identity replacing MISE's brighter neutral
+     canvas: deeper linen ground, near-black warm ink instead of soft grey,
+     and --mise-saffron repurposed from a bright gold to a deep oxblood-rust
+     accent -- kept under its original variable name deliberately, since ~90
+     existing rules across every screen already key their focus rings,
+     primary actions and "needs attention" fills off this one token, so a
+     value change alone recolors the whole app's accent without touching
+     each consumer file. New: --mise-font-display (Fraunces) for headings and
+     dashboard numerals, applied screen-by-screen as the redesign reaches
+     them -- see docs/day-plans/day5-*.md for rollout order. */
+  --mise-canvas:#E8DECE; --mise-surface:#FFFFFF; --mise-surface-sunken:#DED0BA;
+  --mise-border-hairline:#D6C7AD; --mise-border-strong:#BFA980;
+  --mise-ink:#1A130E; --mise-ink-secondary:#4E3F34; --mise-ink-muted:#7A6A5A;
+  --mise-ink-disabled:#9C948A; --mise-ink-inverse:#F7EFE2;
+  --mise-action:#1D1510; --mise-action-hover:#2E2119;
+  --mise-saffron:#A93A0C; --mise-saffron-deep:#7A2A08; --mise-saffron-fill:#F2DCC8;
+  --mise-success:#2F5E3D; --mise-success-fill:#DCE8DA;
+  --mise-warning:#96530E; --mise-warning-fill:#F0DCC0;
+  --mise-danger:#8E2B21; --mise-danger-fill:#F0DAD5;
+  --mise-info:#1A4A70; --mise-info-fill:#DCE6EE;
+  --mise-accent-violet:#55396F; --mise-accent-violet-fill:#E6DEEC;
+  --mise-service-base:#100D0A; --mise-service-surface:#1A1613; --mise-service-elevated:#241E19;
+  --mise-service-border:#362D26; --mise-service-ink:#F2EAD9; --mise-service-ink-muted:#A69581;
+  --mise-r1:3px; --mise-r2:8px; --mise-r3:14px; --mise-r4:22px;
   --mise-space-2:2px; --mise-space-4:4px; --mise-space-8:8px; --mise-space-12:12px;
   --mise-space-16:16px; --mise-space-24:24px; --mise-space-32:32px;
-  --mise-e1:0 1px 2px rgba(27,25,23,.06); --mise-e2:0 4px 12px rgba(27,25,23,.08); --mise-e3:0 12px 32px rgba(27,25,23,.14);
+  --mise-e1:0 1px 2px rgba(20,14,8,.10); --mise-e2:0 6px 18px rgba(20,14,8,.16); --mise-e3:0 20px 48px rgba(20,14,8,.30);
+  --mise-font-display:'Fraunces',serif;
 
   /* Typography scale (docs/DESIGN_SYSTEM.md) -- font-size only, not a full shorthand: every
      existing rule already pairs a size with its own weight/family/line-height inline, and
