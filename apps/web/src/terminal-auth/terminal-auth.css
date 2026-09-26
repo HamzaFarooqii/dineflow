@@ -312,8 +312,8 @@
   height: 32px;
   border-radius: var(--mise-r2);
   background: var(--mise-saffron);
-  color: var(--mise-service-base);
-  font: 700 16px 'Archivo', sans-serif;
+  color: var(--mise-ink-inverse);
+  font: 500 16px var(--mise-font-display);
 }
 .cashier-card {
   width: min(100%, 560px);
@@ -433,7 +433,7 @@
   border: 1px solid var(--mise-saffron);
   border-radius: var(--mise-r3);
   background: var(--mise-saffron);
-  color: var(--mise-service-base);
+  color: var(--mise-ink-inverse);
   font: 600 16px 'Archivo', sans-serif;
   text-decoration: none;
   cursor: pointer;
@@ -677,7 +677,7 @@
 .onboarding-steps li.active { opacity: 1; }
 .onboarding-steps li.active span { border-color: var(--mise-saffron); color: var(--mise-saffron); }
 .onboarding-steps li.done { opacity: .8; }
-.onboarding-steps li.done span { background: var(--mise-saffron); border-color: var(--mise-saffron); color: var(--mise-ink); }
+.onboarding-steps li.done span { background: var(--mise-saffron); border-color: var(--mise-saffron); color: var(--mise-ink-inverse); }
 
 /* Onboarding form fields inside the auth shell's card. Scoped to the wizard's
    own forms so the shared auth card keeps whatever the shell gives it. */

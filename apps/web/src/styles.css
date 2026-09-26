@@ -113,7 +113,7 @@ html{font-family:'Archivo',sans-serif;color:var(--mise-ink);background:var(--mis
 .leaf-mark{display:grid;place-items:center;width:28px;height:28px;border-radius:var(--mise-r2);background:var(--mise-ink);color:var(--mise-saffron);font:400 16px/1 'Archivo',sans-serif}
 .brand-dark{color:var(--mise-ink-inverse)}
 .brand-dark small{color:var(--mise-service-ink-muted)}
-.brand-dark .leaf-mark{background:var(--mise-saffron);color:var(--mise-ink)}
+.brand-dark .leaf-mark{background:var(--mise-saffron);color:var(--mise-ink-inverse)}
 .kicker{font:600 10px 'Archivo',sans-serif;letter-spacing:.2em;text-transform:uppercase;color:var(--mise-ink-muted);margin:0 0 16px}
 /* Flat by default: hover tints background/border only — elevation and position never move. */
 .cta{display:inline-flex;align-items:center;justify-content:center;gap:12px;min-height:48px;padding:0 22px;border:1px solid var(--mise-saffron);border-radius:var(--mise-r3);background:var(--mise-saffron);color:var(--mise-ink-inverse);text-decoration:none;font:600 15px 'Archivo',sans-serif;min-width:176px;box-shadow:var(--mise-e1);transition:background .18s ease,border-color .18s ease,color .18s ease,transform .15s ease,box-shadow .15s ease}
@@ -249,7 +249,7 @@ html{font-family:'Archivo',sans-serif;color:var(--mise-ink);background:var(--mis
 .auth-art .kicker{color:var(--mise-saffron)}
 .auth-art p:not(.kicker){max-width:380px;color:var(--mise-service-ink-muted);font-size:16px;line-height:1.55}
 .auth-note{position:relative;z-index:1;display:flex;align-items:center;gap:14px;font:600 10px/1.7 'Archivo',sans-serif;letter-spacing:.2em;color:var(--mise-service-ink-muted)}
-.auth-note .leaf-mark{background:var(--mise-saffron);color:var(--mise-ink)}
+.auth-note .leaf-mark{background:var(--mise-saffron);color:var(--mise-ink-inverse)}
 .auth-form{display:grid;place-items:center;background:var(--mise-canvas);padding:40px}
 .form-card{width:min(100%,420px)}
 .form-card h2{font:500 clamp(28px,3.4vw,40px)/1.1 var(--mise-font-display);letter-spacing:-.01em;color:var(--mise-ink);margin:0 0 12px}
