@@ -1,4 +1,5 @@
 import type { TableStatus } from '../../../../packages/domain/src/table-status'
+import type { StaffRole } from '../../../../packages/domain/src/staff-role'
 import { accessToken, configuredApiUrl } from './catalog'
 
 export interface FloorArea { id: string; store_id: string; name: string; sort_order: number }
@@ -17,7 +18,7 @@ export interface RestaurantTable {
   current_order_id: string | null
   current_order_total_cents: string | null
 }
-export interface FloorEmployee { id: string; name: string; role: 'cashier' | 'manager' }
+export interface FloorEmployee { id: string; name: string; role: StaffRole }
 export interface FloorPlan { areas: FloorArea[]; tables: RestaurantTable[]; employees: FloorEmployee[] }
 
 export async function fetchFloorPlan(storeId: string, terminal = false): Promise<FloorPlan> {

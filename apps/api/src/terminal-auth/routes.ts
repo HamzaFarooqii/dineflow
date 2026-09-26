@@ -3,6 +3,9 @@ import type { Pool, PoolClient, QueryResultRow } from 'pg'
 import { randomUUID } from 'node:crypto'
 import { digest, fail, HttpError, ITERATIONS, pinValue, string, token, uuid, verifier, verify } from './security.js'
 import { ApiError } from '../routes/auth.js'
+import { STAFF_ROLES, type StaffRole } from '../../../../packages/domain/src/staff-role.js'
+
+const ROLE_PATTERN = new RegExp(`^(${STAFF_ROLES.join('|')})$`)
 
 export interface TerminalAuthOptions {
   pool: Pool
@@ -12,7 +15,7 @@ export interface TerminalAuthOptions {
   secureCookies: boolean
 }
 interface Device extends QueryResultRow { id: string; store_id: string; name: string; receipt_prefix: string; failed_attempts: number; locked_until: Date | null; session_id: string }
-interface Employee extends QueryResultRow { id: string; name: string; role: 'cashier' | 'manager'; active: boolean; permission_version: number; pin_salt: string; pin_hash: string; failed_attempts: number; locked_until: Date | null }
+interface Employee extends QueryResultRow { id: string; name: string; role: StaffRole; active: boolean; permission_version: number; pin_salt: string; pin_hash: string; failed_attempts: number; locked_until: Date | null }
 function body(req: Request): Record<string, unknown> {
   if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) fail(400, 'validation_failed', 'A JSON object is required.')
   return req.body as Record<string, unknown>
@@ -159,7 +162,7 @@ export function terminalAuthRouter(options: TerminalAuthOptions) {
   router.post('/terminal-auth/employees', async (req, res) => {
     const input = body(req), storeId = uuid(input.store_id), updating = input.id !== undefined, id = updating ? uuid(input.id) : randomUUID()
     const name = string(input.name, 'employee name', /^.{1,80}$/u).trim()
-    const role = string(input.role, 'employee role', /^(cashier|manager)$/)
+    const role = string(input.role, 'employee role', ROLE_PATTERN)
     if (!name || typeof input.active !== 'boolean') fail(400, 'validation_failed', 'Name and active state are required.')
     const pin = input.pin === undefined || input.pin === '' ? undefined : pinValue(input.pin)
     if (!updating && !pin) fail(400, 'validation_failed', 'Set a PIN for the new employee.')

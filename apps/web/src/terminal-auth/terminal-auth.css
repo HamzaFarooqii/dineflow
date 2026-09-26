@@ -590,6 +590,14 @@
   font: 600 12px 'Archivo', sans-serif;
 }
 .cashier-profile small { color: var(--mise-ink-muted); font-weight: 400; }
+.clock-button-wrap { display: flex; align-items: center; gap: var(--mise-space-8); }
+.clock-button {
+  min-height: 30px; padding: 0 var(--mise-space-12); border: 1px solid var(--mise-border-strong); border-radius: var(--mise-r2);
+  background: var(--mise-surface); color: var(--mise-ink); font: 600 11px 'Archivo', sans-serif;
+}
+.clock-button:disabled { opacity: .6; }
+.clock-button.clocked-in { background: var(--mise-success-fill); border-color: var(--mise-success); color: var(--mise-success); }
+.clock-button-error { color: var(--mise-danger); font-weight: 500; }
 .cashier-pos-status {
   display: flex;
   gap: var(--mise-space-24);

@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { currentAccess, readTerminal, type TerminalCache } from './cache'
 import { pushPendingOrders } from '../lib/order-sync'
+import { ClockButton } from './ClockButton'
 import { LayoutDashboard, ShoppingCart, UtensilsCrossed, ClipboardList, Users, Package, Settings as SettingsIcon, Store } from '../components/icons'
 import './terminal-auth.css'
 import '../receipts/receipts.css'
@@ -63,7 +64,7 @@ export function CashierPosLayout({ children }: { children: ReactNode }) {
       <footer><span className="cashier-online-dot" />Terminal ready<br /><small>{terminal?.device.name ?? 'Cashier terminal'}</small></footer>
     </aside>
     <main className="cashier-pos-main">
-      <header className="cashier-pos-topbar"><span className="cashier-online"><i />{navigator.onLine ? 'Online' : 'Offline'}</span><span><Store aria-hidden="true" size={14} /> {terminal?.device.name ?? 'Terminal'}</span><span>{terminal?.device.receipt_prefix ?? 'Receipt prefix unavailable'}</span><span className="cashier-profile">{cashier?.name ?? 'Cashier'}<small>{cashier?.role ?? 'Cashier'}</small></span></header>
+      <header className="cashier-pos-topbar"><span className="cashier-online"><i />{navigator.onLine ? 'Online' : 'Offline'}</span><span><Store aria-hidden="true" size={14} /> {terminal?.device.name ?? 'Terminal'}</span><span>{terminal?.device.receipt_prefix ?? 'Receipt prefix unavailable'}</span>{terminal?.device.store_id && <ClockButton storeId={terminal.device.store_id} />}<span className="cashier-profile">{cashier?.name ?? 'Cashier'}<small>{cashier?.role ?? 'Cashier'}</small></span></header>
       <nav className="cashier-pos-mobile-nav" aria-label="Cashier navigation"><Link className={pathname === '/pos/register' ? 'active' : ''} to="/pos/register">Sell</Link><Link className={pathname === '/pos/customers' ? 'active' : ''} to="/pos/customers">Customers</Link></nav>
       {children}
       <footer className="cashier-pos-status"><span><i /> {navigator.onLine ? 'Connected' : 'Offline'}</span><span>{terminal?.device.name ?? 'Terminal'}</span><span>Receipt prefix: {terminal?.device.receipt_prefix ?? '—'}</span></footer>

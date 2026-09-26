@@ -1,7 +1,9 @@
+import type { StaffRole } from '../../../../packages/domain/src/staff-role'
+
 export interface Employee {
   id: string
   name: string
-  role: 'cashier' | 'manager'
+  role: StaffRole
   permission_version: number
   locked_until: string | null
   verifier: { version: 1; algorithm: 'PBKDF2-SHA256'; iterations: 600000; salt: string; hash: string }
@@ -19,6 +21,6 @@ export interface Projection {
   employees: Employee[]
   session?: CashierSession
 }
-export interface ManagedEmployee { id: string; name: string; role: 'cashier' | 'manager'; active: boolean; permission_version: number }
+export interface ManagedEmployee { id: string; name: string; role: StaffRole; active: boolean; permission_version: number }
 export interface ManagedDevice { id: string; name: string; receipt_prefix: string; created_at: string; revoked_at: string | null }
 export interface Management { employees: ManagedEmployee[]; devices: ManagedDevice[] }

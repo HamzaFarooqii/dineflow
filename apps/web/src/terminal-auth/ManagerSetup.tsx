@@ -9,6 +9,7 @@ import { PageHeader } from '../components/PageHeader'
 import { SelectField } from '../components/SelectField'
 import { StatusBadge } from '../components/StatusBadge'
 import { Monitor, Users } from '../components/icons'
+import { STAFF_ROLES, STAFF_ROLE_LABELS } from '../../../../packages/domain/src/staff-role'
 import './terminal-auth.css'
 import { TerminalHardwareSettings } from './hardware/TerminalHardwareSettings'
 
@@ -106,7 +107,9 @@ export function ManagerSetup({ screen }: { screen: 'terminals' | 'employees' }) 
             {screen === 'employees' && <>
               <label>{editing ? 'New PIN (leave blank to keep current PIN)' : 'PIN'}<input name="pin" type="password" inputMode="numeric" pattern="[0-9]{4,8}" minLength={4} maxLength={8} required={!editing} autoComplete="new-password" aria-describedby="pin-help" /></label>
               <p id="pin-help" className="field-help">Use 4 to 8 digits. Give each staff member their own PIN.</p>
-              <SelectField label="Floor role" name="role" defaultValue={editing?.role ?? 'cashier'}><option value="cashier">Cashier</option><option value="manager">Manager</option></SelectField>
+              <SelectField label="Floor role" name="role" defaultValue={editing?.role ?? 'cashier'}>
+                {STAFF_ROLES.map(role => <option key={role} value={role}>{STAFF_ROLE_LABELS[role]}</option>)}
+              </SelectField>
               <label className="terminal-check"><input name="active" type="checkbox" defaultChecked={editing?.active ?? true} />Active staff member</label>
             </>}
             <button className="cta" type="submit">{busy ? 'Saving…' : screen === 'terminals' ? 'Provision this browser' : editing ? 'Save staff member' : 'Add staff member'}</button>
@@ -126,7 +129,7 @@ export function ManagerSetup({ screen }: { screen: 'terminals' | 'employees' }) 
             {device.revoked_at && <button type="button" className="text-button" disabled={busy} onClick={() => void reactivate(device.id)}>Reactivate</button>}
           </li>) : management.employees.map(employee => <li key={employee.id}>
             <span className="list-icon" aria-hidden="true"><Users size={16} /></span>
-            <div><strong>{employee.name}</strong><small>{employee.role === 'manager' ? 'Manager PIN' : 'Cashier PIN'}</small></div>
+            <div><strong>{employee.name}</strong><small>{STAFF_ROLE_LABELS[employee.role]} PIN</small></div>
             <StatusBadge tone={employee.active ? 'success' : 'muted'}>{employee.active ? 'Active' : 'Inactive'}</StatusBadge>
             <button type="button" className="text-button" disabled={busy} onClick={() => { setEditing(employee); setMessage('') }}>Edit</button>
           </li>)}</ul>
