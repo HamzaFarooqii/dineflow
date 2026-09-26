@@ -1,37 +1,58 @@
-# DineFlow Design System — MISE
+# DineFlow Design System — MISE (Ember palette)
 
-This is not a new proposal — MISE is the visual identity DineFlow already shipped with (Day 1,
-commits `751d798`/`80f7608`), applied across every screen. This document formalizes it as the
-binding contract so Days 3–5 extend it instead of drifting. **Do not propose a second visual
-language.** If something looks outdated, restyle it with these tokens; don't invent new ones.
+This is not a new proposal for the token *framework* — MISE (the `--mise-*` custom-property family,
+the component inventory below, the review checklist) is still the one visual language DineFlow
+runs on. What changed, post-Day-5, is the palette and typography inside that same framework: a
+full-app visual redesign replaced MISE's original bright neutral colors with **Ember**, a warmer,
+darker/moodier hospitality identity, while every token *name*, every component contract, and every
+review rule in this document stayed exactly what it was. **Do not propose a second visual
+language, and do not invent new `--mise-*` names for this** — a palette refresh reuses the existing
+tokens' names and just carries new values; that's what happened here, and it's the pattern any
+future palette adjustment should follow too.
 
 ## Brand
 
 DineFlow: "the dining room, in one rhythm." Warm, editorial, fine-dining-menu inspired — not a
-generic SaaS dashboard, not a copy of Toast/Square/TouchBistro/Clover/Lightspeed. Flat cards,
-hairline borders, no gradients, no glassmorphism, hover never moves position (staff shouldn't
-have to re-aim a tap because something drifted).
+generic SaaS dashboard, not a copy of Toast/Square/TouchBistro/Clover/Lightspeed. Ember pushes this
+further: a deep oxblood-rust accent instead of a bright gold, near-black warm ink instead of soft
+grey, and a distinctive serif (Fraunces) on headings/dish-names/numerals so the product reads as a
+premium hospitality brand rather than an admin panel. Flat cards, hairline borders, no gradients,
+no glassmorphism, hover never moves position (staff shouldn't have to re-aim a tap because
+something drifted) — all still true; Ember added tasteful hover-lift + shadow on genuinely
+interactive cards (menu tiles, table cards) as the one deliberate exception to "never moves
+position," since a few px of lift on hover (not on tap/press) reads as responsiveness, not drift.
 
 ## Colors
 
-Canonical source: `apps/web/src/styles.css`, Section E, `:root`. Reference the custom property
-by name — never hex values in new code.
+Canonical source: `apps/web/src/styles.css`, `:root`. Reference the custom property by name — never
+hex values in new code. Values below are the current Ember palette; the token *names* are unchanged
+from MISE's original set, so nothing that already referenced `var(--mise-saffron)` etc. needed to
+change to pick up the new look.
 
 | Token | Value | Use |
 |---|---|---|
-| `--mise-canvas` | `#F2F0EC` | App background |
-| `--mise-surface` | `#FFFFFF` | Cards, elevated surfaces |
-| `--mise-surface-sunken` | `#E9E6E0` | Recessed panels, hover fill, sunken form controls |
-| `--mise-border-hairline` / `--mise-border-strong` | `#E0DCD5` / `#C9C3BA` | Borders |
-| `--mise-ink` / `--mise-ink-secondary` / `--mise-ink-muted` / `--mise-ink-disabled` | `#1B1917` / `#55504A` / `#6F6860` / `#9C948A` | Text, in decreasing emphasis |
-| `--mise-ink-inverse` | `#FAF8F5` | Text on dark surfaces |
-| `--mise-action` / `--mise-action-hover` | `#1F1B17` / `#36302A` | Primary buttons |
-| `--mise-saffron` / `--mise-saffron-deep` / `--mise-saffron-fill` | `#E5A73C` / `#9A6A12` / `#FBEFD8` | Brand accent, active nav rail, "in progress" states |
-| `--mise-success` / `--mise-success-fill` | `#1F7A4D` / `#E3F2E9` | Available / synced / served / positive |
-| `--mise-warning` / `--mise-warning-fill` | `#C2600D` / `#FCEBD8` | Needs attention (bill requested, low stock) |
-| `--mise-danger` / `--mise-danger-fill` | `#B3271F` / `#FBE6E3` | Blocked / out of service / cancelled |
-| `--mise-info` / `--mise-info-fill` | `#1F5C8C` / `#E4EEF6` | Neutral in-progress (seated, reserved, preparing) |
-| `--mise-service-*` | dark surface set | Sidebar, auth art, cashier terminal chrome |
+| `--mise-canvas` | `#E8DECE` | App background — a deep warm linen, not bright white/grey |
+| `--mise-surface` | `#FFFFFF` | Cards, elevated surfaces — kept pure white so it pops against the deeper canvas |
+| `--mise-surface-sunken` | `#DED0BA` | Recessed panels, hover fill, sunken form controls |
+| `--mise-border-hairline` / `--mise-border-strong` | `#D6C7AD` / `#BFA980` | Borders |
+| `--mise-ink` / `--mise-ink-secondary` / `--mise-ink-muted` / `--mise-ink-disabled` | `#1A130E` / `#4E3F34` / `#7A6A5A` / `#9C948A` | Text, in decreasing emphasis — near-black warm brown, not soft grey |
+| `--mise-ink-inverse` | `#F7EFE2` | Text on dark surfaces |
+| `--mise-action` / `--mise-action-hover` | `#1D1510` / `#2E2119` | Primary dark-fill surfaces (terminal shell, high-contrast buttons) |
+| `--mise-saffron` / `--mise-saffron-deep` / `--mise-saffron-fill` | `#A93A0C` / `#7A2A08` / `#F2DCC8` | Brand accent, primary CTA fill, focus rings, "in progress" states — **repurposed from a bright gold to a deep oxblood-rust; any rule pairing a saffron *background* with dark ink text needs light/inverse text instead, see the contrast note below** |
+| `--mise-success` / `--mise-success-fill` | `#2F5E3D` / `#DCE8DA` | Available / synced / served / positive |
+| `--mise-warning` / `--mise-warning-fill` | `#96530E` / `#F0DCC0` | Needs attention (bill requested, low stock) |
+| `--mise-danger` / `--mise-danger-fill` | `#8E2B21` / `#F0DAD5` | Blocked / out of service / cancelled |
+| `--mise-info` / `--mise-info-fill` | `#1A4A70` / `#DCE6EE` | Neutral in-progress (seated, reserved, preparing) |
+| `--mise-service-*` | dark surface set (deepened further, e.g. base `#100D0A`) | Sidebar, auth art, cashier terminal chrome |
+
+**Contrast note (learned the hard way this pass):** `--mise-saffron` going from a light gold to a
+dark oxblood-rust broke every existing rule that had a saffron *background* paired with dark ink
+text — that pairing was correct against the old bright gold and unreadable against the new dark
+one. Six such rules were found and fixed across the app (brand marks, the terminal's login/unlock
+buttons, an onboarding step indicator, the landing footer CTA) by flipping their text to
+`--mise-ink-inverse`. **If you ever change a color token's lightness significantly, grep for every
+rule that uses it as a `background` and check the paired text color — don't assume the rest of the
+codebase adapts automatically just because the variable name didn't change.**
 
 ### Status color semantics (must stay consistent across kitchen/table/order/inventory)
 
@@ -50,24 +71,33 @@ Extend this table, don't replace it, when Inventory (low-stock/expiring) and Loy
 
 ## Typography
 
-**Archivo** — headings, UI text, buttons, labels. **IBM Plex Mono** — prices, quantities,
-receipt/order numbers, timestamps: anything numeric that benefits from tabular figures.
+**Fraunces** (new, `--mise-font-display`) — page/section headings, dish names, dashboard numerals,
+the brand wordmark: anywhere the product should read as hospitality rather than admin tooling.
+**Archivo** — everything else: dense UI text, buttons, labels, form fields, body copy. **IBM Plex
+Mono** — prices, quantities, receipt/order numbers, timestamps: anything numeric that benefits from
+tabular figures, always, never Fraunces (a premium display serif on a number that needs to stay
+visually stable as digits change is the wrong call — mono does that job, keep it there).
 
 | Role | Spec |
 |---|---|
-| Display (landing hero) | `600 clamp(46px,5.2vw,76px)/1.02 Archivo` |
-| Page heading (h1) | `600 clamp(26–36px,~3vw)/1.12–1.15 Archivo` |
-| Section heading (h2) | `600 20–24px Archivo` |
+| Display (landing hero) | `500 clamp(46px,5.2vw,80px)/1.02 var(--mise-font-display)` |
+| Page heading (h1) | `500 clamp(26–42px,~3vw)/1.1 var(--mise-font-display)` |
+| Section heading (h2) | `500 19–26px var(--mise-font-display)` |
 | Body | `400 14–16px Archivo` |
 | Label / kicker | `600 10–12px Archivo`, uppercase, `.2em` tracking |
 | Supporting text | `400 12–13px Archivo`, `--mise-ink-secondary`/`muted` |
-| Numeric / price | `500–600 13–20px IBM Plex Mono` |
+| Numeric / price | `500–600 13–28px IBM Plex Mono` |
 | Status chip text | `600 10–11px Archivo` |
 
 Sizes above now also exist as tokens (`styles.css` `:root`): `--mise-text-display/h1/h2/h3/body/
 small/micro` and `--mise-text-numeric-lg/md/sm`. Screens redesigned from here on size text from
 these instead of a one-off px value; screens not yet touched keep their existing inline sizes —
-this is additive, not a forced rewrite of every screen at once.
+this is additive, not a forced rewrite of every screen at once. The Fraunces rollout follows the
+same rule: it's live on every screen this pass reached (Register, Payment, Dashboard, Landing,
+Auth, the app shell + terminal shell nav, Settings, Orders, and every screen `PageHeader`/`Dialog`/
+`EmptyState` render on, since those are shared) — a screen that still shows a bold Archivo heading
+just hasn't been reached yet, not a deliberate exception. Check `docs/day-plans/day5-*.md` for
+what's still in progress before assuming a gap is intentional.
 
 ## Icons
 
@@ -97,11 +127,14 @@ is migrated; `Mark()` is the one deliberate exception.
 
 - Spacing scale: `--mise-space-2/4/8/12/16/24/32` (px). Pick from this scale; don't invent a
   one-off pixel value.
-- Radius scale: `--mise-r1..r4` = `2/4/8/12px`. Small controls → r1/r2, cards → r3, large
-  surfaces (modals, hero art) → r4. Nothing bigger — no "huge rounded" cards.
-- Elevation: `--mise-e1/e2/e3`, increasing shadow depth. Use sparingly — flat-with-hairline-
-  border is the default; elevation is for genuinely floating UI (the Floor detail drawer,
-  discount popover).
+- Radius scale: `--mise-r1..r4` = `3/8/14/22px` (more generous than MISE's original `2/4/8/12`, part
+  of Ember's softer, more premium feel). Small controls → r1/r2, cards → r3, large surfaces
+  (modals, hero art) → r4. Nothing bigger — no "huge rounded" cards.
+- Elevation: `--mise-e1/e2/e3`, increasing shadow depth, now warmer-toned and a touch more
+  pronounced than MISE's original (`rgba(20,14,8,…)` instead of a cooler grey). Flat-with-hairline-
+  border is still the default; elevation is for genuinely floating UI (the Floor detail drawer,
+  discount popover) plus, new in Ember, a subtle hover-lift shadow on interactive cards (menu
+  tiles, table cards) — see the Brand section above.
 - Touch targets: 44px minimum height on every interactive control (buttons, inputs, table
   cards) — already the convention throughout; keep it for every new component.
 
