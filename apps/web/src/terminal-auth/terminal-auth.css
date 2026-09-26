@@ -523,21 +523,21 @@
   gap: var(--mise-space-8);
   margin: 0 var(--mise-space-8) var(--mise-space-32);
   color: var(--mise-service-ink);
-  font: 700 17px 'Archivo', sans-serif;
-  letter-spacing: -.01em;
+  font: 500 19px var(--mise-font-display);
+  letter-spacing: 0;
   text-decoration: none;
 }
 .cashier-pos-brand span {
   display: grid;
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   place-items: center;
   border-radius: var(--mise-r2);
   background: var(--mise-saffron);
-  color: var(--mise-service-base);
-  font: 700 14px 'Archivo', sans-serif;
+  color: var(--mise-service-ink);
+  font: 500 15px var(--mise-font-display);
 }
-.cashier-pos-sidebar nav { display: grid; gap: 2px; }
+.cashier-pos-sidebar nav { display: grid; gap: 3px; }
 .cashier-pos-sidebar nav a,
 .cashier-nav-muted {
   display: flex;
@@ -550,12 +550,13 @@
   color: var(--mise-service-ink-muted);
   font: 500 13px 'Archivo', sans-serif;
   text-decoration: none;
+  transition: background .15s ease, color .15s ease;
 }
 .cashier-pos-sidebar nav a:hover { background: var(--mise-service-elevated); color: var(--mise-service-ink); }
 .cashier-pos-sidebar nav a.active {
-  background: var(--mise-service-elevated);
-  color: var(--mise-service-ink);
-  border-left-color: var(--mise-saffron);
+  background: var(--mise-saffron);
+  color: var(--mise-ink-inverse);
+  border-left-color: transparent;
 }
 .cashier-nav-muted { color: var(--mise-service-ink-muted); opacity: .7; }
 .cashier-pos-sidebar footer {
