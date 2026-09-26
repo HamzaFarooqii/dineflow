@@ -116,15 +116,16 @@ html{font-family:'Archivo',sans-serif;color:var(--mise-ink);background:var(--mis
 .brand-dark .leaf-mark{background:var(--mise-saffron);color:var(--mise-ink)}
 .kicker{font:600 10px 'Archivo',sans-serif;letter-spacing:.2em;text-transform:uppercase;color:var(--mise-ink-muted);margin:0 0 16px}
 /* Flat by default: hover tints background/border only — elevation and position never move. */
-.cta{display:inline-flex;align-items:center;justify-content:center;gap:12px;min-height:48px;padding:0 22px;border:1px solid var(--mise-action);border-radius:var(--mise-r3);background:var(--mise-action);color:var(--mise-ink-inverse);text-decoration:none;font:600 15px 'Archivo',sans-serif;min-width:176px;transition:background .15s ease,border-color .15s ease,color .15s ease}
-.cta:hover{background:var(--mise-action-hover);border-color:var(--mise-action-hover)}
+.cta{display:inline-flex;align-items:center;justify-content:center;gap:12px;min-height:48px;padding:0 22px;border:1px solid var(--mise-saffron);border-radius:var(--mise-r3);background:var(--mise-saffron);color:var(--mise-ink-inverse);text-decoration:none;font:600 15px 'Archivo',sans-serif;min-width:176px;box-shadow:var(--mise-e1);transition:background .18s ease,border-color .18s ease,color .18s ease,transform .15s ease,box-shadow .15s ease}
+.cta:hover{background:var(--mise-saffron-deep);border-color:var(--mise-saffron-deep);transform:translateY(-1px);box-shadow:var(--mise-e2)}
+.cta:active{transform:translateY(0);box-shadow:var(--mise-e1)}
 .cta b{font-size:16px;font-weight:600}
 /* Secondary button (docs/DESIGN_SYSTEM.md's Components table) — outlined, used everywhere from
    discount/customer actions to Floor's new management controls. Previously referenced by class
    name in a dozen screens but never actually given base styling outside one narrow selector
    (.discount-actions .secondary-cta); this is that missing base rule. */
 .secondary-cta{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 18px;border:1px solid var(--mise-border-strong);border-radius:var(--mise-r3);background:var(--mise-surface);color:var(--mise-ink);text-decoration:none;font:600 13px 'Archivo',sans-serif;transition:background .15s ease,border-color .15s ease,color .15s ease}
-.secondary-cta:hover:not(:disabled){background:var(--mise-surface-sunken);border-color:var(--mise-ink-muted)}
+.secondary-cta:hover:not(:disabled){background:var(--mise-surface-sunken);border-color:var(--mise-saffron);color:var(--mise-saffron-deep)}
 .secondary-cta:disabled{color:var(--mise-ink-disabled);cursor:not-allowed}
 .secondary-cta.active{background:var(--mise-ink);border-color:var(--mise-ink);color:var(--mise-ink-inverse)}
 /* ── MISE: marketing header + hero ───────────────────────────────────────── */
@@ -137,7 +138,7 @@ html{font-family:'Archivo',sans-serif;color:var(--mise-ink);background:var(--mis
 .header-actions .cta{min-width:0;min-height:44px;padding:0 18px}
 .hero{min-height:640px;display:grid;grid-template-columns:46% 54%;padding-top:76px;background:var(--mise-canvas);overflow:hidden}
 .hero-copy{padding:56px clamp(20px,4vw,56px);align-self:center;z-index:2}
-.hero-copy h1{font:600 clamp(46px,5.2vw,76px)/1.02 'Archivo',sans-serif;letter-spacing:-.035em;margin:0;color:var(--mise-ink)}
+.hero-copy h1{font:500 clamp(46px,5.2vw,80px)/1.02 var(--mise-font-display);letter-spacing:-.015em;margin:0;color:var(--mise-ink)}
 .hero-copy h1 i{font-style:normal;color:var(--mise-saffron-deep)}
 /* The one saffron accent on this page, alongside the footer action. */
 .brush{display:block;width:88px;height:3px;border-radius:var(--mise-r1);background:var(--mise-saffron);margin:24px 0 18px}
@@ -178,7 +179,7 @@ html{font-family:'Archivo',sans-serif;color:var(--mise-ink);background:var(--mis
 .mini-cart strong{display:flex;justify-content:space-between;align-items:baseline;font:600 12px 'Archivo',sans-serif;color:var(--mise-ink)}
 .mini-cart strong b{font:600 15px 'IBM Plex Mono',monospace}/* ── MISE: feature strip, section notes, footer ──────────────────────────── */
 .feature-strip{display:grid;grid-template-columns:20% repeat(4,1fr);background:var(--mise-surface);border-top:1px solid var(--mise-border-hairline);border-bottom:1px solid var(--mise-border-hairline);min-height:180px}
-.strip-quote{display:flex;align-items:center;background:var(--mise-ink);color:var(--mise-ink-inverse);padding:30px 28px;font:600 20px/1.3 'Archivo',sans-serif;letter-spacing:-.02em}
+.strip-quote{display:flex;align-items:center;background:var(--mise-action);color:var(--mise-ink-inverse);padding:30px 28px;font:500 22px/1.3 var(--mise-font-display);letter-spacing:-.01em}
 .feature-strip article{padding:34px 24px;display:grid;justify-items:center;align-content:start;text-align:center;gap:9px;border-right:1px solid var(--mise-border-hairline)}
 .feature-strip article:last-child{border-right:0}
 .feature-strip article>span{display:grid;place-items:center;width:34px;height:34px;border-radius:var(--mise-r2);background:var(--mise-surface-sunken);color:var(--mise-ink)}
@@ -186,17 +187,18 @@ html{font-family:'Archivo',sans-serif;color:var(--mise-ink);background:var(--mis
 .feature-strip small{max-width:210px;font-size:12px;line-height:1.45;color:var(--mise-ink-secondary)}
 .feature-strip .metrics{display:none}
 .landing-note{padding:56px clamp(20px,6vw,88px);border-top:1px solid var(--mise-border-hairline);background:var(--mise-canvas)}
-.landing-note h2{font:600 clamp(28px,3vw,38px)/1.12 'Archivo',sans-serif;letter-spacing:-.03em;color:var(--mise-ink);margin:0 0 12px}
+.landing-note h2{font:500 clamp(30px,3vw,40px)/1.1 var(--mise-font-display);letter-spacing:-.01em;color:var(--mise-ink);margin:0 0 12px}
 .landing-note p{max-width:520px;margin:0;font-size:16px;line-height:1.55;color:var(--mise-ink-secondary)}
-.landing footer{background:var(--mise-ink);color:var(--mise-ink-inverse);min-height:112px;display:flex;flex-wrap:wrap;align-items:center;gap:24px 40px;padding:24px clamp(20px,4vw,56px)}
+.landing footer{background:var(--mise-action);color:var(--mise-ink-inverse);min-height:112px;display:flex;flex-wrap:wrap;align-items:center;gap:24px 40px;padding:24px clamp(20px,4vw,56px)}
 .landing footer .brand{font-size:21px}
 .landing footer .brand small{display:none}
 .landing footer nav{display:flex;gap:22px;flex-wrap:wrap}
 .landing footer nav a{font-size:12px;font-weight:500;color:var(--mise-service-ink-muted);text-decoration:none}
 .landing footer nav a:hover{color:var(--mise-ink-inverse)}
 .landing footer>span{font:600 10px 'Archivo',sans-serif;letter-spacing:.24em;color:var(--mise-service-ink-muted);flex:1}
-.landing footer .cta{background:var(--mise-saffron);border-color:var(--mise-saffron);color:var(--mise-ink)}
-.landing footer .cta:hover{background:var(--mise-saffron-fill);border-color:var(--mise-saffron-fill);color:var(--mise-ink)}
+/* .landing footer .cta now inherits the base .cta's saffron-fill + inverse-text pairing directly --
+   its old override (dark ink text on a now-dark saffron fill) stopped being readable once saffron
+   became a deep oxblood-rust rather than a bright gold. */
 
 /* ── MISE: modules grid, offline-first section, getting-started steps ─────── */
 .section-head{max-width:640px;margin:0 auto 40px;padding:0 clamp(20px,6vw,88px);text-align:center}
@@ -302,18 +304,18 @@ html{font-family:'Archivo',sans-serif;color:var(--mise-ink);background:var(--mis
 .categories button{white-space:nowrap;min-height:40px;padding:0 14px;border:1px solid var(--mise-border-strong);border-radius:var(--mise-r2);background:var(--mise-surface);color:var(--mise-ink-secondary);font:500 13px 'Archivo',sans-serif;transition:background .15s ease,border-color .15s ease,color .15s ease}
 .categories button:hover{background:var(--mise-surface-sunken)}
 .categories .active{background:var(--mise-ink);border-color:var(--mise-ink);color:var(--mise-ink-inverse)}
-.catalog-grid{display:grid;grid-template-columns:repeat(4,minmax(140px,1fr));gap:10px;margin-top:12px}
-.catalog-card{min-width:0;display:grid;align-content:start;gap:7px;text-align:left;padding:10px;border:1px solid var(--mise-border-hairline);border-radius:var(--mise-r3);background:var(--mise-surface);transition:background .15s ease,border-color .15s ease}
-.catalog-card:hover:not(:disabled){background:var(--mise-canvas);border-color:var(--mise-border-strong)}
-.catalog-card strong{font-size:13px;font-weight:600;line-height:1.3;color:var(--mise-ink)}
-.catalog-card>span{font:500 16px 'IBM Plex Mono',monospace;color:var(--mise-ink)}
+.catalog-grid{display:grid;grid-template-columns:repeat(4,minmax(140px,1fr));gap:12px;margin-top:12px}
+.catalog-card{min-width:0;display:grid;align-content:start;gap:7px;text-align:left;padding:12px;border:1px solid var(--mise-border-hairline);border-radius:var(--mise-r3);background:var(--mise-surface);transition:border-color .18s ease,transform .18s ease,box-shadow .18s ease}
+.catalog-card:hover:not(:disabled){border-color:var(--mise-border-strong);transform:translateY(-3px);box-shadow:var(--mise-e2)}
+.catalog-card strong{font:500 15px var(--mise-font-display);line-height:1.25;color:var(--mise-ink)}
+.catalog-card>span{font:600 16px 'IBM Plex Mono',monospace;color:var(--mise-saffron)}
 .catalog-card small{max-width:100%;white-space:normal;width:max-content;border-radius:var(--mise-r1);background:var(--mise-surface-sunken);color:var(--mise-ink-muted);padding:3px 7px;font:500 10px 'IBM Plex Mono',monospace}
 .catalog-card small.low{background:var(--mise-warning-fill);color:var(--mise-warning)}
 .product-art-img{height:118px;width:100%;object-fit:cover;border-radius:var(--mise-r2);background:var(--mise-surface-sunken)}
 .menu-item-station{background:var(--mise-info-fill)!important;color:var(--mise-info)!important}
-.sale-cart{display:flex;flex-direction:column;min-width:0;padding:18px;border:1px solid var(--mise-border-hairline);border-radius:var(--mise-r3);background:var(--mise-surface);position:sticky;top:72px;max-height:calc(100vh - 92px);overflow:auto}
+.sale-cart{display:flex;flex-direction:column;min-width:0;padding:20px;border:1px solid var(--mise-border-hairline);border-radius:var(--mise-r3);background:var(--mise-surface);box-shadow:var(--mise-e1);position:sticky;top:72px;max-height:calc(100vh - 92px);overflow:auto}
 .cart-title{display:flex;align-items:center;gap:16px;border-bottom:1px solid var(--mise-border-hairline);padding-bottom:14px}
-.cart-title h2{flex:1;margin:0;font:600 17px 'Archivo',sans-serif;letter-spacing:-.01em;color:var(--mise-ink)}
+.cart-title h2{flex:1;margin:0;font:500 22px var(--mise-font-display);letter-spacing:-.01em;color:var(--mise-ink)}
 .order-type-selector{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:14px 0;padding:3px;border-radius:var(--mise-r2);background:var(--mise-surface-sunken)}
 .order-type-selector button{min-height:40px;border:0;border-radius:var(--mise-r1);background:transparent;color:var(--mise-ink-secondary);font:600 12px 'Archivo',sans-serif;transition:background .15s ease,color .15s ease}
 .order-type-selector button.active{background:var(--mise-ink);color:var(--mise-ink-inverse)}
@@ -329,27 +331,30 @@ html{font-family:'Archivo',sans-serif;color:var(--mise-ink);background:var(--mis
 .quantity b{min-width:26px;text-align:center;font:500 14px 'IBM Plex Mono',monospace;color:var(--mise-ink)}
 .text-action{min-height:44px;padding:8px;border:0;border-radius:var(--mise-r2);background:transparent;color:var(--mise-saffron-deep);font:600 12px 'Archivo',sans-serif}
 .text-action:hover:not(:disabled){background:var(--mise-saffron-fill)}
-.empty-cart{color:var(--mise-ink-muted);font-size:13px;padding:26px 0}
+.empty-cart{color:var(--mise-ink-muted);font-size:13px;padding:34px 16px;text-align:center;border:1.5px dashed var(--mise-border-strong);border-radius:var(--mise-r3);background:var(--mise-surface-sunken);margin:14px 0}
 .customer{width:100%;min-height:44px;margin-top:12px;padding:11px;border:1px dashed var(--mise-border-strong);border-radius:var(--mise-r2);background:var(--mise-surface);text-align:left;color:var(--mise-ink-secondary);font-size:13px}
 .totals{display:grid;gap:10px;margin:18px 0;padding:14px;border-radius:var(--mise-r2);background:var(--mise-surface-sunken)}
 .totals span,.totals strong{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;color:var(--mise-ink-secondary)}
 .totals span b{font:400 13px 'IBM Plex Mono',monospace;color:var(--mise-ink)}
 .totals strong{border-top:1px solid var(--mise-border-strong);padding-top:12px;font:600 15px 'Archivo',sans-serif;color:var(--mise-ink)}
-.totals strong b{font:600 26px 'IBM Plex Mono',monospace;letter-spacing:-.02em;color:var(--mise-ink)}
-.totals .totals-discount b{color:var(--mise-saffron-deep)}
+.totals strong b{font:600 28px 'IBM Plex Mono',monospace;letter-spacing:-.02em;color:var(--mise-saffron)}
+.totals .totals-discount b{color:var(--mise-success)}
 .sale-cart .cta{width:100%;min-height:52px}
 
 /* ── MISE: dashboard ─────────────────────────────────────────────────────── */
 .dashboard{padding:32px 16px;font-family:'Archivo',sans-serif}
-.dashboard h1{margin:0;font:600 clamp(28px,3vw,36px)/1.12 'Archivo',sans-serif;letter-spacing:-.03em;color:var(--mise-ink)}
+.dashboard h1{margin:0;font:500 clamp(30px,3vw,40px)/1.1 var(--mise-font-display);letter-spacing:-.01em;color:var(--mise-ink)}
 .subtitle{font-size:14px;color:var(--mise-ink-secondary);margin:6px 0 22px}
-.stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
-.stat-row article,.chart,.top-products{display:grid;gap:8px;align-content:start;padding:16px;border:1px solid var(--mise-border-hairline);border-radius:var(--mise-r3);background:var(--mise-surface)}
+.stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.stat-row article,.chart,.top-products{display:grid;gap:8px;align-content:start;padding:18px;border:1px solid var(--mise-border-hairline);border-radius:var(--mise-r3);background:var(--mise-surface);box-shadow:var(--mise-e1)}
+.stat-row article:first-child{background:var(--mise-action);border-color:var(--mise-action)}
+.stat-row article:first-child small{color:#C9BCAF}
+.stat-row article:first-child b{color:var(--mise-ink-inverse)}
 .stat-row small{font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--mise-ink-muted)}
-.stat-row b{font:600 26px 'IBM Plex Mono',monospace;letter-spacing:-.02em;color:var(--mise-ink)}
+.stat-row b{font:600 28px 'IBM Plex Mono',monospace;letter-spacing:-.02em;color:var(--mise-ink)}
 .stat-row span{font:500 11px 'IBM Plex Mono',monospace;color:var(--mise-success)}
-.dash-grids{display:grid;grid-template-columns:1.25fr 1fr;gap:12px;margin-top:12px}
-.dash-grids h3{margin:0;font:600 15px 'Archivo',sans-serif;color:var(--mise-ink)}
+.dash-grids{display:grid;grid-template-columns:1.25fr 1fr;gap:14px;margin-top:14px}
+.dash-grids h3{margin:0;font:500 19px var(--mise-font-display);color:var(--mise-ink)}
 .dash-grids h3 button{float:right;min-height:32px;padding:0 10px;border:1px solid var(--mise-border-strong);border-radius:var(--mise-r2);background:var(--mise-surface);color:var(--mise-ink-secondary);font:500 11px 'Archivo',sans-serif}
 .chart{height:260px}
 .bars{height:150px;border-bottom:1px solid var(--mise-border-hairline);display:flex;align-items:end;gap:10px;padding:0 16px}
@@ -369,13 +374,13 @@ html{font-family:'Archivo',sans-serif;color:var(--mise-ink);background:var(--mis
 
 /* ── MISE: payment ───────────────────────────────────────────────────────── */
 .payment-page{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:20px;max-width:1120px;margin:0 auto;padding:24px 8px;font-family:'Archivo',sans-serif}
-.pay-main,.payment-summary{border:1px solid var(--mise-border-hairline);border-radius:var(--mise-r3);background:var(--mise-surface)}
-.pay-main{padding:24px}
+.pay-main,.payment-summary{border:1px solid var(--mise-border-hairline);border-radius:var(--mise-r3);background:var(--mise-surface);box-shadow:var(--mise-e1)}
+.pay-main{padding:26px}
 .pay-main>a{display:inline-block;margin-bottom:18px;font-size:13px;font-weight:500;color:var(--mise-ink-secondary);text-decoration:none}
-.pay-main>a:hover{color:var(--mise-ink)}
+.pay-main>a:hover{color:var(--mise-saffron)}
 .pay-main>.kicker{margin:0 0 6px}
-.payment-page h1{margin:0 0 20px;font:600 clamp(26px,3vw,34px)/1.12 'Archivo',sans-serif;letter-spacing:-.03em;color:var(--mise-ink)}
-.payment-page h2{margin:2px 0 20px;font:600 24px 'Archivo',sans-serif;color:var(--mise-ink)}
+.payment-page h1{margin:0 0 20px;font:500 clamp(28px,3vw,38px)/1.1 var(--mise-font-display);letter-spacing:-.01em;color:var(--mise-ink)}
+.payment-page h2{margin:2px 0 20px;font:500 26px var(--mise-font-display);color:var(--mise-ink)}
 .pay-main>small,.pay-main>p{font-size:13px;color:var(--mise-ink-secondary)}
 /* Segmented control: two halves of one control, selected segment fills with ink. */
 .methods{display:flex;flex-wrap:wrap;border:0;padding:0;margin:10px 0 22px}
@@ -384,7 +389,7 @@ html{font-family:'Archivo',sans-serif;color:var(--mise-ink);background:var(--mis
 .methods button:first-of-type{border-radius:var(--mise-r3) 0 0 var(--mise-r3)}
 .methods button:last-of-type{border-radius:0 var(--mise-r3) var(--mise-r3) 0;margin-left:-1px}
 .methods button:hover{background:var(--mise-surface-sunken)}
-.methods .selected{background:var(--mise-ink);border-color:var(--mise-ink);color:var(--mise-ink-inverse);position:relative;z-index:1}
+.methods .selected{background:var(--mise-action);border-color:var(--mise-action);color:var(--mise-ink-inverse);position:relative;z-index:1}
 .pay-main label{display:grid;gap:8px;margin-top:20px;font-size:12px;font-weight:600;color:var(--mise-ink)}
 .pay-main label input{width:100%;min-height:52px;padding:0 14px;border:1px solid var(--mise-border-strong);border-radius:var(--mise-r2);background:var(--mise-surface);color:var(--mise-ink);font:500 18px 'IBM Plex Mono',monospace;outline:0;transition:border-color .15s ease,box-shadow .15s ease}
 .pay-main label input:focus{border-color:var(--mise-saffron);box-shadow:0 0 0 3px var(--mise-saffron-fill)}
@@ -407,7 +412,7 @@ html{font-family:'Archivo',sans-serif;color:var(--mise-ink);background:var(--mis
 .summary-lines span,.summary-lines strong{display:flex;justify-content:space-between;align-items:baseline}
 .summary-lines b{font:400 14px 'IBM Plex Mono',monospace;color:var(--mise-ink)}
 .summary-lines strong{border-top:1px solid var(--mise-border-hairline);padding-top:14px;font:600 14px 'Archivo',sans-serif;color:var(--mise-ink)}
-.summary-lines strong b{font:600 22px 'IBM Plex Mono',monospace;letter-spacing:-.02em}
+.summary-lines strong b{font:600 24px 'IBM Plex Mono',monospace;letter-spacing:-.02em;color:var(--mise-saffron)}
 .payment-summary .cta{width:100%;min-height:52px}
 .print{width:100%;min-height:48px;margin-top:10px;padding:0 14px;border:1px solid var(--mise-border-strong);border-radius:var(--mise-r3);background:var(--mise-surface);color:var(--mise-ink);font:500 14px 'Archivo',sans-serif}
 .print:hover{background:var(--mise-surface-sunken)}.placeholder{padding:80px;max-width:640px}.placeholder h1{font:600 clamp(32px,4vw,44px)/1.1 'Archivo',sans-serif;letter-spacing:-.03em;margin:0 0 12px;color:var(--mise-ink)}.placeholder p:last-child{max-width:440px;color:var(--mise-ink-muted);font-size:15px;line-height:1.5}@media(max-width:1050px){.site-header nav{display:none}.hero{grid-template-columns:1fr}.hero-art{display:none}.feature-strip{grid-template-columns:1fr 1fr}.strip-quote,.metrics{display:none}.feature-strip article:nth-child(odd){border-right:0}.catalog-grid{grid-template-columns:repeat(3,1fr)}.register-page{grid-template-columns:minmax(0,1fr) 340px}}@media(max-width:700px){.site-header{height:72px;padding:0 20px}.site-header .brand{font-size:21px}.site-header .brand small{display:none}.header-actions>a{display:none}.hero{padding-top:72px;min-height:auto}.hero-copy{padding:44px 24px}.feature-strip{display:none}.landing footer>span{display:none}.landing footer{justify-content:space-between;gap:16px}.auth-page{grid-template-columns:1fr}.auth-art{min-height:300px;padding:30px}.auth-form{padding:40px 24px}.pos-app{grid-template-columns:1fr}.app-sidebar{display:none}.app-main{padding:0 9px 9px}.app-top>span:last-child{display:none}.register-page,.payment-page{grid-template-columns:1fr;padding:15px 0}.catalog-tools{display:block}.categories{margin-top:6px;overflow:auto}.catalog-grid{grid-template-columns:repeat(2,1fr)}.stat-row{grid-template-columns:1fr 1fr}.dash-grids,.health{grid-template-columns:1fr}.dashboard{padding:25px 8px}.payment-page{gap:16px}.payment-summary{grid-row:1}}
