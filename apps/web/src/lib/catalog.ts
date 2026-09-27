@@ -1,4 +1,4 @@
-import { posDb, type LocalProduct } from './db'
+import { posDb, type LocalModifierGroup, type LocalProduct } from './db'
 import { requireSupabase } from './supabase'
 
 const apiUrl = import.meta.env.VITE_API_URL as string | undefined
@@ -91,6 +91,7 @@ type Snapshot = {
   categories: { id: string; store_id: string; name: string; active: boolean }[]
   tax_rates: { id: string; store_id: string; name: string; rate_bps: number; active: boolean }[]
   products: (Omit<LocalProduct, 'unit_price_cents' | 'revision'> & { unit_price_cents: string; revision: string })[]
+  modifier_groups?: LocalModifierGroup[]
   stock: { product_id: string; current_stock: number; updated_at: string }[]
 }
 
@@ -107,13 +108,15 @@ export async function loadCatalog(storeId: string, terminal = false): Promise<'u
   const snapshot = await response.json() as Snapshot
   if (snapshot.store?.id !== storeId) throw new Error('Catalog response belongs to another store.')
   if (!/^\d+$/.test(snapshot.checkpoint)) throw new Error('Catalog checkpoint is invalid.')
+  const modifiersByProduct = new Map<string, LocalModifierGroup[]>()
+  for (const group of snapshot.modifier_groups ?? []) modifiersByProduct.set(group.product_id, [...(modifiersByProduct.get(group.product_id) ?? []), group])
   const products = snapshot.products.map(product => {
     const price = Number(product.unit_price_cents)
     const revision = Number(product.revision)
     if (!Number.isSafeInteger(price) || price < 0 || price > 1_000_000_000 || !Number.isSafeInteger(revision)) {
       throw new Error('Catalog contains an invalid price or revision.')
     }
-    return { ...product, unit_price_cents: price, revision }
+    return { ...product, unit_price_cents: price, revision, modifier_groups: modifiersByProduct.get(product.id) ?? [] }
   })
   await posDb.transaction('rw', [posDb.store_config, posDb.categories, posDb.tax_rates,
     posDb.products, posDb.server_stock, posDb.stock_adjustments, posDb.outbox], async () => {

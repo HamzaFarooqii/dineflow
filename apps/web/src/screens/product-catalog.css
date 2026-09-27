@@ -1,7 +1,7 @@
 /* ================================================================
    Menu management — Dineflow back of house
    MISE design system: flat by default, hairline separators, warm
-   neutral canvas, Archivo for text, IBM Plex Mono for anything
+   neutral canvas, Inter for text, JetBrains Mono for anything
    numeric (prices, SKUs, counts). Every colour, radius, spacing and
    shadow below comes from the :root tokens in styles.css — no new
    values are invented here.
@@ -15,7 +15,7 @@
 .pc-page {
   padding: 0 0 72px;
   background: var(--mise-canvas);
-  font-family: 'Archivo', sans-serif;
+  font-family: 'Inter', sans-serif;
   color: var(--mise-ink);
 }
 
@@ -31,7 +31,7 @@
   flex-wrap: wrap;
 }
 .pc-breadcrumb {
-  font: 600 10px 'Archivo', sans-serif;
+  font: 600 10px 'Inter', sans-serif;
   letter-spacing: .16em;
   text-transform: uppercase;
   color: var(--mise-ink-muted);
@@ -39,7 +39,7 @@
 }
 .pc-breadcrumb span { color: var(--mise-border-strong); margin: 0 6px; }
 .pc-title {
-  font: 600 34px/1.05 'Archivo', sans-serif;
+  font: 600 34px/1.05 'Inter', sans-serif;
   letter-spacing: -.025em;
   color: var(--mise-ink);
   margin: 0 0 6px;
@@ -90,7 +90,7 @@
   gap: var(--mise-space-8);
   padding: 12px 14px;
   border-radius: var(--mise-r2);
-  font: 500 13px 'Archivo', sans-serif;
+  font: 500 13px 'Inter', sans-serif;
   line-height: 1.45;
   margin-bottom: var(--mise-space-16);
   border: 1px solid transparent;
@@ -146,7 +146,7 @@
 .pc-search svg { color: var(--mise-ink-muted); flex-shrink: 0; }
 .pc-search-input {
   border: 0; background: transparent; flex: 1; min-width: 0;
-  font: 14px 'Archivo', sans-serif; color: var(--mise-ink); outline: 0;
+  font: 14px 'Inter', sans-serif; color: var(--mise-ink); outline: 0;
 }
 .pc-search-input::placeholder { color: var(--mise-ink-muted); }
 .pc-search-clear {
@@ -161,6 +161,7 @@
 /* Category filter select -- now a <SelectField> (apps/web/src/components/SelectField.tsx);
    .pc-cat-select only adds the one thing that component doesn't set for every caller. */
 .pc-cat-select { min-width: 180px; }
+.pc-status-select { min-width: 154px; }
 
 /* Clear filters */
 .pc-clear-btn {
@@ -171,7 +172,7 @@
   background: var(--mise-surface);
   border-radius: var(--mise-r2);
   padding: 0 14px;
-  font: 600 12px 'Archivo', sans-serif;
+  font: 600 12px 'Inter', sans-serif;
   color: var(--mise-ink-secondary);
   cursor: pointer;
   min-height: 44px;
@@ -186,7 +187,7 @@
 
 /* ─── Results meta ───────────────────────────────────────────── */
 .pc-meta {
-  font: 600 10px 'Archivo', sans-serif;
+  font: 600 10px 'Inter', sans-serif;
   letter-spacing: .12em;
   text-transform: uppercase;
   color: var(--mise-ink-muted);
@@ -204,13 +205,13 @@
 /* Column labels ride above the cards */
 .pc-thead {
   display: grid;
-  grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
+  grid-template-columns: minmax(240px,2fr) .85fr 1fr 1.05fr 1fr 84px;
   gap: 0;
   background: transparent;
   padding: 0 var(--mise-space-16) var(--mise-space-4);
 }
 .pc-thead span {
-  font: 600 10px 'Archivo', sans-serif;
+  font: 600 10px 'Inter', sans-serif;
   letter-spacing: .12em;
   text-transform: uppercase;
   color: var(--mise-ink-muted);
@@ -220,7 +221,7 @@
 /* Menu item card */
 .pc-row {
   display: grid;
-  grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
+  grid-template-columns: minmax(240px,2fr) .85fr 1fr 1.05fr 1fr 84px;
   align-items: center;
   gap: 0;
   padding: 10px var(--mise-space-16);
@@ -231,6 +232,8 @@
   transition: border-color .12s ease, background .12s ease;
 }
 .pc-row:hover { border-color: var(--mise-border-strong); }
+.pc-row.archived{background:var(--mise-surface-sunken)}
+.pc-row.archived .pc-avatar,.pc-row.archived .pc-avatar-img{filter:grayscale(.75);opacity:.72}
 
 /* Dish cell — image forward */
 .pc-cell-product {
@@ -248,7 +251,7 @@
   border: 1px solid var(--mise-border-hairline);
   display: grid;
   place-items: center;
-  font: 600 20px/1 'Archivo', sans-serif;
+  font: 600 20px/1 'Inter', sans-serif;
   color: var(--mise-ink-muted);
   flex-shrink: 0;
   text-transform: uppercase;
@@ -265,13 +268,13 @@
   background: var(--mise-surface-sunken);
 }
 .pc-prod-name {
-  font: 600 14.5px 'Archivo', sans-serif;
+  font: 600 14.5px 'Inter', sans-serif;
   letter-spacing: -.005em;
   color: var(--mise-ink);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .pc-prod-sku {
-  font: 500 11px 'IBM Plex Mono', monospace;
+  font: 500 11px 'JetBrains Mono', monospace;
   color: var(--mise-ink-muted);
   letter-spacing: .02em;
   margin-top: 3px;
@@ -279,7 +282,7 @@
 
 /* Other cells */
 .pc-cell {
-  font: 500 12.5px 'Archivo', sans-serif;
+  font: 500 12.5px 'Inter', sans-serif;
   color: var(--mise-ink-secondary);
   text-align: right;
 }
@@ -287,7 +290,7 @@
 
 /* Barcode cell — tabular */
 .pc-cell-code {
-  font: 500 11.5px 'IBM Plex Mono', monospace;
+  font: 500 11.5px 'JetBrains Mono', monospace;
   font-variant-numeric: tabular-nums;
   color: var(--mise-ink-muted);
   letter-spacing: .02em;
@@ -302,7 +305,7 @@
   border: 1px solid transparent;
   border-radius: var(--mise-r2);
   padding: 5px 10px;
-  font: 600 11px 'Archivo', sans-serif;
+  font: 600 11px 'Inter', sans-serif;
   white-space: nowrap;
   max-width: 120px;
   overflow: hidden;
@@ -317,7 +320,7 @@
 
 /* Price cell */
 .pc-cell-price {
-  font: 600 15px 'IBM Plex Mono', monospace;
+  font: 600 15px 'JetBrains Mono', monospace;
   font-variant-numeric: tabular-nums;
   color: var(--mise-ink);
   text-align: right;
@@ -337,11 +340,25 @@
 
 /* Quantity sub-text beneath the badge */
 .pc-stock-qty {
-  font: 500 11px 'IBM Plex Mono', monospace;
+  font: 500 11px 'JetBrains Mono', monospace;
   font-variant-numeric: tabular-nums;
   color: var(--mise-ink-muted);
   letter-spacing: .02em;
 }
+.pc-row-actions{display:flex;align-items:center;justify-content:flex-end;gap:6px}
+.pc-icon-button{
+  display:grid;
+  place-items:center;
+  width:36px;
+  height:36px;
+  border:1px solid var(--mise-border-hairline);
+  border-radius:var(--mise-r2);
+  background:var(--mise-surface);
+  color:var(--mise-ink-muted);
+}
+.pc-icon-button:hover{border-color:var(--mise-saffron);background:var(--mise-saffron-fill);color:var(--mise-saffron-deep)}
+.pc-icon-button.danger:hover{border-color:var(--mise-danger);background:var(--mise-danger-fill);color:var(--mise-danger)}
+.pc-restore-button{min-height:36px;padding:0 11px;font-size:11px}
 
 /* ─── Empty / state screens ──────────────────────────────────── */
 .pc-state {
@@ -352,7 +369,7 @@
   text-align: center;
 }
 .pc-state h2 {
-  font: 600 22px 'Archivo', sans-serif;
+  font: 600 22px 'Inter', sans-serif;
   letter-spacing: -.02em;
   color: var(--mise-ink);
   margin: 0 0 var(--mise-space-8);
@@ -368,7 +385,7 @@
 /* ─── Skeleton ───────────────────────────────────────────────── */
 .pc-skel-row {
   display: grid;
-  grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
+  grid-template-columns: minmax(240px,2fr) .85fr 1fr 1.05fr 1fr 84px;
   align-items: center;
   padding: var(--mise-space-16);
   background: var(--mise-surface);
@@ -377,6 +394,15 @@
   min-height: 76px;
   gap: 20px;
 }
+
+.dialog-panel.pc-delete-dialog{width:min(520px,100%)}
+.pc-delete-message{display:flex;align-items:flex-start;gap:13px;padding:14px;border:1px solid var(--mise-border-hairline);border-radius:var(--mise-r3);background:var(--mise-surface-sunken)}
+.pc-delete-icon{display:grid;place-items:center;width:42px;height:42px;flex:0 0 42px;border-radius:var(--mise-r2);background:var(--mise-danger-fill);color:var(--mise-danger)}
+.pc-delete-message strong{display:block;color:var(--mise-ink);font-size:14px}
+.pc-delete-message p{margin:4px 0 0;color:var(--mise-ink-muted);font-size:12px;line-height:1.55}
+.pc-delete-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+.pc-delete-actions .danger-action{min-height:44px;padding:0 16px}
+.pc-overlay .dialog-overlay{z-index:260}
 .pc-bone {
   border-radius: var(--mise-r2);
   background: linear-gradient(
@@ -399,7 +425,7 @@
 .pc-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(27, 25, 23, .45);
+  background: color-mix(in srgb, var(--mise-service-base) 45%, transparent);
   z-index: 200;
   display: flex;
   justify-content: flex-end;
@@ -433,14 +459,14 @@
 }
 .pc-drawer-head-copy { flex: 1; padding-right: 44px; }
 .pc-drawer-eyebrow {
-  font: 600 10px 'Archivo', sans-serif;
+  font: 600 10px 'Inter', sans-serif;
   letter-spacing: .16em;
   text-transform: uppercase;
   color: var(--mise-ink-muted);
   margin: 0 0 6px;
 }
 .pc-drawer-title {
-  font: 600 24px/1.15 'Archivo', sans-serif;
+  font: 600 24px/1.15 'Inter', sans-serif;
   letter-spacing: -.02em;
   color: var(--mise-ink);
   margin: 0;
@@ -494,7 +520,7 @@
   gap: 14px;
 }
 .pc-group-label {
-  font: 600 10px 'Archivo', sans-serif;
+  font: 600 10px 'Inter', sans-serif;
   letter-spacing: .14em;
   text-transform: uppercase;
   color: var(--mise-ink-muted);
@@ -506,7 +532,7 @@
 /* Field */
 .pc-field { display: grid; gap: 6px; }
 .pc-field label {
-  font: 600 12.5px 'Archivo', sans-serif;
+  font: 600 12.5px 'Inter', sans-serif;
   color: var(--mise-ink);
   display: flex;
   align-items: center;
@@ -519,7 +545,7 @@
   background: var(--mise-surface);
   border-radius: var(--mise-r2);
   padding: 11px 12px;
-  font: 14px 'Archivo', sans-serif;
+  font: 14px 'Inter', sans-serif;
   color: var(--mise-ink);
   outline: 0;
   min-height: 44px;
@@ -531,7 +557,7 @@
 .pc-field input[type='number'],
 .pc-price-wrap input,
 .pc-newtax input:last-child {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'JetBrains Mono', monospace;
   font-variant-numeric: tabular-nums;
 }
 .pc-field input[type='file'] {
@@ -565,7 +591,7 @@
   color: var(--mise-ink-secondary);
   padding: 0 14px;
   min-height: 44px;
-  font: 600 12px 'Archivo', sans-serif;
+  font: 600 12px 'Inter', sans-serif;
   cursor: pointer;
   white-space: nowrap;
   transition: background .12s ease, border-color .12s ease, color .12s ease;
@@ -588,7 +614,7 @@
   position: absolute;
   left: 12px; top: 50%;
   transform: translateY(-50%);
-  font: 500 14px 'IBM Plex Mono', monospace;
+  font: 500 14px 'JetBrains Mono', monospace;
   color: var(--mise-ink-muted);
   pointer-events: none;
 }
@@ -600,7 +626,7 @@
   background: var(--mise-surface);
   border-radius: var(--mise-r2);
   padding: 11px 12px;
-  font: 14px 'Archivo', sans-serif;
+  font: 14px 'Inter', sans-serif;
   color: var(--mise-ink);
   outline: 0;
   min-height: 44px;
@@ -626,7 +652,7 @@
   background: var(--mise-surface);
   border-radius: var(--mise-r2);
   padding: 11px 12px;
-  font: 14px 'Archivo', sans-serif;
+  font: 14px 'Inter', sans-serif;
   color: var(--mise-ink);
   outline: 0;
   min-height: 44px;
@@ -655,7 +681,7 @@
   border-radius: var(--mise-r3);
   padding: 0 20px;
   min-height: 52px;
-  font: 600 14px 'Archivo', sans-serif;
+  font: 600 14px 'Inter', sans-serif;
   color: var(--mise-ink-inverse);
   cursor: pointer;
   transition: background .12s ease, border-color .12s ease;
@@ -676,7 +702,7 @@
   border-radius: var(--mise-r3);
   padding: 0 20px;
   min-height: 44px;
-  font: 600 13px 'Archivo', sans-serif;
+  font: 600 13px 'Inter', sans-serif;
   color: var(--mise-ink-secondary);
   cursor: pointer;
   transition: background .12s ease, border-color .12s ease, color .12s ease;
@@ -751,4 +777,48 @@
   .pc-skel-row > *:nth-child(5) { display: block; } /* keep stock skel */
   .pc-drawer { width: 100vw; border-radius: 0; }
   .pc-stock-qty { display: none; } /* tiny screens: badge only */
+}
+
+/* Six-column CRUD table responsive map: keep actions reachable at every width. */
+@media (max-width: 1100px) {
+  .pc-thead,.pc-row,.pc-skel-row{grid-template-columns:minmax(220px,2fr) 1.05fr 1fr 84px}
+  .pc-thead span:nth-child(2),.pc-thead span:nth-child(3),
+  .pc-row>*:nth-child(2),.pc-row>*:nth-child(3),
+  .pc-skel-row>*:nth-child(2),.pc-skel-row>*:nth-child(3){display:none}
+}
+@media (max-width: 760px) {
+  .pc-status-select{min-width:unset;width:100%}
+  .pc-thead,.pc-row,.pc-skel-row{grid-template-columns:minmax(0,1fr) auto auto}
+  .pc-thead span:nth-child(4),.pc-row>*:nth-child(4),.pc-skel-row>*:nth-child(4){display:none}
+  .pc-thead span:nth-child(5),.pc-thead span:nth-child(6){display:block}
+  .pc-row>*:nth-child(5),.pc-row>*:nth-child(6){display:flex}
+  .pc-skel-row>*:nth-child(5),.pc-skel-row>*:nth-child(6){display:block}
+}
+@media (max-width: 480px) {
+  .pc-thead,.pc-row,.pc-skel-row{grid-template-columns:minmax(0,1fr) auto}
+  .pc-thead span:nth-child(5),.pc-row>*:nth-child(5),.pc-skel-row>*:nth-child(5){display:none}
+  .pc-thead span:nth-child(6){display:block}
+  .pc-row>*:nth-child(6){display:flex}
+  .pc-skel-row>*:nth-child(6){display:block}
+}
+/* Modifier builder — compact operational editor inside the dish drawer. */
+.modifier-editor { display: grid; gap: var(--mise-space-12); }
+.modifier-editor-intro { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--mise-space-12); }
+.modifier-editor-intro p { margin: 0; color: var(--mise-ink-secondary); font-size: 12px; }
+.modifier-editor-intro .secondary-cta { white-space: nowrap; display: inline-flex; align-items: center; gap: var(--mise-space-4); }
+.modifier-empty { padding: var(--mise-space-16); border: 1px dashed var(--mise-border); border-radius: var(--mise-r3); color: var(--mise-ink-muted); font-size: 12px; }
+.modifier-group-editor { margin: 0; padding: var(--mise-space-12); border: 1px solid var(--mise-border-hairline); border-radius: var(--mise-r3); background: var(--mise-surface-soft); }
+.modifier-group-head { display: grid; grid-template-columns: minmax(140px, 1fr) 140px auto 32px; gap: var(--mise-space-8); align-items: center; }
+.modifier-required { display: inline-flex !important; flex-direction: row !important; align-items: center; gap: var(--mise-space-4); white-space: nowrap; margin: 0 !important; }
+.modifier-required input { width: auto !important; }
+.modifier-options-editor { display: grid; gap: var(--mise-space-8); margin: var(--mise-space-12) 0 0 var(--mise-space-16); padding-left: var(--mise-space-12); border-left: 2px solid var(--mise-orange-soft); }
+.modifier-option-row { display: grid; grid-template-columns: minmax(120px, 1fr) 130px auto; gap: var(--mise-space-8); align-items: end; }
+.modifier-option-row label { margin: 0; }
+.modifier-option-row label span { color: var(--mise-ink-muted); font-size: 10px; }
+.modifier-option-row .danger { color: var(--mise-danger); }
+.modifier-save { justify-self: start; }
+@media (max-width: 720px) {
+  .modifier-editor-intro { display: grid; }
+  .modifier-group-head, .modifier-option-row { grid-template-columns: 1fr; }
+  .modifier-options-editor { margin-left: 0; }
 }

@@ -13,6 +13,7 @@ export function SaleReceipt({ receipt, duplicate }: { receipt: SavedReceipt; dup
       <div><dt>Phone</dt><dd>{customer?.phone_normalized ? `+${customer.phone_normalized}` : '—'}</dd></div></dl>
     <div className="receipt-items">{items.map(item => <section className="receipt-line" key={item.id}>
       <strong>{item.snapshot_name}</strong><small>SKU: {item.snapshot_sku}</small>
+      {Boolean(item.modifiers?.length) && <ul className="receipt-modifiers">{item.modifiers!.map(modifier => <li key={modifier.option_id}>{modifier.group_name}: {modifier.option_name}{modifier.price_delta_cents !== 0 && <span>{modifier.price_delta_cents > 0 ? '+' : '−'}{money(Math.abs(modifier.price_delta_cents))}</span>}</li>)}</ul>}
       <div><span>{item.quantity} × {money(item.snapshot_price_cents)}</span><b>{money(item.subtotal_cents)}</b></div>
       {Boolean(item.discount_applied_cents) && <div className="receipt-line-discount"><span>Discount {item.discount_kind === 'percent' ? `(${(item.discount_value ?? 0) / 100}%)` : ''}</span><span>−{money(item.discount_applied_cents!)}</span></div>}
       <div><span>Tax</span><span>{money(item.tax_cents)}</span></div>

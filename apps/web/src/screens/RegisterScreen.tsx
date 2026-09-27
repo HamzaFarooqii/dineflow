@@ -7,7 +7,7 @@ import { promotionToLineDiscount } from '../../../../packages/domain/src/promoti
 import { activeStoreId, loadCatalog } from '../lib/catalog'
 import { posDb, type LocalCategory, type LocalProduct, type LocalStock } from '../lib/db'
 import { pushPendingOrders } from '../lib/order-sync'
-import { approvalIsCurrent, cartSignature, productsRequiringApproval, usePosStore, type CartItem, type LineDiscount } from '../lib/pos-store'
+import { approvalIsCurrent, cartSignature, productsRequiringApproval, usePosStore, type CartItem, type LineDiscount, type SelectedModifier } from '../lib/pos-store'
 import { fetchLoyaltyAccount, fetchRewardRules, type LoyaltyAccount, type RewardRule } from '../lib/loyalty'
 import { fetchActivePromotions, type Promotion } from '../lib/promotions'
 import { currentAccess, type TerminalCache } from '../terminal-auth/cache'
@@ -18,6 +18,7 @@ import { MenuCategoryTabs } from './menu/MenuCategoryTabs'
 import { MenuItemCard } from './menu/MenuItemCard'
 import { MenuSearch } from './menu/MenuSearch'
 import { RestaurantOrderItem, type DiscountEditorKind } from './menu/RestaurantOrderItem'
+import { ModifierPicker, modifierLineId } from './menu/ModifierPicker'
 import { liveQuery } from 'dexie'
 
 export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
@@ -51,6 +52,7 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
   const [approvalOpen, setApprovalOpen] = useState(false)
   const [approvalReason, setApprovalReason] = useState('')
   const [oversoldAcknowledged, setOversoldAcknowledged] = useState(false)
+  const [modifierPicker, setModifierPicker] = useState<{ product: LocalProduct; lineId?: string; initial: SelectedModifier[] } | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   const cart = usePosStore(state => state.items)
   const addItem = usePosStore(state => state.addItem)
@@ -62,6 +64,7 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
   const applyRewardDiscount = usePosStore(state => state.applyRewardDiscount)
   const applyPromotionDiscount = usePosStore(state => state.applyPromotionDiscount)
   const setItemNote = usePosStore(state => state.setItemNote)
+  const setItemModifiers = usePosStore(state => state.setItemModifiers)
   const managerApproval = usePosStore(state => state.managerApproval)
   const setManagerApproval = usePosStore(state => state.setManagerApproval)
   const selectedCustomer = usePosStore(state => state.selectedCustomer)
@@ -210,15 +213,18 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
   // oversell. This is a confirmation gate, not a hard block: the cashier must see and
   // acknowledge it, but isn't stuck if the count turns out to be wrong.
   const oversoldLines = useMemo(() => cart.filter(item => item.quantity > (stock[item.productId] ?? Infinity)), [cart, stock])
-  const oversoldKey = oversoldLines.map(item => `${item.productId}:${item.quantity}`).join('|')
+  const oversoldKey = oversoldLines.map(item => `${item.lineId}:${item.quantity}`).join('|')
   useEffect(() => { setOversoldAcknowledged(false) }, [oversoldKey])
   const needsOversoldAcknowledgement = oversoldLines.length > 0 && !oversoldAcknowledged
 
-  function addProductToCart(product: LocalProduct) {
-    if (product.tax_rate_id && taxRates[product.tax_rate_id] === undefined) { setError(`${product.name} needs a tax rate that has not synced to this browser yet.`); return }
+  function addProductToCart(product: LocalProduct): boolean {
+    if (product.tax_rate_id && taxRates[product.tax_rate_id] === undefined) { setError(`${product.name} needs a tax rate that has not synced to this browser yet.`); return false }
     setError('')
-    addItem({ storeId, productId: product.id, name: product.name, sku: product.sku,
-      unitPriceCents: product.unit_price_cents, taxRateBps: taxRates[product.tax_rate_id ?? ''] ?? 0, catalogVersion })
+    if (product.modifier_groups?.length) { setModifierPicker({ product, initial: [] }); return false }
+    addItem({ lineId: modifierLineId(product.id, []), storeId, productId: product.id, name: product.name, sku: product.sku,
+      unitPriceCents: product.unit_price_cents, basePriceCents: product.unit_price_cents, modifiers: [],
+      taxRateBps: taxRates[product.tax_rate_id ?? ''] ?? 0, catalogVersion })
+    return true
   }
 
   function handleScan() {
@@ -226,19 +232,19 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
     if (!code) return
     setScanChoices(null)
     const skuMatch = products.find(product => product.sku.toLowerCase() === code.toLowerCase())
-    if (skuMatch) { addProductToCart(skuMatch); setQuery(''); setScanNotice(`Added ${skuMatch.name} from scan.`); searchRef.current?.focus(); return }
+    if (skuMatch) { if (addProductToCart(skuMatch)) setScanNotice(`Added ${skuMatch.name} from scan.`); setQuery(''); searchRef.current?.focus(); return }
     const barcodeMatches = products.filter(product => product.barcode && product.barcode.toLowerCase() === code.toLowerCase())
-    if (barcodeMatches.length === 1) { addProductToCart(barcodeMatches[0]); setQuery(''); setScanNotice(`Added ${barcodeMatches[0].name} from scan.`); searchRef.current?.focus(); return }
+    if (barcodeMatches.length === 1) { if (addProductToCart(barcodeMatches[0])) setScanNotice(`Added ${barcodeMatches[0].name} from scan.`); setQuery(''); searchRef.current?.focus(); return }
     if (barcodeMatches.length > 1) { setScanChoices(barcodeMatches); return }
     setError(`No menu item found for barcode: ${code}`)
   }
 
   function pickScanChoice(product: LocalProduct) {
-    addProductToCart(product); setScanChoices(null); setQuery(''); setScanNotice(`Added ${product.name} from scan.`); searchRef.current?.focus()
+    if (addProductToCart(product)) setScanNotice(`Added ${product.name} from scan.`); setScanChoices(null); setQuery(''); searchRef.current?.focus()
   }
 
   function openDiscountEditor(item: CartItem) {
-    setDiscountEditorFor(item.productId)
+    setDiscountEditorFor(item.lineId)
     setDiscountError('')
     if (item.discountSource?.kind === 'reward') { setDiscountKind('reward'); setDiscountInput(item.discountSource.ruleId) }
     else if (item.discountSource?.kind === 'promotion') { setDiscountKind('promo'); setDiscountInput(item.discountSource.promotionId) }
@@ -259,12 +265,12 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
         const value = Number(discountInput)
         if (!Number.isFinite(value) || value <= 0 || value > 100) throw new Error('Enter a percent between 0 and 100.')
         discount = { kind: 'percent', bps: Math.round(value * 100) }
-        commit = () => setLineDiscount(item.productId, discount)
+        commit = () => setLineDiscount(item.lineId, discount)
       } else if (discountKind === 'fixed') {
         const cents = parseCents(discountInput || '0')
         if (cents <= 0 || cents > lineSubtotal) throw new Error('Enter an amount up to the line subtotal.')
         discount = { kind: 'fixed', cents }
-        commit = () => setLineDiscount(item.productId, discount)
+        commit = () => setLineDiscount(item.lineId, discount)
       } else if (discountKind === 'reward') {
         const rule = rewardRules.find(candidate => candidate.id === discountInput)
         if (!rule) throw new Error('Choose a reward.')
@@ -272,7 +278,7 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
         if (!value) throw new Error(`${selectedCustomer?.name ?? 'This guest'} doesn't have enough points for that reward.`)
         if (value.cents > lineSubtotal) throw new Error(`This reward (${formatCents(value.cents, currency)}) is worth more than this line — apply it to a larger item.`)
         discount = value
-        commit = () => applyRewardDiscount(item.productId, { kind: 'reward', ruleId: rule.id, ruleName: rule.name, pointsCost: rule.points_cost }, value)
+        commit = () => applyRewardDiscount(item.lineId, { kind: 'reward', ruleId: rule.id, ruleName: rule.name, pointsCost: rule.points_cost }, value)
       } else {
         const promo = promotions.find(candidate => candidate.id === discountInput)
         if (!promo) throw new Error('Choose a promotion.')
@@ -281,7 +287,7 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
         if (!value) throw new Error('This promotion could not be applied.')
         if (value.kind === 'fixed' && value.cents > lineSubtotal) throw new Error(`This promotion (${formatCents(value.cents, currency)}) is worth more than this line — apply it to a larger item.`)
         discount = value
-        commit = () => applyPromotionDiscount(item.productId, { kind: 'promotion', promotionId: promo.id, name: promo.name }, value)
+        commit = () => applyPromotionDiscount(item.lineId, { kind: 'promotion', promotionId: promo.id, name: promo.name }, value)
       }
       commit()
       setDiscountEditorFor(null); setDiscountError('')
@@ -294,7 +300,7 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
   }
 
   function openApprovalModal() {
-    const names = cart.filter(item => approvalNeededIds.includes(item.productId)).map(item => item.name)
+    const names = cart.filter(item => approvalNeededIds.includes(item.lineId)).map(item => item.name)
     setApprovalReason(names.length ? `${names.join(', ')} — discount above 20% needs manager sign-off.` : 'A discount above 20% needs manager sign-off.')
     setApprovalOpen(true)
   }
@@ -334,18 +340,22 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
       <div className={`crm-cart-customer ${needsCustomer ? 'crm-cart-customer-required' : ''}`}>{selectedCustomer && customerAuthorized ? <><strong>{selectedCustomer.name}</strong><small>{selectedCustomer.phone_normalized ? `+${selectedCustomer.phone_normalized}` : 'No phone'} · {selectedCustomer.sync_status === 'synced' ? 'Saved' : 'Pending sync'}</small><div className="crm-cart-customer-actions"><button type="button" className="text-action" onClick={() => setCustomerOpen(true)}>Change customer</button><button type="button" className="text-action" onClick={() => selectCustomer(null)}>Remove</button></div></> : <><button type="button" className={customerAuthorized ? 'secondary-cta' : 'text-action'} disabled={!storeId || !customerAuthorized} onClick={() => setCustomerOpen(true)}>{customerAuthorized ? 'Select or add a guest (required)' : 'Add customer'}</button>{storeId && !customerAuthorized && <small>Customer access requires validated management membership.</small>}</>}</div>
       {customerSyncWarning && <p className="crm-sync-note" role="status">{customerSyncWarning}</p>}
       {!cart.length && <p className="empty-cart">Add a dish to start this check.</p>}
-      {cart.map(item => <RestaurantOrderItem key={item.productId} item={item} currency={currency} availableStock={stock[item.productId]}
-        flagged={approvalNeededIds.includes(item.productId)} approvalValid={approvalValid}
-        discountEditorOpen={discountEditorFor === item.productId} discountKind={discountKind} discountInput={discountInput} discountError={discountError}
+      {cart.map(item => <RestaurantOrderItem key={item.lineId} item={item} currency={currency} availableStock={stock[item.productId]}
+        flagged={approvalNeededIds.includes(item.lineId)} approvalValid={approvalValid}
+        discountEditorOpen={discountEditorFor === item.lineId} discountKind={discountKind} discountInput={discountInput} discountError={discountError}
         rewardOptions={rewardOptions} promoOptions={promoOptions} hasCustomer={Boolean(selectedCustomer)}
-        onIncrement={() => increment(item.productId)} onDecrement={() => decrement(item.productId)} onRemove={() => remove(item.productId)}
+        onIncrement={() => increment(item.lineId)} onDecrement={() => decrement(item.lineId)} onRemove={() => remove(item.lineId)}
+        onEditModifiers={products.find(product => product.id === item.productId)?.modifier_groups?.length ? () => {
+          const product = products.find(candidate => candidate.id === item.productId)
+          if (product) setModifierPicker({ product, lineId: item.lineId, initial: item.modifiers })
+        } : undefined}
         onOpenDiscountEditor={() => openDiscountEditor(item)}
         onSetDiscountKind={kind => { setDiscountKind(kind); setDiscountInput(''); setDiscountError('') }}
         onSetDiscountInput={setDiscountInput}
-        onRemoveDiscount={() => { setLineDiscount(item.productId, null); setDiscountEditorFor(null) }}
+        onRemoveDiscount={() => { setLineDiscount(item.lineId, null); setDiscountEditorFor(null) }}
         onCancelDiscountEditor={() => setDiscountEditorFor(null)}
         onApplyDiscount={() => applyDiscount(item)}
-        onSetNote={note => setItemNote(item.productId, note)} />)}
+        onSetNote={note => setItemNote(item.lineId, note)} />)}
       {needsApproval && <div className="manager-approval-banner" role="alert">
         <span>A discount above 20% needs manager approval before checkout.</span>
         <button type="button" className="secondary-cta" onClick={openApprovalModal}>Get manager approval</button>
@@ -368,5 +378,14 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
     {approvalOpen && terminalCache && <ManagerApprovalModal cache={terminalCache} reason={approvalReason}
       onClose={() => setApprovalOpen(false)}
       onApprove={evidence => { setManagerApproval({ ...evidence, permissionVersion, cartSignature: cartSignature(cart) }); setApprovalOpen(false) }} />}
+    {modifierPicker && <ModifierPicker product={modifierPicker.product} currency={currency} initial={modifierPicker.initial}
+      onClose={() => setModifierPicker(null)} onApply={(modifiers, unitPriceCents) => {
+        const nextLineId = modifierLineId(modifierPicker.product.id, modifiers)
+        if (modifierPicker.lineId) setItemModifiers(modifierPicker.lineId, nextLineId, modifiers, unitPriceCents)
+        else addItem({ lineId: nextLineId, storeId, productId: modifierPicker.product.id, name: modifierPicker.product.name,
+          sku: modifierPicker.product.sku, unitPriceCents, basePriceCents: modifierPicker.product.unit_price_cents, modifiers,
+          taxRateBps: taxRates[modifierPicker.product.tax_rate_id ?? ''] ?? 0, catalogVersion })
+        setModifierPicker(null)
+      }} />}
   </section>
 }

@@ -75,3 +75,89 @@ export async function fetchOversold(storeId: string): Promise<ServerOversoldProd
   const result = await request<{ products: ServerOversoldProduct[] }>(`/reports/oversold?store_id=${encodeURIComponent(storeId)}`)
   return result.products
 }
+
+export interface CustomerReportRow {
+  id: string
+  name: string
+  visitCount: number
+  spendCents: number
+  lastVisit: string
+  pointsBalance: number
+  lifetimePoints: number
+  tierName: string | null
+}
+export interface CustomerReport {
+  uniqueGuests: number
+  returningGuests: number
+  newGuests: number
+  enrolledGuests: number
+  visits: number
+  guestRevenueCents: number
+  pointsEarned: number
+  pointsRedeemed: number
+  topGuests: CustomerReportRow[]
+}
+
+export function fetchCustomerReport(storeId: string, from: string, to: string): Promise<CustomerReport> {
+  const params = new URLSearchParams({ store_id: storeId, from, to })
+  return request<CustomerReport>(`/reports/customers?${params.toString()}`)
+}
+
+export interface InventoryAlertRow { id: string; name: string; unit: string; currentStock: number; reorderThreshold: number | null }
+export interface InventoryExpiryRow { id: string; ingredientName: string; remainingQuantity: number; unit: string; expiresAt: string }
+export interface InventoryWastageRow { ingredientId: string; ingredientName: string; quantity: number; unit: string; valueCents: number }
+export interface InventoryReport {
+  lowStockCount: number
+  outOfStockCount: number
+  expiredBatchCount: number
+  expiringBatchCount: number
+  wastageQuantity: number
+  wastageValueCents: number
+  lowStock: InventoryAlertRow[]
+  expiringBatches: InventoryExpiryRow[]
+  topWastage: InventoryWastageRow[]
+}
+
+export function fetchInventoryReport(storeId: string, from: string, to: string): Promise<InventoryReport> {
+  const params = new URLSearchParams({ store_id: storeId, from, to })
+  return request<InventoryReport>(`/reports/inventory?${params.toString()}`)
+}
+
+export interface DishProfitabilityRow {
+  productId: string; name: string; unitsSold: number; netRevenueCents: number; portionCostCents: number
+  estimatedFoodCostCents: number; grossProfitCents: number; foodCostBps: number | null; recipeComplete: boolean
+}
+export interface FoodCostReport {
+  netRevenueCents: number; estimatedFoodCostCents: number; grossProfitCents: number; foodCostBps: number | null
+  incompleteRecipeCount: number; dishes: DishProfitabilityRow[]
+}
+export function fetchFoodCostReport(storeId: string, from: string, to: string): Promise<FoodCostReport> {
+  const params = new URLSearchParams({ store_id: storeId, from, to })
+  return request<FoodCostReport>(`/reports/food-cost?${params.toString()}`)
+}
+
+export interface KitchenStationPerformance {
+  stationId: string | null; stationName: string; itemCount: number; completedCount: number; openCount: number
+  averagePrepSeconds: number | null; averageServeSeconds: number | null
+}
+export interface KitchenPerformanceReport { totalItems: number; completedItems: number; averagePrepSeconds: number | null; stations: KitchenStationPerformance[] }
+export function fetchKitchenPerformanceReport(storeId: string, from: string, to: string): Promise<KitchenPerformanceReport> {
+  const params = new URLSearchParams({ store_id: storeId, from, to })
+  return request<KitchenPerformanceReport>(`/reports/kitchen-performance?${params.toString()}`)
+}
+
+export interface ShiftRow {
+  id: string
+  employee_id: string
+  employee_name: string
+  employee_role: string
+  device_id: string
+  clocked_in_at: string
+  clocked_out_at: string | null
+}
+
+export async function fetchShifts(storeId: string, from: string, toExclusive: string): Promise<ShiftRow[]> {
+  const params = new URLSearchParams({ store_id: storeId, from, to: toExclusive })
+  const result = await request<{ shifts: ShiftRow[] }>(`/shifts?${params.toString()}`)
+  return result.shifts
+}

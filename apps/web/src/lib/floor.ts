@@ -35,12 +35,15 @@ export async function fetchFloorPlan(storeId: string, terminal = false): Promise
 
 // --- Floor structure CRUD (manager/owner only — no terminal variant, see floor.ts's comment) ---
 
-async function floorRequest<T>(path: string, method: string, storeId: string, body?: Record<string, unknown>): Promise<T> {
+async function floorRequest<T>(path: string, method: string, storeId: string, body?: Record<string, unknown>, terminal = false): Promise<T> {
   const query = new URLSearchParams({ store_id: storeId })
-  const response = await fetch(`${configuredApiUrl()}/floor${path}?${query}`, {
+  const response = await fetch(`${configuredApiUrl()}${terminal ? '/pos/floor' : '/floor'}${path}?${query}`, {
     method,
-    credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await accessToken()}` },
+    credentials: terminal ? 'include' : 'same-origin',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(terminal ? {} : { Authorization: `Bearer ${await accessToken()}` }),
+    },
     body: body ? JSON.stringify(body) : undefined,
     signal: AbortSignal.timeout(15_000),
   })
@@ -104,9 +107,9 @@ export async function updateTableStatus(
 
 export interface TablePartyMoveResult { freed_table_id: string; occupied_table_id: string }
 
-export async function transferTableParty(storeId: string, sourceTableId: string, targetTableId: string): Promise<TablePartyMoveResult> {
-  return floorRequest<TablePartyMoveResult>(`/tables/${sourceTableId}/transfer`, 'PATCH', storeId, { target_table_id: targetTableId })
+export async function transferTableParty(storeId: string, sourceTableId: string, targetTableId: string, terminal = false): Promise<TablePartyMoveResult> {
+  return floorRequest<TablePartyMoveResult>(`/tables/${sourceTableId}/transfer`, 'PATCH', storeId, { target_table_id: targetTableId }, terminal)
 }
-export async function mergeTableParty(storeId: string, primaryTableId: string, otherTableId: string): Promise<TablePartyMoveResult> {
-  return floorRequest<TablePartyMoveResult>(`/tables/${primaryTableId}/merge`, 'PATCH', storeId, { other_table_id: otherTableId })
+export async function mergeTableParty(storeId: string, primaryTableId: string, otherTableId: string, terminal = false): Promise<TablePartyMoveResult> {
+  return floorRequest<TablePartyMoveResult>(`/tables/${primaryTableId}/merge`, 'PATCH', storeId, { other_table_id: otherTableId }, terminal)
 }

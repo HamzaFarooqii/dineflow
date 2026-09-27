@@ -2,9 +2,9 @@
    Light admin surfaces — the panel chrome itself comes from .admin-panel in
    terminal-auth.css. Tokens only; nothing new is defined here. */
 
-.terminal-hardware-settings { margin: 0 0 var(--mise-space-24); font-family: 'Archivo', sans-serif; color: var(--mise-ink); }
+.terminal-hardware-settings { margin: 0 0 var(--mise-space-24); font-family: 'Inter', sans-serif; color: var(--mise-ink); }
 .terminal-hardware-settings > .kicker {
-  font: 500 10px 'IBM Plex Mono', monospace;
+  font: 500 10px 'JetBrains Mono', monospace;
   letter-spacing: .18em;
   text-transform: uppercase;
   color: var(--mise-ink-muted);
@@ -35,7 +35,7 @@
 .hardware-details { display: grid; gap: var(--mise-space-16); margin: var(--mise-space-24) 0; }
 .identity-details { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .hardware-details dt { color: var(--mise-ink-muted); font-size: 11px; letter-spacing: .02em; margin-bottom: var(--mise-space-4); }
-.hardware-details dd { margin: 0; font: 500 13px 'IBM Plex Mono', monospace; color: var(--mise-ink); overflow-wrap: anywhere; }
+.hardware-details dd { margin: 0; font: 500 13px 'JetBrains Mono', monospace; color: var(--mise-ink); overflow-wrap: anywhere; }
 .hardware-help { color: var(--mise-ink-muted); font-size: 12px; line-height: 1.6; }
 .hardware-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--mise-space-12); margin-top: var(--mise-space-16); }
 .hardware-panel .secondary-cta,
@@ -65,14 +65,14 @@
 .hardware-panel .form-notice.error { border-left-color: var(--mise-danger); background: var(--mise-danger-fill); color: var(--mise-danger); }
 .hardware-panel > p[role='status'] { color: var(--mise-ink-secondary); font-size: 12px; }
 .hardware-panel > p[role='status']:empty { margin: 0; }
-.scanner-value { white-space: pre-wrap; font-family: 'IBM Plex Mono', monospace; }
+.scanner-value { white-space: pre-wrap; font-family: 'JetBrains Mono', monospace; }
 
 .hardware-recovery { padding-left: var(--mise-space-16); margin: 0; line-height: 1.6; font-size: 13px; color: var(--mise-ink-secondary); }
 .hardware-recovery li { margin: var(--mise-space-12) 0; padding-left: var(--mise-space-4); }
 .hardware-recovery li::marker { color: var(--mise-ink-disabled); }
 .hardware-recovery strong { color: var(--mise-ink); font-weight: 600; }
 .hardware-panel details { margin-top: var(--mise-space-12); border-top: 1px solid var(--mise-border-hairline); }
-.hardware-panel summary { cursor: pointer; min-height: 44px; padding: var(--mise-space-12) 0; font: 500 13px 'Archivo', sans-serif; color: var(--mise-ink); }
+.hardware-panel summary { cursor: pointer; min-height: 44px; padding: var(--mise-space-12) 0; font: 500 13px 'Inter', sans-serif; color: var(--mise-ink); }
 
 /* Printer test slip — plain, high-contrast, mono. Deliberately scoped so it can
    never bleed into the guest check in receipts.css. */
@@ -83,11 +83,11 @@
   margin: var(--mise-space-12) auto;
   background: white;
   color: black;
-  font: 400 12px/1.4 'IBM Plex Mono', monospace;
+  font: 400 12px/1.4 'JetBrains Mono', monospace;
   overflow-wrap: anywhere;
   border: 1px dashed var(--mise-border-strong);
 }
-.hardware-test-receipt h3 { font: 700 17px/1.3 'Archivo', sans-serif; text-align: center; margin: 0 0 var(--mise-space-8); }
+.hardware-test-receipt h3 { font: 700 17px/1.3 'Inter', sans-serif; text-align: center; margin: 0 0 var(--mise-space-8); }
 .hardware-test-receipt p { margin: var(--mise-space-8) 0; text-align: center; }
 .hardware-test-receipt .receipt-test-label { font-weight: 700; border-block: 2px solid black; padding-block: var(--mise-space-8); }
 .hardware-test-receipt .receipt-identity { font-size: 10px; }

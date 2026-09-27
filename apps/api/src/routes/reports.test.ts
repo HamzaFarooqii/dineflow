@@ -8,7 +8,10 @@ import { PGlite } from '@electric-sql/pglite'
 // Import the route module after setting a harmless pool URL; pure validation tests never open a
 // connection, and the PGlite-backed tests below monkey-patch db.query/db.connect before use.
 process.env.DATABASE_URL ??= 'postgresql://localhost:5432/validation_only'
-const { storeIdParam, dateParam, loadDailySummary, loadOrdersPage, loadOversold } = await import('./reports.js')
+const {
+  storeIdParam, dateParam, loadDailySummary, loadOrdersPage, loadOversold,
+  loadCustomerReport, loadInventoryReport, loadFoodCostReport, loadKitchenPerformanceReport,
+} = await import('./reports.js')
 const { calendarDayBoundsUtc } = await import('../lib/timezone.js')
 const { db } = await import('../db.js')
 
@@ -224,5 +227,160 @@ test('loadOversold returns only negative-stock products, most oversold first', a
     assert.equal(oversold[0].sku, 'CRIT')
     assert.equal(oversold[0].current_stock, -10)
     assert.equal(oversold[1].sku, 'LOW')
+  } finally { await database.close() }
+})
+
+test('customer report aggregates visits, net spend and loyalty activity for a store-local range', async () => {
+  const database = new PGlite()
+  try {
+    await database.exec(`create role anon; create role authenticated; create role service_role bypassrls;
+      create schema auth; create table auth.users(id uuid primary key,raw_user_meta_data jsonb);
+      create function auth.uid() returns uuid language sql as 'select null::uuid';
+      create function auth.jwt() returns jsonb language sql as 'select ''{}''::jsonb';`)
+    const extendedChain = [...chain, '202609250001_loyalty_foundation.sql']
+    for (const name of extendedChain) {
+      const sql = (await readFile(root + `supabase/migrations/${name}`, 'utf8')).replace('create extension if not exists pgcrypto;', '')
+      await database.exec(sql)
+    }
+    const owner = randomUUID(), store = randomUUID(), guest = randomUUID(), order = randomUUID()
+    const account = randomUUID()
+    await database.query('insert into auth.users(id) values ($1)', [owner])
+    await database.query("insert into public.stores(id,name,code,created_by,timezone) values ($1,'One','operations-report',$2,'Asia/Karachi')", [store, owner])
+    await database.query("insert into public.pos_customers(id,store_id,name,client_generated_at) values ($1,$2,'Ayesha','2026-09-18T08:00:00Z')", [guest, store])
+    await database.query(`insert into public.pos_orders(id,store_id,receipt_number,currency,store_name_snapshot,timezone_snapshot,
+      subtotal_cents,discount_cents,tax_cents,total_cents,catalog_version,client_generated_at,customer_id)
+      values ($1,$2,'RP-1','USD','One','Asia/Karachi',1000,0,0,1000,1,'2026-09-18T10:00:00Z',$3)`, [order, store, guest])
+    await database.query("insert into public.loyalty_tiers(store_id,name,min_lifetime_points) values ($1,'Regular',0)", [store])
+    await database.query('insert into public.loyalty_accounts(id,store_id,customer_id,points_balance,lifetime_points) values ($1,$2,$3,25,25)', [account, store, guest])
+    await database.query("insert into public.loyalty_point_ledger(store_id,account_id,delta,reason,order_id,created_at) values ($1,$2,25,'earned',$3,'2026-09-18T10:01:00Z')", [store, account, order])
+    const fixture = db as unknown as { query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[]; rowCount: number }> }
+    fixture.query = async (sql: string, params?: unknown[]) => {
+      const result = await database.query(sql, params)
+      return { rows: result.rows, rowCount: Math.max(result.affectedRows ?? 0, result.rows.length) }
+    }
+
+    const customer = await loadCustomerReport(store, '2026-09-18', '2026-09-18')
+    assert.equal(customer.uniqueGuests, 1)
+    assert.equal(customer.guestRevenueCents, 1000)
+    assert.equal(customer.pointsEarned, 25)
+    assert.equal(customer.topGuests[0].tierName, 'Regular')
+
+  } finally { await database.close() }
+})
+
+test('inventory report aggregates low stock, expiry risk and wastage value', async () => {
+  const database = new PGlite()
+  try {
+    await database.exec(`create role anon; create role authenticated; create role service_role bypassrls;
+      create schema auth; create table auth.users(id uuid primary key,raw_user_meta_data jsonb);
+      create function auth.uid() returns uuid language sql as 'select null::uuid';
+      create function auth.jwt() returns jsonb language sql as 'select ''{}''::jsonb';`)
+    const inventoryChain = [
+      ...chain,
+      '202609210001_restaurant_foundation.sql',
+      '202609230001_kitchen_display_system.sql',
+      '202609230002_table_waiter_assignment.sql',
+      '202609240001_units_and_recipes.sql',
+      '202609240002_ingredient_inventory.sql',
+      '202609240003_inventory_audit_columns.sql',
+      '202609240004_inventory_terminal_audit.sql',
+      '202609250002_inventory_batch_tracking.sql',
+    ]
+    for (const name of inventoryChain) {
+      const sql = (await readFile(root + `supabase/migrations/${name}`, 'utf8')).replace('create extension if not exists pgcrypto;', '')
+      await database.exec(sql)
+    }
+    const owner = randomUUID(), store = randomUUID(), unit = randomUUID(), ingredient = randomUUID(), batch = randomUUID()
+    await database.query('insert into auth.users(id) values ($1)', [owner])
+    await database.query("insert into public.stores(id,name,code,created_by,timezone) values ($1,'One','inventory-report',$2,'Asia/Karachi')", [store, owner])
+    await database.query("insert into public.units(id,store_id,name,abbreviation,kind) values ($1,$2,'Kilogram','kg','mass')", [unit, store])
+    await database.query("insert into public.ingredients(id,store_id,name,unit_id,cost_per_unit_cents,current_stock,reorder_threshold) values ($1,$2,'Tomatoes',$3,200,2,5)", [ingredient, store, unit])
+    await database.query("insert into public.ingredient_batches(id,store_id,ingredient_id,quantity,remaining_quantity,cost_per_unit_cents,expires_at) values ($1,$2,$3,10,2,220,now()+interval '2 days')", [batch, store, ingredient])
+    await database.query("insert into public.stock_movements(store_id,ingredient_id,batch_id,delta,reason,created_at) values ($1,$2,$3,-2,'wastage','2026-09-18T11:00:00Z')", [store, ingredient, batch])
+
+    const fixture = db as unknown as { query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[]; rowCount: number }> }
+    fixture.query = async (sql: string, params?: unknown[]) => {
+      const result = await database.query(sql, params)
+      return { rows: result.rows, rowCount: Math.max(result.affectedRows ?? 0, result.rows.length) }
+    }
+    const inventory = await loadInventoryReport(store, '2026-09-18', '2026-09-18')
+    assert.equal(inventory.lowStockCount, 1)
+    assert.equal(inventory.wastageQuantity, 2)
+    assert.equal(inventory.wastageValueCents, 440)
+    assert.equal(inventory.expiringBatchCount, 1)
+  } finally { await database.close() }
+})
+
+test('food-cost and kitchen-performance reports aggregate recipe and KDS operations', async () => {
+  const database = new PGlite()
+  try {
+    await database.exec(`create role anon; create role authenticated; create role service_role bypassrls;
+      create schema auth; create table auth.users(id uuid primary key,raw_user_meta_data jsonb);
+      create function auth.uid() returns uuid language sql as 'select null::uuid';
+      create function auth.jwt() returns jsonb language sql as 'select ''{}''::jsonb';`)
+    const operationsChain = [
+      ...chain,
+      '202609210001_restaurant_foundation.sql',
+      '202609230001_kitchen_display_system.sql',
+      '202609230002_table_waiter_assignment.sql',
+      '202609240001_units_and_recipes.sql',
+      '202609240002_ingredient_inventory.sql',
+      '202609260001_unit_conversion.sql',
+    ]
+    for (const name of operationsChain) {
+      const sql = (await readFile(root + `supabase/migrations/${name}`, 'utf8')).replace('create extension if not exists pgcrypto;', '')
+      await database.exec(sql)
+    }
+
+    const owner = randomUUID(), store = randomUUID(), product = randomUUID(), unit = randomUUID()
+    const ingredient = randomUUID(), recipe = randomUUID(), order = randomUUID(), orderItem = randomUUID()
+    const station = randomUUID(), ticket = randomUUID()
+    await database.query('insert into auth.users(id) values ($1)', [owner])
+    await database.query("insert into public.stores(id,name,code,created_by,timezone) values ($1,'One','food-kitchen-report',$2,'UTC')", [store, owner])
+    await database.query('update public.pos_products set active=false where store_id=$1', [store])
+    await database.query("insert into public.kitchen_stations(id,store_id,name) values ($1,$2,'Grill')", [station, store])
+    await database.query(`insert into public.pos_products(id,store_id,sku,name,unit_price_cents,station_id)
+      values ($1,$2,'BURGER','House burger',1000,$3)`, [product, store, station])
+    await database.query("insert into public.units(id,store_id,name,abbreviation,kind,factor_to_base) values ($1,$2,'Gram','g','mass',1)", [unit, store])
+    await database.query("insert into public.ingredients(id,store_id,name,unit_id,cost_per_unit_cents,current_stock) values ($1,$2,'Beef',$3,2,1000)", [ingredient, store, unit])
+    await database.query('insert into public.recipes(id,store_id,product_id,yield_quantity,yield_unit_id) values ($1,$2,$3,1,$4)', [recipe, store, product, unit])
+    await database.query('insert into public.recipe_ingredients(store_id,recipe_id,ingredient_id,quantity,unit_id) values ($1,$2,$3,100,$4)', [store, recipe, ingredient, unit])
+    await database.query(`insert into public.pos_orders(id,store_id,receipt_number,currency,store_name_snapshot,timezone_snapshot,
+      subtotal_cents,discount_cents,tax_cents,total_cents,catalog_version,client_generated_at)
+      values ($1,$2,'REPORT-1','USD','One','UTC',2000,0,0,2000,1,'2026-09-18T10:00:00Z')`, [order, store])
+    await database.query(`insert into public.pos_order_items(id,store_id,order_id,product_id,snapshot_name,snapshot_sku,
+      snapshot_price_cents,snapshot_tax_bps,catalog_version,quantity,subtotal_cents,discount_applied_cents,taxable_cents,tax_cents,total_cents)
+      values ($1,$2,$3,$4,'House burger','BURGER',1000,0,1,2,2000,0,2000,0,2000)`, [orderItem, store, order, product])
+    await database.query("insert into public.kitchen_tickets(id,store_id,order_id,status,created_at) values ($1,$2,$3,'served','2026-09-18T10:00:00Z')", [ticket, store, order])
+    await database.query(`insert into public.kitchen_ticket_items(store_id,ticket_id,order_item_id,station_id,status,fired_at,ready_at,served_at)
+      values ($1,$2,$3,$4,'served','2026-09-18T10:00:00Z','2026-09-18T10:05:00Z','2026-09-18T10:07:00Z')`,
+      [store, ticket, orderItem, station])
+
+    const fixture = db as unknown as { query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[]; rowCount: number }> }
+    fixture.query = async (sql: string, params?: unknown[]) => {
+      const result = await database.query(sql, params)
+      return { rows: result.rows, rowCount: Math.max(result.affectedRows ?? 0, result.rows.length) }
+    }
+
+    const foodCost = await loadFoodCostReport(store, '2026-09-18', '2026-09-18')
+    assert.equal(foodCost.netRevenueCents, 2000)
+    assert.equal(foodCost.estimatedFoodCostCents, 400)
+    assert.equal(foodCost.grossProfitCents, 1600)
+    assert.equal(foodCost.foodCostBps, 2000)
+    assert.equal(foodCost.incompleteRecipeCount, 0)
+    assert.deepEqual(foodCost.dishes[0], {
+      productId: product, name: 'House burger', unitsSold: 2, netRevenueCents: 2000,
+      portionCostCents: 200, estimatedFoodCostCents: 400, grossProfitCents: 1600,
+      foodCostBps: 2000, recipeComplete: true,
+    })
+
+    const kitchen = await loadKitchenPerformanceReport(store, '2026-09-18', '2026-09-18')
+    assert.equal(kitchen.totalItems, 1)
+    assert.equal(kitchen.completedItems, 1)
+    assert.equal(kitchen.averagePrepSeconds, 300)
+    assert.deepEqual(kitchen.stations[0], {
+      stationId: station, stationName: 'Grill', itemCount: 1, completedCount: 1,
+      openCount: 0, averagePrepSeconds: 300, averageServeSeconds: 420,
+    })
   } finally { await database.close() }
 })

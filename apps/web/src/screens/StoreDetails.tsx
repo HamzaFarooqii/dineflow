@@ -11,7 +11,9 @@ import { Link } from 'react-router-dom'
 import { accessToken, activeStoreId, configuredApiUrl } from '../lib/catalog'
 import { posDb } from '../lib/db'
 import { CURRENCY_OPTIONS, timezoneOptions } from '../lib/locale-options'
-import { X } from '../components/icons'
+import { ChevronLeft, X } from '../components/icons'
+import { PageHeader } from '../components/PageHeader'
+import { SelectField } from '../components/SelectField'
 import './product-catalog.css'
 
 interface StoreRecord {
@@ -114,20 +116,12 @@ export function StoreDetails() {
 
   return (
     <div className="pc-page">
-      <div className="pc-hero">
-        <div>
-          <p className="pc-breadcrumb">
-            Back of house <span>/</span> Settings <span>/</span> Restaurant
-          </p>
-          <h1 className="pc-title">Restaurant details.</h1>
-          <p className="pc-subtitle">House information used across receipts, reporting and the floor.</p>
-        </div>
-        <div className="pc-actions">
-          <Link className="secondary-cta" to="/settings">
-            ← Back to settings
-          </Link>
-        </div>
-      </div>
+      <PageHeader
+        kicker="BACK OF HOUSE · SETTINGS"
+        title="Restaurant details."
+        subtitle="House information used across receipts, reporting and the floor."
+        actions={<Link className="secondary-cta" to="/settings"><ChevronLeft aria-hidden="true" size={16} />Back to settings</Link>}
+      />
 
       <div className="pc-content" style={{ maxWidth: 640 }}>
         {loadError && (
@@ -167,24 +161,22 @@ export function StoreDetails() {
               <p className="pc-group-label">Currency &amp; Timezone</p>
               <div className="pc-pair">
                 <div className="pc-field">
-                  <label htmlFor="sf-currency">Currency</label>
-                  <select id="sf-currency" name="currency" defaultValue={store.currency}>
+                  <SelectField id="sf-currency" label="Currency" name="currency" defaultValue={store.currency}>
                     {CURRENCY_OPTIONS.map(([code, label]) => (
                       <option key={code} value={code}>
                         {code} — {label}
                       </option>
                     ))}
-                  </select>
+                  </SelectField>
                 </div>
                 <div className="pc-field">
-                  <label htmlFor="sf-timezone">Timezone</label>
-                  <select id="sf-timezone" name="timezone" defaultValue={store.timezone}>
+                  <SelectField id="sf-timezone" label="Timezone" name="timezone" defaultValue={store.timezone}>
                     {timezoneOptions().map(zone => (
                       <option key={zone} value={zone}>
                         {zone}
                       </option>
                     ))}
-                  </select>
+                  </SelectField>
                 </div>
               </div>
               <p className="pc-field-hint">Currency can only be changed before any dishes or sales exist. Timezone changes apply immediately.</p>

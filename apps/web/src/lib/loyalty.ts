@@ -1,6 +1,7 @@
 import { accessToken, configuredApiUrl } from './catalog'
 
 export interface LoyaltyTier { id: string; name: string; min_lifetime_points: number; point_multiplier_bps: number }
+export type LoyaltyTierInput = Omit<LoyaltyTier, 'id'>
 
 export interface LoyaltyAccount {
   id: string
@@ -44,6 +45,18 @@ export async function enrollInLoyalty(storeId: string, customerId: string, termi
 
 export async function fetchRewardRules(storeId: string, terminal: boolean, includeInactive = false): Promise<RewardRule[]> {
   return (await loyaltyRequest<{ reward_rules: RewardRule[] }>('/reward-rules', storeId, terminal, includeInactive ? { query: { include_inactive: 'true' } } : {})).reward_rules
+}
+
+export async function fetchLoyaltyTiers(storeId: string, terminal = false): Promise<LoyaltyTier[]> {
+  return (await loyaltyRequest<{ tiers: LoyaltyTier[] }>('/tiers', storeId, terminal)).tiers
+}
+
+export function createLoyaltyTier(storeId: string, input: LoyaltyTierInput): Promise<LoyaltyTier> {
+  return loyaltyRequest<LoyaltyTier>('/tiers', storeId, false, { method: 'POST', body: input })
+}
+
+export function updateLoyaltyTier(storeId: string, tierId: string, changes: Partial<LoyaltyTierInput>): Promise<LoyaltyTier> {
+  return loyaltyRequest<LoyaltyTier>(`/tiers/${encodeURIComponent(tierId)}`, storeId, false, { method: 'PATCH', body: changes })
 }
 
 // Reward-rule writes are management-only (owner/manager on the web); there is no terminal path.

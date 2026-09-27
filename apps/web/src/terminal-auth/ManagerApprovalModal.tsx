@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { verifyOffline } from './policy'
 import type { TerminalCache } from './cache'
+import { SelectField } from '../components/SelectField'
+import { ChevronLeft } from '../components/icons'
 import './terminal-auth.css'
 
 const keypad = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
@@ -92,9 +94,9 @@ export function ManagerApprovalModal({ cache, title = 'Authorize this discount',
       {!withinWindow && <p className="form-notice error" role="alert">Manager approval requires online validation within the last 72 hours. Connect this terminal and refresh terminal access, then try again.</p>}
       {!managers.length && <p className="form-notice error" role="alert">No manager is provisioned on this terminal. Ask an owner to add one, then refresh terminal access.</p>}
       {managers.length > 0 && <>
-        <label className="cashier-label">Manager<select value={managerId} required disabled={busy || locked} onChange={event => { setManagerId(event.target.value); setPin(''); setError('') }}>
+        <SelectField label="Manager" value={managerId} required disabled={busy || locked} onChange={event => { setManagerId(event.target.value); setPin(''); setError('') }}>
           <option value="">Choose a manager</option>{managers.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}
-        </select></label>
+        </SelectField>
         <div className="cashier-label"><span>Enter manager PIN</span>
           <input className="sr-only" aria-label="Manager PIN" type="password" inputMode="numeric" pattern="[0-9]{4,8}" value={pin}
             onChange={event => setPin(event.target.value.replace(/\D/g, '').slice(0, 8))} autoComplete="off" disabled={locked} />
@@ -102,7 +104,7 @@ export function ManagerApprovalModal({ cache, title = 'Authorize this discount',
         </div>
         <div className="pin-keypad" aria-label="Manager PIN keypad">
           {keypad.map(value => <button key={value} type="button" disabled={busy || locked} onClick={() => appendDigit(value)}>{value}</button>)}
-          <button type="button" disabled={busy || locked} aria-label="Delete PIN digit" onClick={() => setPin(current => current.slice(0, -1))}>⌫</button>
+          <button type="button" disabled={busy || locked} aria-label="Delete PIN digit" onClick={() => setPin(current => current.slice(0, -1))}><ChevronLeft aria-hidden="true" size={22} /></button>
           <button type="button" disabled={busy || locked} onClick={() => appendDigit('0')}>0</button>
           <button type="button" disabled={busy || locked} onClick={() => setPin('')}>Clear</button>
         </div>

@@ -37,6 +37,26 @@ test('accepts a balanced immutable sale snapshot', () => {
   assert.equal(result.totals.totalCents, line.totalCents)
   assert.equal(result.operationId, orderId)
 })
+test('includes modifier deltas in the unit price before all line math', () => {
+  const operation = validOperation() as any
+  const modifiedLine = calculateDiscountedLine(449, 2, 500)
+  operation.items[0].base_price_cents = 199
+  operation.items[0].snapshot_price_cents = 449
+  operation.items[0].modifiers = [
+    { option_id: '22222222-2222-4222-8222-222222222222', group_name: 'Size', option_name: 'Large', price_delta_cents: 200 },
+    { option_id: '33333333-3333-4333-8333-333333333333', group_name: 'Add-ons', option_name: 'Extra syrup', price_delta_cents: 50 },
+  ]
+  Object.assign(operation.items[0], { subtotal_cents: modifiedLine.subtotalCents, discount_applied_cents: 0,
+    taxable_cents: modifiedLine.taxableCents, tax_cents: modifiedLine.taxCents, total_cents: modifiedLine.totalCents })
+  Object.assign(operation.order, { subtotal_cents: modifiedLine.subtotalCents, discount_cents: 0,
+    tax_cents: modifiedLine.taxCents, total_cents: modifiedLine.totalCents })
+  Object.assign(operation.payment, { amount_cents: modifiedLine.totalCents, tendered_cents: modifiedLine.totalCents, change_cents: 0 })
+  const result = validateOperation(operation)
+  assert.equal(result.items[0].snapshot_price_cents, 449)
+  assert.equal(result.items[0].modifiers.length, 2)
+  operation.items[0].modifiers[1].price_delta_cents = 40
+  assert.throws(() => validateOperation(operation), /modifier prices do not match/)
+})
 test('rejects changed line totals and cash tender mismatch', () => {
   const changed = validOperation()
   changed.items[0].tax_cents += 1

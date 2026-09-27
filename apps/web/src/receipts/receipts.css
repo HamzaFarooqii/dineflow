@@ -6,7 +6,7 @@
 
 .order-history.receipt-history,
 .receipt-page {
-  font-family: 'Archivo', sans-serif;
+  font-family: 'Inter', sans-serif;
   color: var(--mise-ink);
 }
 
@@ -19,7 +19,7 @@
 }
 .order-history.receipt-history > .kicker,
 .receipt-page > .kicker {
-  font: 500 10px 'IBM Plex Mono', monospace;
+  font: 500 10px 'JetBrains Mono', monospace;
   letter-spacing: .18em;
   text-transform: uppercase;
   color: var(--mise-ink-muted);
@@ -61,7 +61,7 @@
   border-radius: var(--mise-r3);
   background: var(--mise-surface);
   color: var(--mise-ink);
-  font: 500 13px 'Archivo', sans-serif;
+  font: 500 13px 'Inter', sans-serif;
   text-decoration: none;
   transition: background .12s ease, border-color .12s ease, color .12s ease;
 }
@@ -101,7 +101,7 @@
   gap: var(--mise-space-8);
   min-width: 0;
   max-width: 100%;
-  font: 500 11px 'Archivo', sans-serif;
+  font: 500 11px 'Inter', sans-serif;
   letter-spacing: .02em;
   color: var(--mise-ink-secondary);
 }
@@ -115,9 +115,9 @@
   border-radius: var(--mise-r2);
   background: var(--mise-surface);
   color: var(--mise-ink);
-  font: 400 14px 'Archivo', sans-serif;
+  font: 400 14px 'Inter', sans-serif;
 }
-.order-history.receipt-history .history-tools input[type='date'] { font-family: 'IBM Plex Mono', monospace; font-size: 13px; }
+.order-history.receipt-history .history-tools input[type='date'] { font-family: 'JetBrains Mono', monospace; font-size: 13px; }
 .order-history.receipt-history .history-tools input:focus {
   border-color: var(--mise-ink);
   outline: none;
@@ -132,7 +132,7 @@
   border-radius: var(--mise-r3);
   background: var(--mise-surface);
   color: var(--mise-ink);
-  font: 500 13px 'Archivo', sans-serif;
+  font: 500 13px 'Inter', sans-serif;
   transition: background .12s ease, border-color .12s ease, color .12s ease;
 }
 .order-history.receipt-history .history-tools button:hover:not(:disabled),
@@ -211,16 +211,16 @@
   min-width: 180px;
 }
 .order-history.receipt-history .history-list article > div strong {
-  font: 600 15px 'IBM Plex Mono', monospace;
+  font: 600 15px 'JetBrains Mono', monospace;
   letter-spacing: -.01em;
   color: var(--mise-ink);
 }
 .order-history.receipt-history .history-list article small {
-  font: 400 12px 'IBM Plex Mono', monospace;
+  font: 400 12px 'JetBrains Mono', monospace;
   color: var(--mise-ink-muted);
 }
 .order-history.receipt-history .history-list article > b {
-  font: 600 16px 'IBM Plex Mono', monospace;
+  font: 600 16px 'JetBrains Mono', monospace;
   font-variant-numeric: tabular-nums;
   color: var(--mise-ink);
   white-space: nowrap;
@@ -249,7 +249,7 @@
   padding: 6px var(--mise-space-8);
   border: 1px solid transparent;
   border-radius: var(--mise-r2);
-  font: 500 11px 'Archivo', sans-serif;
+  font: 500 11px 'Inter', sans-serif;
   letter-spacing: .02em;
   white-space: nowrap;
 }
@@ -288,7 +288,7 @@
   border-top: 1px solid var(--mise-border-hairline);
 }
 .order-history.receipt-history .remote-history h2 {
-  font: 600 18px 'Archivo', sans-serif;
+  font: 600 18px 'Inter', sans-serif;
   letter-spacing: -.01em;
   color: var(--mise-ink);
   margin: 0 0 var(--mise-space-8);
@@ -315,11 +315,11 @@
 }
 .receipt-page > div[role='status'] h2 {
   margin: 0 0 var(--mise-space-8);
-  font: 600 18px 'Archivo', sans-serif;
+  font: 600 18px 'Inter', sans-serif;
   color: var(--mise-ink);
 }
 .receipt-page > p[role='status'] {
-  font: 500 13px 'Archivo', sans-serif;
+  font: 500 13px 'Inter', sans-serif;
   color: var(--mise-ink-secondary);
 }
 .receipt-feedback { font-size: 13px; line-height: 1.55; max-width: 62ch; color: var(--mise-ink-secondary); }
@@ -333,13 +333,13 @@
   border-radius: var(--mise-r3);
   background: var(--mise-surface);
   box-shadow: var(--mise-e1);
-  font: 400 13px/1.55 'Archivo', sans-serif;
+  font: 400 13px/1.55 'Inter', sans-serif;
   color: var(--mise-ink);
   overflow-wrap: anywhere;
 }
 .sale-receipt header { text-align: center; padding-bottom: var(--mise-space-16); }
 .sale-receipt h2 {
-  font: 600 20px/1.25 'Archivo', sans-serif;
+  font: 600 20px/1.25 'Inter', sans-serif;
   letter-spacing: -.01em;
   margin: 0 0 var(--mise-space-8);
   color: var(--mise-ink);
@@ -347,15 +347,15 @@
 .sale-receipt p { margin: var(--mise-space-8) 0; }
 .sale-receipt header p { color: var(--mise-ink-secondary); font-size: 12px; }
 .sale-receipt header strong,
-.sale-receipt header time { font-family: 'IBM Plex Mono', monospace; color: var(--mise-ink); }
+.sale-receipt header time { font-family: 'JetBrains Mono', monospace; color: var(--mise-ink); }
 .receipt-kind {
-  font: 500 10px 'IBM Plex Mono', monospace;
+  font: 500 10px 'JetBrains Mono', monospace;
   letter-spacing: .22em;
   text-transform: uppercase;
   color: var(--mise-ink-muted);
 }
 .receipt-order-type {
-  font: 600 10px 'IBM Plex Mono', monospace;
+  font: 600 10px 'JetBrains Mono', monospace;
   letter-spacing: .08em;
   text-transform: uppercase;
   color: var(--mise-saffron-deep);
@@ -369,18 +369,18 @@
 }
 .receipt-guest > div { display: flex; justify-content: space-between; gap: var(--mise-space-12); margin: 4px 0; }
 .receipt-guest dt { color: var(--mise-ink-secondary); }
-.receipt-guest dd { margin: 0; font-family: 'IBM Plex Mono', monospace; color: var(--mise-ink); }
+.receipt-guest dd { margin: 0; font-family: 'JetBrains Mono', monospace; color: var(--mise-ink); }
 .receipt-line {
   padding: var(--mise-space-12) 0;
   border-top: 1px solid var(--mise-border-hairline);
   break-inside: avoid;
 }
-.receipt-line > strong { display: block; font: 600 13px 'Archivo', sans-serif; }
-.receipt-line > small { display: block; margin: 3px 0 var(--mise-space-8); font: 400 11px 'IBM Plex Mono', monospace; color: var(--mise-ink-muted); }
+.receipt-line > strong { display: block; font: 600 13px 'Inter', sans-serif; }
+.receipt-line > small { display: block; margin: 3px 0 var(--mise-space-8); font: 400 11px 'JetBrains Mono', monospace; color: var(--mise-ink-muted); }
 .receipt-line > div,
 .receipt-totals > div { display: flex; justify-content: space-between; gap: var(--mise-space-12); }
 .receipt-line > div { font-size: 12px; color: var(--mise-ink-secondary); }
-.receipt-line > div > * { min-width: 0; font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; }
+.receipt-line > div > * { min-width: 0; font-family: 'JetBrains Mono', monospace; font-variant-numeric: tabular-nums; }
 .receipt-line b { flex-shrink: 0; color: var(--mise-ink); font-weight: 600; }
 .receipt-line-discount span,
 .receipt-discount dd { color: var(--mise-saffron-deep); }
@@ -389,7 +389,7 @@
   margin: 0;
   padding-top: var(--mise-space-12);
   break-inside: avoid;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'JetBrains Mono', monospace;
   font-variant-numeric: tabular-nums;
   font-size: 12px;
 }
@@ -448,13 +448,13 @@
   .sale-print-root .sale-receipt {
     width: 72mm; max-width: 72mm; border: 0; border-radius: 0; box-shadow: none;
     padding: 0; margin: 0; background: white; color: black;
-    font: 400 10pt/1.4 'Archivo', Arial, sans-serif;
+    font: 400 10pt/1.4 'Inter', Arial, sans-serif;
   }
-  .sale-print-root h2 { font: 700 15pt/1.2 'Archivo', Arial, sans-serif; color: black; }
+  .sale-print-root h2 { font: 700 15pt/1.2 'Inter', Arial, sans-serif; color: black; }
   .sale-print-root .receipt-kind { color: black; letter-spacing: .18em; }
   .sale-print-root .receipt-line > small,
   .sale-print-root .receipt-totals,
-  .sale-print-root .receipt-line > div > * { font-family: 'IBM Plex Mono', 'Courier New', monospace; }
+  .sale-print-root .receipt-line > div > * { font-family: 'JetBrains Mono', 'Courier New', monospace; }
   .sale-print-root .receipt-line,
   .sale-print-root .receipt-totals,
   .sale-print-root .receipt-total,
@@ -488,3 +488,5 @@
 }
 .refund-action .cta:hover { background: var(--mise-danger-fill); transform: none; }
 @media print { .refund-action { display: none; } }
+.receipt-modifiers{list-style:none;margin:4px 0 7px;padding:0;display:grid;gap:2px;color:var(--mise-ink-secondary);font-size:10px}
+.receipt-modifiers li{display:flex;justify-content:space-between;gap:8px}.receipt-modifiers span{font-family:'JetBrains Mono',monospace}

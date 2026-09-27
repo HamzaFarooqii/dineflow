@@ -1,0 +1,978 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap');
+
+/*
+ * Dineflow · Ember POS presentation layer
+ * Source of truth: docs/ember-artifact
+ *
+ * Ember is a compact operational system: graphite service chrome, ivory
+ * working surfaces, orange task focus, Inter UI type, and JetBrains Mono data.
+ * This file is loaded last and changes presentation only.
+ */
+
+:root {
+  color-scheme: light;
+  --mise-canvas: #f8f4e9;
+  --mise-surface: #ffffff;
+  --mise-surface-ivory: #fffdf6;
+  --mise-surface-sunken: #f2ede2;
+  --mise-border-hairline: #e3ddd3;
+  --mise-border-strong: #c9bfb3;
+  --mise-ink: #241b16;
+  --mise-ink-secondary: #4d433d;
+  --mise-ink-muted: #766a62;
+  --mise-ink-disabled: #a69c94;
+  --mise-ink-inverse: #ffffff;
+  --mise-action: #f97316;
+  --mise-action-hover: #d95c08;
+  --mise-saffron: #f97316;
+  --mise-saffron-deep: #d95c08;
+  --mise-saffron-fill: #fff0e5;
+  --mise-success: #16835b;
+  --mise-success-fill: #e7f6ef;
+  --mise-warning: #8b6200;
+  --mise-warning-fill: #fff7d6;
+  --mise-danger: #c43d2f;
+  --mise-danger-fill: #fdecea;
+  --mise-info: #0879ad;
+  --mise-info-fill: #e7f6fd;
+  --mise-accent-violet: #6d55a3;
+  --mise-accent-violet-fill: #f0ebfa;
+  --mise-service-base: #1a1410;
+  --mise-service-surface: #251d18;
+  --mise-service-elevated: #332720;
+  --mise-service-border: #43352c;
+  --mise-service-ink: #fffdf6;
+  --mise-service-ink-muted: #b8aaa0;
+  --mise-r1: 4px;
+  --mise-r2: 8px;
+  --mise-r3: 12px;
+  --mise-r4: 16px;
+  --mise-e1: 0 1px 2px rgba(26, 20, 16, .05);
+  --mise-e2: 0 8px 30px rgba(26, 20, 16, .07);
+  --mise-e3: 0 24px 64px rgba(26, 20, 16, .18);
+  --mise-font-display: 'Inter', system-ui, sans-serif;
+  --mise-font-body: 'Inter', system-ui, sans-serif;
+  --mise-font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+html {
+  min-width: 320px;
+  background: var(--mise-canvas);
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  min-width: 320px;
+  background: var(--mise-canvas);
+  color: var(--mise-ink);
+  font-family: var(--mise-font-body);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+::selection { background: var(--mise-saffron-fill); color: var(--mise-saffron-deep); }
+button, input, select, textarea { font: inherit; }
+button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
+button, a { transition: color .14s ease, background-color .14s ease, border-color .14s ease, box-shadow .14s ease, transform .14s ease; }
+#root, #root * { font-family: var(--mise-font-body); }
+#root :where(
+  h1, h2, h3,
+  .brand, .pc-title, .pc-prod-name, .catalog-card strong,
+  .cart-title h2, .empty-state-title, .dish-name
+) { font-family: var(--mise-font-display); }
+#root :where(
+  .metric-card strong, .stat-row b, .report-value, .status-amount strong,
+  .totals b, .summary-lines b, .receipt-total, .amount, .price, .money,
+  .kitchen-ticket-elapsed, .kitchen-ticket-ref, .pc-price, .pc-stat-value,
+  .inventory-summary-value, .loyalty-balance-points, .loyalty-balance-points strong,
+  .quantity b, .qty, .table-card-label, .receipt-line, .terminal-summary dd
+) { font-family: var(--mise-font-mono); font-variant-numeric: tabular-nums; }
+:where(button, a, input, select, textarea, summary):focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--mise-saffron) 30%, transparent);
+  outline-offset: 2px;
+}
+
+/* Typography and shared primitives */
+.leaf-mark {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--mise-r2);
+  background: var(--mise-saffron);
+  color: white;
+  font: 800 13px/1 var(--mise-font-body);
+}
+
+.brand,
+.page-header h1,
+.pc-title,
+.reporting-heading h1,
+.order-history.receipt-history > h1,
+.receipt-page > h1,
+.settings-page h1,
+.cashier-card h1,
+.auth-art h1,
+.form-card h2,
+.hero h1 {
+  font-family: var(--mise-font-display);
+}
+
+.page-header h1,
+.pc-title,
+.reporting-heading h1,
+.order-history.receipt-history > h1,
+.receipt-page > h1,
+.settings-page h1,
+.cashier-card h1 {
+  color: var(--mise-ink);
+  font-weight: 750;
+  letter-spacing: -.035em;
+  line-height: 1.08;
+}
+
+.metric-card strong,
+.stat-row b,
+.report-value,
+.status-amount strong,
+.totals b,
+.summary-lines b,
+.receipt-total,
+.amount,
+.price,
+.money,
+.kitchen-ticket-elapsed,
+.pc-price,
+.pc-stat-value,
+.inventory-summary-value,
+.loyalty-balance-points strong {
+  font-family: var(--mise-font-mono);
+  letter-spacing: -.02em;
+}
+
+.kicker,
+.pc-drawer-eyebrow,
+.pc-group-label,
+.receipt-kind,
+.page-header-kicker {
+  margin: 0 0 6px;
+  color: var(--mise-saffron-deep);
+  font: 700 11px/1.2 var(--mise-font-mono);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.page-header {
+  align-items: flex-end;
+  margin-bottom: 24px;
+  padding: 0;
+  border-bottom: 0;
+}
+.page-header::before { display: none; }
+.page-header h1 { font-size: clamp(28px, 3vw, 40px); }
+.page-header-subtitle { max-width: 68ch; color: var(--mise-ink-muted); font-size: 14px; line-height: 1.5; }
+.page-header-actions { gap: 8px; }
+
+.cta,
+.report-primary,
+.pc-submit,
+.cashier-unlock-button,
+.cashier-open-register {
+  min-height: 44px;
+  border: 1px solid var(--mise-saffron);
+  border-radius: var(--mise-r2);
+  background: var(--mise-saffron);
+  box-shadow: none;
+  color: white;
+  font-size: 13px;
+  font-weight: 700;
+}
+.cta:hover:not(:disabled),
+.report-primary:hover,
+.pc-submit:hover:not(:disabled),
+.cashier-unlock-button:hover:not(:disabled),
+.cashier-open-register:hover:not(:disabled) {
+  border-color: var(--mise-saffron-deep);
+  background: var(--mise-saffron-deep);
+  color: white;
+  box-shadow: none;
+  transform: translateY(-1px);
+}
+
+.secondary-cta,
+.report-secondary,
+.pc-cancel,
+.receipt-actions a,
+.receipt-actions button,
+.clock-button {
+  min-height: 44px;
+  border: 1px solid var(--mise-border-strong);
+  border-radius: var(--mise-r2);
+  background: var(--mise-surface);
+  color: var(--mise-ink);
+  font-size: 13px;
+  font-weight: 700;
+}
+.secondary-cta:hover:not(:disabled),
+.report-secondary:hover,
+.pc-cancel:hover,
+.receipt-actions a:hover,
+.receipt-actions button:hover:not(:disabled),
+.clock-button:hover:not(:disabled) {
+  border-color: var(--mise-saffron);
+  background: var(--mise-saffron-fill);
+  color: var(--mise-saffron-deep);
+}
+
+.danger-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--mise-danger);
+  border-radius: var(--mise-r2);
+  background: var(--mise-danger);
+  color: white;
+  font-size: 12px;
+  font-weight: 700;
+}
+.danger-action:hover:not(:disabled) { background: color-mix(in srgb, var(--mise-danger) 86%, black); }
+
+.text-action,
+.text-button,
+.panel-link,
+.receipt-detail-link,
+.breadcrumbs a {
+  color: var(--mise-saffron-deep);
+  font-weight: 700;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+.text-action:hover:not(:disabled), .text-button:hover, .panel-link:hover, .receipt-detail-link:hover { color: var(--mise-saffron); }
+
+.form-notice,
+.pc-alert {
+  border: 1px solid color-mix(in srgb, var(--mise-info) 24%, var(--mise-border-hairline));
+  border-left: 3px solid var(--mise-info);
+  border-radius: var(--mise-r2);
+  background: var(--mise-info-fill);
+  color: var(--mise-info);
+  padding: 11px 13px;
+}
+.form-notice.error, .pc-alert.error {
+  border-color: color-mix(in srgb, var(--mise-danger) 28%, var(--mise-border-hairline));
+  border-left-color: var(--mise-danger);
+  background: var(--mise-danger-fill);
+  color: var(--mise-danger);
+}
+
+.status-badge,
+.order-state,
+.terminal-state,
+.pc-badge,
+.count-badge,
+.team-role {
+  min-height: 24px;
+  border: 0;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .01em;
+}
+
+.metric-card {
+  min-height: 124px;
+  overflow: visible;
+  border: 1px solid var(--mise-border-hairline);
+  border-radius: var(--mise-r3);
+  background: var(--mise-surface);
+  box-shadow: var(--mise-e1);
+}
+.metric-card::after { display: none; }
+.metric-card.featured {
+  border-color: color-mix(in srgb, var(--mise-saffron) 34%, var(--mise-border-hairline));
+  border-left-width: 1px;
+  background: var(--mise-surface);
+  box-shadow: var(--mise-e1);
+}
+.metric-card strong { font-size: clamp(21px, 2vw, 28px); }
+
+.empty-state,
+.floor-empty,
+.kitchen-empty,
+.crm-empty,
+.list-empty,
+.mise-log-empty,
+.team-empty {
+  border: 1px dashed var(--mise-border-strong);
+  border-radius: var(--mise-r3);
+  background: var(--mise-surface-sunken);
+  color: var(--mise-ink-muted);
+}
+
+.dialog-overlay, .manager-approval-overlay, .pc-overlay {
+  background: color-mix(in srgb, var(--mise-service-base) 52%, transparent);
+  backdrop-filter: none;
+}
+.dialog-panel, .pc-drawer {
+  border: 1px solid var(--mise-border-hairline);
+  border-radius: var(--mise-r3);
+  background: var(--mise-surface);
+  box-shadow: var(--mise-e3);
+}
+.dialog-head, .pc-drawer-head { padding-bottom: 14px; border-bottom: 1px solid var(--mise-border-hairline); }
+.dialog-close, .pc-drawer-close { min-width: 44px; min-height: 44px; border-radius: var(--mise-r2); }
+
+.select-field select,
+.form-card input,
+.form-card select,
+.onboarding-form input,
+.onboarding-form select,
+.invite-form input,
+.invite-form select,
+.admin-panel input,
+.admin-panel select,
+.crm-panel input,
+.pc-field input,
+.pc-field select,
+.floor-inline-form input,
+.floor-inline-form select,
+.unit-selector-search,
+.unit-selector select {
+  min-height: 44px;
+  border: 1px solid var(--mise-border-strong);
+  border-radius: var(--mise-r2);
+  background: white;
+  color: var(--mise-ink);
+}
+:where(.form-card, .onboarding-form, .invite-form, .admin-panel, .crm-panel, .pc-field, .floor-inline-form, .unit-selector) :where(input, select, textarea):hover {
+  border-color: var(--mise-ink-muted);
+}
+:where(.form-card, .onboarding-form, .invite-form, .admin-panel, .crm-panel, .pc-field, .floor-inline-form, .unit-selector) :where(input, select, textarea):focus {
+  border-color: var(--mise-saffron);
+  box-shadow: 0 0 0 3px var(--mise-saffron-fill);
+}
+
+/* Owner and terminal shells */
+.pos-app,
+.cashier-pos-shell {
+  min-height: 100vh;
+  grid-template-columns: 224px minmax(0, 1fr);
+  background: var(--mise-canvas);
+}
+
+.app-sidebar,
+.cashier-pos-sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  padding: 24px 14px 16px;
+  border-right: 0;
+  background: var(--mise-service-base);
+  color: var(--mise-service-ink);
+}
+.app-sidebar .brand,
+.cashier-pos-brand {
+  margin: 0;
+  padding: 0 8px 24px;
+  border-bottom: 1px solid var(--mise-service-border);
+  color: var(--mise-service-ink);
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -.025em;
+}
+.app-sidebar .brand small { color: var(--mise-service-ink-muted); }
+.sidebar-nav { gap: 20px; margin-top: 24px; }
+.sidebar-nav-group, .cashier-pos-sidebar nav { gap: 4px; }
+.sidebar-nav-label {
+  margin: 0 12px 6px;
+  color: #796b61;
+  font: 600 9px var(--mise-font-mono);
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+.sidebar-nav a,
+.cashier-pos-sidebar nav a,
+.cashier-nav-muted {
+  min-height: 44px;
+  border: 1px solid transparent;
+  border-radius: var(--mise-r2);
+  color: var(--mise-service-ink-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.sidebar-nav a:hover, .cashier-pos-sidebar nav a:hover {
+  border-color: transparent;
+  background: var(--mise-service-surface);
+  color: var(--mise-service-ink);
+}
+.sidebar-nav a.active,
+.cashier-pos-sidebar nav a.active {
+  border-color: var(--mise-saffron);
+  background: var(--mise-saffron);
+  color: white;
+  box-shadow: none;
+}
+.sidebar-nav a.active svg, .cashier-pos-sidebar nav a.active svg { color: white; }
+.sidebar-bottom, .cashier-pos-sidebar footer {
+  margin: auto 0 0;
+  padding: 16px 8px 0;
+  border-top: 1px solid var(--mise-service-border);
+  color: var(--mise-service-ink);
+}
+
+.app-main, .cashier-pos-main { min-width: 0; background: var(--mise-canvas); }
+.app-top, .cashier-pos-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  min-height: 64px;
+  padding: 0 28px;
+  border-bottom: 1px solid var(--mise-border-hairline);
+  background: color-mix(in srgb, var(--mise-surface-ivory) 94%, transparent);
+  backdrop-filter: blur(16px);
+}
+.account-chip { border-color: var(--mise-border-hairline); border-radius: var(--mise-r2); background: white; }
+.account-chip-signout:hover { background: var(--mise-danger-fill); color: var(--mise-danger); }
+.connection { border: 1px solid color-mix(in srgb, var(--mise-success) 18%, var(--mise-border-hairline)); }
+.connection-error { border-color: color-mix(in srgb, var(--mise-danger) 22%, var(--mise-border-hairline)); background: var(--mise-danger-fill); color: var(--mise-danger); }
+.sync { width: 36px; height: 36px; border-radius: var(--mise-r2); background: var(--mise-service-base); color: white; }
+.sync:hover:not(:disabled) { background: var(--mise-saffron); transform: none; }
+
+.cashier-pos-sidebar { padding: 22px 12px 14px; }
+.cashier-pos-brand { margin-bottom: 24px; }
+.cashier-profile { padding-left: 14px; border-left: 1px solid var(--mise-border-hairline); }
+.clock-button.clocked-in { border-color: var(--mise-success); background: var(--mise-success-fill); color: var(--mise-success); }
+.cashier-pos-status { border-top-color: var(--mise-border-hairline); background: var(--mise-surface); }
+
+/* Auth, onboarding, and public pages */
+.auth-page { background: var(--mise-canvas); }
+.auth-art { background: var(--mise-service-base); color: var(--mise-service-ink); }
+.auth-art::before { display: none; }
+.auth-art h1 {
+  max-width: 12ch;
+  color: white;
+  font-size: clamp(42px, 5.5vw, 76px);
+  font-weight: 750;
+  letter-spacing: -.055em;
+  line-height: .98;
+}
+.auth-art > div > p:not(.kicker) { color: var(--mise-service-ink-muted); font-size: 16px; }
+.auth-form { background: var(--mise-canvas); }
+.form-card {
+  width: min(460px, 100%);
+  border: 1px solid var(--mise-border-hairline);
+  border-top-width: 1px;
+  border-radius: var(--mise-r4);
+  background: var(--mise-surface);
+  box-shadow: var(--mise-e2);
+}
+.form-card h2 { font-size: clamp(28px, 4vw, 40px); font-weight: 750; letter-spacing: -.04em; }
+
+.cashier-page { background: var(--mise-service-base); }
+.cashier-page::before { display: none; }
+.cashier-card {
+  border: 1px solid var(--mise-service-border);
+  border-top-width: 1px;
+  border-radius: var(--mise-r4);
+  background: var(--mise-service-surface);
+  box-shadow: var(--mise-e3);
+}
+.cashier-card h1 { color: white; font-weight: 750; }
+.cashier-brand span, .cashier-pos-brand span { background: var(--mise-saffron); color: white; }
+.pin-slots span, .pin-keypad button { border-color: var(--mise-service-border); background: var(--mise-service-elevated); color: white; }
+.pin-keypad button:hover:not(:disabled) { border-color: var(--mise-saffron); background: color-mix(in srgb, var(--mise-saffron) 22%, var(--mise-service-elevated)); }
+.cashier-brand .brand { color: white; }
+.cashier-brand .brand small, .cashier-card .select-field-label { color: var(--mise-service-ink-muted); }
+.cashier-card .select-field { display: flex; width: 100%; }
+.cashier-card .select-field select { min-height: 54px; border-color: var(--mise-service-border); background: var(--mise-service-elevated); color: white; }
+.cashier-card .select-field-chevron { color: var(--mise-service-ink-muted); }
+.cashier-card .status-badge { width: max-content; }
+.success-terminal > svg { flex: 0 0 auto; color: var(--mise-saffron); }
+.operation-warning { display: flex; align-items: flex-start; gap: 8px; }
+.spin { animation: ember-spin .8s linear infinite; }
+@keyframes ember-spin { to { transform: rotate(360deg); } }
+
+/* Product workspaces */
+.reporting-page,
+.dashboard,
+.reporting-cashier,
+.order-history.receipt-history,
+.receipt-page,
+.pc-page,
+.crm-page,
+.floor-page,
+.kitchen-page,
+.settings-page,
+.terminal-admin-page,
+.mise-log-page,
+.promotions-page,
+.cashier-hardware-page {
+  width: min(1500px, 100%);
+  margin-inline: auto;
+  padding: 32px clamp(20px, 3vw, 44px) 56px;
+}
+
+.reporting-heading {
+  margin-bottom: 24px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--mise-border-hairline);
+}
+.reporting-heading h1 { font-size: clamp(28px, 3vw, 40px); }
+
+.report-section,
+.report-panel,
+.health-card,
+.dashboard-panel,
+.summary-panel,
+.crm-panel,
+.loyalty-rules,
+.promotion-card,
+.promotion-form,
+.setup-card,
+.this-terminal-card,
+.admin-panel,
+.hardware-panel,
+.mise-log-list,
+.catalog-card,
+.table-card,
+.kitchen-ticket-card,
+.batch-card {
+  border: 1px solid var(--mise-border-hairline);
+  border-radius: var(--mise-r3);
+  background: var(--mise-surface);
+  box-shadow: var(--mise-e1);
+}
+
+.report-section h2,
+.report-panel h2,
+.health-card h2,
+.dashboard-panel h2,
+.summary-panel h2,
+.settings-section-title,
+.inventory-detail h3,
+.crm-panel h2,
+.cart-title h2,
+.pc-drawer-title,
+.floor-detail h2 {
+  color: var(--mise-ink);
+  font-family: var(--mise-font-display);
+  font-weight: 750;
+  letter-spacing: -.02em;
+}
+
+.report-table thead, .report-table-header, .pc-thead {
+  background: var(--mise-service-base);
+  color: var(--mise-service-ink);
+}
+.report-table tbody tr:hover, .pc-row:hover, .history-list article:hover, .crm-results li:hover {
+  background: var(--mise-saffron-fill);
+}
+
+/* Register, payment, catalog */
+.register-page, .payment-page {
+  width: min(1560px, 100%);
+  margin-inline: auto;
+  padding: 24px clamp(14px, 2.4vw, 32px) 48px;
+  gap: 16px;
+}
+.catalog-tools,
+.sale-cart,
+.payment-summary,
+.pay-main,
+.pc-toolbar,
+.pc-table-wrap,
+.pc-content > form,
+.history-tools,
+.history-list,
+.receipt-page > div[role='status'],
+.sale-receipt,
+.inventory-toolbar,
+.inventory-list,
+.inventory-detail,
+.inventory-detail-header,
+.stock-activity,
+.batch-list {
+  border: 1px solid var(--mise-border-hairline);
+  border-radius: var(--mise-r3);
+  background: var(--mise-surface);
+  box-shadow: var(--mise-e1);
+}
+.catalog-tools { padding: 10px; }
+.search, .pc-search { border-color: var(--mise-border-strong); border-radius: var(--mise-r2); background: white; }
+.search:focus-within, .pc-search:focus-within { border-color: var(--mise-saffron); box-shadow: 0 0 0 3px var(--mise-saffron-fill); }
+.categories, .floor-area-tabs, .kitchen-station-tabs, .history-tools[role='group'] { gap: 6px; }
+.categories button, .floor-area-tabs button, .kitchen-station-tabs button, .history-tools[role='group'] button {
+  min-height: 38px;
+  border: 1px solid transparent;
+  border-radius: var(--mise-r2);
+  color: var(--mise-ink-secondary);
+  font-weight: 700;
+}
+.categories button:hover, .floor-area-tabs button:hover, .kitchen-station-tabs button:hover, .history-tools[role='group'] button:hover {
+  border-color: var(--mise-border-strong);
+  background: white;
+}
+.categories button.active, .floor-area-tabs button.active, .kitchen-station-tabs button.active, .history-tools[role='group'] button.selected {
+  border-color: var(--mise-service-base);
+  background: var(--mise-service-base);
+  color: white;
+}
+.catalog-grid, .floor-grid, .kitchen-grid { gap: 12px; }
+.catalog-card:hover:not(:disabled), .table-card:hover, .inventory-list-item:hover, .setup-card:hover {
+  border-color: color-mix(in srgb, var(--mise-saffron) 55%, var(--mise-border-hairline));
+  box-shadow: var(--mise-e2);
+  transform: translateY(-1px);
+}
+.catalog-card strong, .pc-prod-name { font-family: var(--mise-font-display); font-weight: 700; }
+.table-card-label, .kitchen-ticket-ref { font-family: var(--mise-font-mono); font-weight: 600; }
+.catalog-card .product-art, .product-art-img { background: var(--mise-surface-sunken); }
+.sale-cart, .pay-main, .sale-receipt, .kitchen-ticket-card, .inventory-detail-header, .setup-card { border-top-width: 1px; }
+.cart-title, .kitchen-ticket-head { padding-bottom: 14px; border-bottom-color: var(--mise-border-hairline); }
+.cart-line-wrap { border-left-color: var(--mise-saffron); }
+.totals strong, .summary-lines strong { border-top: 1px solid var(--mise-border-strong); }
+.totals strong b, .summary-lines strong b, .receipt-total { color: var(--mise-ink); }
+.methods button.selected { border-color: var(--mise-saffron); background: var(--mise-saffron); color: white; }
+.change.positive { border-color: var(--mise-success); }
+
+/* End-to-end state and density coverage. These rules keep secondary routes on
+ * the same compact operational rhythm as the retained Ember reference. */
+::placeholder { color: var(--mise-ink-disabled); opacity: 1; }
+:where(button, input, select, textarea):disabled {
+  cursor: not-allowed;
+  opacity: .58;
+}
+:where(input[type='checkbox'], input[type='radio']) { accent-color: var(--mise-saffron); }
+
+:where(
+  .form-card, .onboarding-form, .invite-form, .admin-panel, .crm-panel,
+  .pc-field, .floor-inline-form, .promotions-inline-form, .unit-selector,
+  .pay-main, .hardware-panel
+) label {
+  color: var(--mise-ink-secondary);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+:where(
+  .form-card, .onboarding-form, .invite-form, .admin-panel, .crm-panel,
+  .pc-field, .floor-inline-form, .promotions-inline-form, .unit-selector,
+  .pay-main, .hardware-panel
+) textarea {
+  width: 100%;
+  min-height: 96px;
+  padding: 11px 12px;
+  resize: vertical;
+  border: 1px solid var(--mise-border-strong);
+  border-radius: var(--mise-r2);
+  background: var(--mise-surface);
+  color: var(--mise-ink);
+}
+
+.pc-alert.success {
+  border-color: color-mix(in srgb, var(--mise-success) 24%, var(--mise-border-hairline));
+  border-left: 3px solid var(--mise-success);
+  background: var(--mise-success-fill);
+  color: var(--mise-success);
+}
+
+.report-table :where(th),
+.report-table-header > *,
+.pc-thead span {
+  color: inherit;
+  font: 600 10px/1.25 var(--mise-font-mono);
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+.report-table :where(td, th) { padding: 13px 14px; }
+.report-table tbody tr,
+.pc-row { min-height: 52px; }
+.report-table tbody tr:last-child td { border-bottom: 0; }
+.pc-row { transition: background-color .14s ease, border-color .14s ease; }
+
+.history-list article,
+.crm-results li,
+.loyalty-rules-list li,
+.team-members li,
+.terminal-list li,
+.mise-log-list li,
+.inventory-list-item,
+.activity-row,
+.promotions-item {
+  min-height: 56px;
+}
+
+.pc-state,
+.receipt-page > div[role='status'],
+.reporting-page > p[role='status'],
+.crm-page > p[role='status'],
+.floor-page > p[role='status'],
+.kitchen-page > p[role='status'],
+.settings-page > p[role='status'],
+.terminal-admin-page > p[role='status'],
+.mise-log-page > p[role='status'],
+.promotions-page > p[role='status'] {
+  padding: 20px;
+  border: 1px dashed var(--mise-border-strong);
+  border-radius: var(--mise-r3);
+  background: var(--mise-surface-sunken);
+  color: var(--mise-ink-muted);
+}
+.pc-state { min-height: 180px; place-content: center; text-align: center; }
+.pc-state h2 { color: var(--mise-ink); font-size: 18px; font-weight: 750; }
+
+.kitchen-ticket-card { align-content: start; }
+.kitchen-ticket-item,
+.kitchen-ticket-item:first-child {
+  padding: 10px;
+  border: 1px solid var(--mise-border-hairline);
+  border-radius: var(--mise-r2);
+  background: var(--mise-surface-sunken);
+}
+.kitchen-ticket-item .secondary-cta { min-height: 36px; padding-inline: 12px; }
+.kitchen-item-name b { font-family: var(--mise-font-mono); color: var(--mise-saffron-deep); }
+
+.floor-add-table-card:hover,
+.catalog-card:hover:not(:disabled),
+.table-card:hover,
+.inventory-list-item:hover,
+.setup-card:hover {
+  transform: translateY(-1px);
+}
+.floor-area-delete { border-radius: var(--mise-r2) !important; }
+
+.sale-cart .cta,
+.pay-main > .cta,
+.payment-page .cta { min-height: 52px; }
+.empty-cart { border-radius: var(--mise-r2); background: var(--mise-surface-sunken); }
+.customer { border-radius: var(--mise-r2); }
+.methods button:first-of-type { border-radius: var(--mise-r2) 0 0 var(--mise-r2); }
+.methods button:last-of-type { border-radius: 0 var(--mise-r2) var(--mise-r2) 0; }
+
+.inventory-toolbar,
+.history-tools,
+.pc-toolbar { padding: 12px; }
+.inventory-list,
+.inventory-detail,
+.stock-activity,
+.batch-list { padding: 12px; }
+.inventory-detail h3 {
+  font: 700 10px/1.3 var(--mise-font-mono);
+  letter-spacing: .08em;
+}
+.inventory-detail-stats { gap: 12px; }
+
+.dialog-panel { padding: 22px; }
+.dialog-head h2,
+.pc-drawer-title { font-size: 21px; font-weight: 750; letter-spacing: -.025em; }
+.dialog-close:hover,
+.pc-drawer-close:hover { background: var(--mise-surface-sunken); color: var(--mise-ink); }
+
+/* Compact dashboard composition from the local Ember artifact. */
+.owner-dashboard { max-width: 1360px; }
+.owner-dashboard .metric-grid,
+.reporting-cashier .metric-grid {
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.owner-dashboard .metric-card,
+.reporting-cashier .metric-card {
+  min-height: 128px;
+  padding: 16px;
+  border-radius: var(--mise-r3);
+}
+.owner-dashboard .metric-card small,
+.reporting-cashier .metric-card small {
+  letter-spacing: .08em;
+}
+.owner-dashboard .metric-card strong,
+.reporting-cashier .metric-card strong {
+  font-size: clamp(22px, 2vw, 30px);
+  line-height: 1.15;
+}
+.owner-dashboard .metric-card.featured,
+.reporting-cashier .metric-card.featured {
+  border-color: color-mix(in srgb, var(--mise-saffron) 35%, var(--mise-border-hairline));
+  border-left: 1px solid color-mix(in srgb, var(--mise-saffron) 35%, var(--mise-border-hairline));
+  background: var(--mise-surface);
+  color: var(--mise-ink);
+  box-shadow: 0 8px 30px rgba(249, 115, 22, .09);
+}
+.dashboard-subgrid { grid-template-columns: minmax(0, 1.8fr) minmax(300px, 1.2fr); gap: 16px; margin-bottom: 16px; }
+.dashboard-columns { gap: 16px; margin-bottom: 16px; }
+.dashboard-panel, .unresolved-panel { border-radius: var(--mise-r3); padding: 18px; }
+.panel-header { align-items: flex-start; margin-bottom: 14px; padding-bottom: 14px; }
+.panel-header h2, .unresolved-panel h2 { font-family: var(--mise-font-display); font-size: 18px; font-weight: 750; letter-spacing: -.02em; }
+.rank-badge { background: var(--mise-saffron-fill); color: var(--mise-saffron-deep); }
+.ranked-row, .alert-row { min-height: 54px; }
+.ranked-details strong, .alert-row strong { font-weight: 600; }
+
+.pc-page { background: transparent; }
+.pc-hero {
+  margin-bottom: 24px;
+  padding: 0 0 18px;
+  border-bottom: 1px solid var(--mise-border-hairline);
+}
+.pc-hero::before { display: none; }
+.pc-title { font-size: clamp(28px, 3vw, 40px); }
+.pc-subtitle { color: var(--mise-ink-muted); }
+.pc-stats-strip { border: 0; background: transparent; }
+.pc-row { border-bottom-color: var(--mise-border-hairline); }
+.pc-avatar, .pc-avatar-img { border-radius: var(--mise-r2); background: var(--mise-surface-sunken); }
+.pc-drawer { border-radius: var(--mise-r4) 0 0 var(--mise-r4); }
+.pc-group { border-bottom-color: var(--mise-border-hairline); }
+.pc-drawer-foot { border-top-color: var(--mise-border-hairline); background: var(--mise-surface); }
+
+/* Orders and receipts */
+.order-history.receipt-history > .kicker,
+.order-history.receipt-history > h1,
+.order-history.receipt-history > .screen-note { margin-left: 0; }
+.order-history.receipt-history > h1 { font-size: clamp(28px, 3vw, 40px); }
+.order-history.receipt-history::before { display: none; }
+.history-list article { border-bottom-color: var(--mise-border-hairline); }
+.sale-receipt h2 { font-family: var(--mise-font-display); font-weight: 750; letter-spacing: -.02em; }
+
+/* CRM, floor, kitchen, inventory */
+.crm-finder, .promotions-layout, .inventory-layout { gap: 16px; }
+.crm-results li, .loyalty-rules-list li, .team-members li, .terminal-list li, .mise-log-list li, .inventory-list-item, .activity-row {
+  border-bottom-color: var(--mise-border-hairline);
+}
+.loyalty-rule-form, .floor-inline-form, .hardware-status { border-color: var(--mise-border-hairline); background: var(--mise-surface-sunken); }
+.table-card { min-height: 128px; }
+.table-card::after { display: none; }
+.floor-detail { border-left: 1px solid var(--mise-border-strong); background: var(--mise-surface); box-shadow: var(--mise-e3); }
+.kitchen-ticket-card { overflow: hidden; }
+.kitchen-ticket-elapsed { font-family: var(--mise-font-mono); color: var(--mise-saffron-deep); }
+.inventory-list-item.active { border-left: 3px solid var(--mise-saffron); background: var(--mise-saffron-fill); }
+.batch-card-bar { background: var(--mise-surface-sunken); }
+.batch-card-bar > div { background: var(--mise-saffron); }
+
+/* Settings and hardware */
+.settings-overview, .terminal-admin-page { background: transparent; }
+.pos-setup-cards { gap: 12px; }
+.settings-icon, .list-icon {
+  border: 1px solid color-mix(in srgb, var(--mise-saffron) 24%, var(--mise-border-hairline));
+  border-radius: var(--mise-r2);
+  background: var(--mise-saffron-fill);
+  color: var(--mise-saffron-deep);
+}
+.team-avatar { background: var(--mise-service-base); color: white; }
+.hardware-panel progress { accent-color: var(--mise-saffron); }
+.breadcrumbs { color: var(--mise-ink-muted); }
+
+.settings-overview { max-width: 1360px; }
+.settings-section-title {
+  font-family: var(--mise-font-display);
+  font-size: 18px;
+  font-weight: 750;
+  letter-spacing: -.02em;
+  color: var(--mise-ink);
+}
+.pos-setup-cards { gap: 12px; }
+.setup-card, .this-terminal-card, .admin-panel, .invite-form {
+  border-radius: var(--mise-r3);
+  box-shadow: var(--mise-e1);
+}
+.setup-card { min-height: 0; padding: 18px; }
+.setup-card .card-title h3,
+.invite-form h3,
+.this-terminal-card h2,
+.team-members h3 { font-family: var(--mise-font-display); font-weight: 700; }
+.settings-columns { gap: 16px; }
+.settings-icon, .list-icon {
+  width: 42px;
+  height: 42px;
+  flex-basis: 42px;
+  border-radius: var(--mise-r2);
+}
+.team-members li { min-height: 52px; }
+.team-avatar { border-radius: 50%; }
+
+/* Landing page uses the same product identity */
+.landing { background: var(--mise-surface); }
+.site-header {
+  border-bottom: 1px solid var(--mise-border-hairline);
+  background: color-mix(in srgb, var(--mise-surface) 94%, transparent);
+  backdrop-filter: blur(16px);
+}
+.hero { border-bottom: 1px solid var(--mise-border-hairline); background: var(--mise-surface); }
+.hero-copy { background: var(--mise-surface); }
+.hero h1 {
+  max-width: 11ch;
+  color: var(--mise-ink);
+  font-weight: 800;
+  letter-spacing: -.06em;
+  line-height: .96;
+}
+.hero h1 em { color: var(--mise-saffron); font-style: normal; }
+.hero-art { border-left-color: var(--mise-service-border); background: var(--mise-service-base); }
+.register-mini { border-color: var(--mise-service-border); background: var(--mise-service-surface); box-shadow: var(--mise-e3); }
+.feature-strip article { border-color: var(--mise-border-hairline); background: var(--mise-surface); }
+.feature-strip article h3 { font-family: var(--mise-font-display); font-weight: 750; }
+.landing footer { border-top-color: var(--mise-service-border); background: var(--mise-service-base); color: white; }
+
+@media (max-width: 1180px) {
+  .pos-app, .cashier-pos-shell { grid-template-columns: 204px minmax(0, 1fr); }
+  .reporting-page, .dashboard, .reporting-cashier, .order-history.receipt-history, .receipt-page, .pc-page, .crm-page, .floor-page, .kitchen-page, .settings-page, .terminal-admin-page, .mise-log-page, .promotions-page, .cashier-hardware-page { padding-inline: 24px; }
+}
+
+@media (max-width: 800px) {
+  body { padding-bottom: 70px; }
+  .pos-app, .cashier-pos-shell { display: block; }
+  .app-sidebar, .cashier-pos-sidebar { display: none; }
+  .app-main, .cashier-pos-main { min-height: 100vh; padding-bottom: 16px; }
+  .app-top, .cashier-pos-topbar { min-height: 60px; padding: 0 14px; }
+  .app-top .register-meta, .account-chip-email, .cashier-pos-topbar > span:nth-child(3) { display: none; }
+  .mobile-nav, .cashier-mobile-nav {
+    display: flex;
+    height: 70px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    border-top: 1px solid var(--mise-service-border);
+    background: var(--mise-service-base);
+    box-shadow: 0 -8px 24px rgba(26, 20, 16, .14);
+  }
+  .mobile-nav::-webkit-scrollbar, .cashier-mobile-nav::-webkit-scrollbar { display: none; }
+  .mobile-nav a, .cashier-mobile-nav a { flex: 1 0 74px; min-height: 70px; color: var(--mise-service-ink-muted); font-size: 10px; }
+  .mobile-nav a.active, .cashier-mobile-nav a.active { border-top-color: var(--mise-saffron); background: var(--mise-saffron); color: white; }
+  .register-page, .payment-page { padding-inline: 12px; }
+  .sale-cart { position: static; }
+}
+
+@media (max-width: 700px) {
+  .reporting-page, .dashboard, .reporting-cashier, .order-history.receipt-history, .receipt-page, .pc-page, .crm-page, .floor-page, .kitchen-page, .settings-page, .terminal-admin-page, .mise-log-page, .promotions-page, .cashier-hardware-page { padding: 24px 14px 40px; }
+  .page-header { align-items: stretch; }
+  .page-header-actions > * { flex: 1 1 auto; }
+  .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .metric-card { min-height: 108px; }
+  .catalog-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .auth-page { min-height: 100vh; }
+  .auth-art { min-height: 240px; padding: 42px 28px; }
+  .auth-art h1 { font-size: clamp(38px, 11vw, 58px); }
+  .auth-form { padding: 24px 14px 48px; }
+  .form-card { border-radius: var(--mise-r3); box-shadow: var(--mise-e1); }
+}
+
+@media (max-width: 460px) {
+  .metric-grid { grid-template-columns: 1fr; }
+  .catalog-grid { gap: 8px; }
+  .catalog-card { padding: 9px; }
+  .page-header h1, .pc-title, .reporting-heading h1, .order-history.receipt-history > h1 { font-size: 30px; }
+  .dialog-overlay { align-items: end; padding: 0; }
+  .dialog-panel { width: 100%; max-height: 92vh; border-radius: var(--mise-r4) var(--mise-r4) 0 0; padding: 20px 16px; }
+  .pc-drawer { border-radius: var(--mise-r4) var(--mise-r4) 0 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+  .catalog-card:hover:not(:disabled), .table-card:hover, .inventory-list-item:hover, .setup-card:hover, .cta:hover:not(:disabled) { transform: none; }
+}
+
+@media (forced-colors: active) {
+  .status-badge, .order-state, .terminal-state { border: 1px solid currentColor; }
+}

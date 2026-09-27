@@ -490,10 +490,19 @@ export async function moveTableParty(storeId: string, sourceTableId: string, tar
   finally { client.release() }
 }
 
-async function transferTable(req: Request, res: Response) {
+async function requireFloorServiceAccess(req: Request, storeId: string, terminal: boolean) {
+  if (!terminal) {
+    await requireStoreManager(req, storeId)
+    return
+  }
+  const session = await requireCashierTerminal(req, db)
+  if (session.storeId !== storeId) throw new ApiError(403, 'cross_store_reference', 'This terminal belongs to a different store.')
+}
+
+async function transferTable(req: Request, res: Response, terminal = false) {
   try {
     const storeId = storeIdParam(req)
-    await requireStoreManager(req, storeId)
+    await requireFloorServiceAccess(req, storeId, terminal)
     const sourceId = idParam(req)
     const targetId = String((req.body as Record<string, unknown>)?.target_table_id ?? '')
     if (!UUID_RE.test(targetId)) throw new ApiError(422, 'validation_failed', 'A valid target_table_id is required.')
@@ -503,10 +512,10 @@ async function transferTable(req: Request, res: Response) {
   } catch (reason) { sendApiError(res, reason) }
 }
 
-async function mergeTables(req: Request, res: Response) {
+async function mergeTables(req: Request, res: Response, terminal = false) {
   try {
     const storeId = storeIdParam(req)
-    await requireStoreManager(req, storeId)
+    await requireFloorServiceAccess(req, storeId, terminal)
     const targetId = idParam(req)
     const otherId = String((req.body as Record<string, unknown>)?.other_table_id ?? '')
     if (!UUID_RE.test(otherId)) throw new ApiError(422, 'validation_failed', 'A valid other_table_id is required.')
@@ -516,5 +525,7 @@ async function mergeTables(req: Request, res: Response) {
   } catch (reason) { sendApiError(res, reason) }
 }
 
-floorRouter.patch('/tables/:id/transfer', transferTable)
-floorRouter.patch('/tables/:id/merge', mergeTables)
+floorRouter.patch('/tables/:id/transfer', (req, res) => transferTable(req, res))
+floorRouter.patch('/tables/:id/merge', (req, res) => mergeTables(req, res))
+terminalFloorRouter.patch('/tables/:id/transfer', (req, res) => transferTable(req, res, true))
+terminalFloorRouter.patch('/tables/:id/merge', (req, res) => mergeTables(req, res, true))

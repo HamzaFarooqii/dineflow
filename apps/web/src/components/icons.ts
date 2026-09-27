@@ -14,4 +14,5 @@ export {
   TrendingUp, TrendingDown, Minus,
   Wallet, RefreshCw, Award, Receipt, Tag,
   Monitor, History, Shield, Play,
+  ArrowLeft, ArrowRight, Download, LogIn, LockKeyhole, MonitorSmartphone, ScanLine,
 } from 'lucide-react'

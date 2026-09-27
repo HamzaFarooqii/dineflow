@@ -1,5 +1,12 @@
 # Day 5 — Ahmed's Work (Hand-off)
 
+> **Completion update (2026-09-28):** All four hand-off items are implemented on
+> `feature/ahmed/day5-loyalty-modifiers-reports`: loyalty tier create/edit, real modifier
+> groups carried through catalog/register/checkout/KDS/receipts, terminal Kitchen access, and
+> food-cost plus kitchen-performance reporting. API/web builds and targeted integration tests
+> pass. This branch is ready for PR review; the historical execution note below is retained to
+> explain the original Day A/Day B split.
+
 Written by Hamza for Ahmed to execute independently. This replaces `FIVE_DAY_PLAN.md`'s original
 Day 5 sketch for you (kitchen + food-cost reports) — it's still in here, plus three items that came
 out of the owner's "fill these gaps" review of the whole sprint. Your total load is heavier than
@@ -132,7 +139,7 @@ not a solo change.
 **Acceptance:** a "French Toast" product can have a required "Size" group (Regular/Large, Large
 +$2.00) and an optional "Add-ons" group (Extra syrup +$0.50, multi-select); the register shows the
 picker, the line price reflects the selection, and the kitchen ticket shows which options were
-chosen.
+chosen. Similarly when the bill is printed the modifiers are also printed.
 
 ---
 

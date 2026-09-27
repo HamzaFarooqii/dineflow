@@ -8,16 +8,7 @@ except one closely-related item (Floor terminal mode, item 2 below) and a small 
 existing reporting scope (hours-worked, item 3) — everything else from the owner's review went to
 Hamza or Ahmed instead, specifically so your day doesn't get heavier.
 
-**Execution note (weekend, Ahmed/Bisma on leave):** the owner also asked for a full visual redesign
-(Ember tokens landed in `apps/web/src/styles.css`) on top of this. With the team split across two
-more calendar days and Ahmed/Bisma unavailable today, Hamza is executing today's slice of every
-role solo: **item 2 (Floor terminal mode) below, plus the Ember redesign applied to the
-Floor/Kitchen/Inventory screens**, done today as this file's "Day A" scope. **Items 1 and 3 below
-(owner dashboard + customer/loyalty/inventory reporting, hours-worked) are "Day B"** — deferred to
-the real Bisma once back, since it's already flagged as the largest single scope in the sprint and
-rushing it solo today would risk exactly the slip this file already warned about. Everything
-landed today is on `develop` directly, same direct-to-develop pattern this whole engagement has
-used.
+
 
 **Git ownership:** you run your own workflow end to end — branch, commit, push, open your own PR.
 Branch name: `feature/bisma/day5-reports` (matches `FIVE_DAY_PLAN.md`'s original naming).

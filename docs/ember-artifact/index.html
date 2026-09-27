@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ember POS design artifact</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./theme.css" />
+  </head>
+  <body>
+    <div class="artifact-shell">
+      <aside class="rail">
+        <a class="brand" href="#overview" aria-label="Ember home">
+          <span class="brand-mark">E</span><span>Ember</span>
+        </a>
+        <nav aria-label="Artifact navigation">
+          <a class="active" href="#overview"><span>01</span>Overview</a>
+          <a href="#register"><span>02</span>Register</a>
+          <a href="#orders"><span>03</span>Orders</a>
+          <a href="#kitchen"><span>04</span>Kitchen</a>
+          <a href="#system"><span>05</span>System</a>
+        </nav>
+        <div class="rail-foot">
+          <span class="live-dot"></span>
+          <div><strong>Online</strong><small>All changes saved</small></div>
+        </div>
+      </aside>
+
+      <main>
+        <header class="topbar">
+          <div><strong>Ember POS artifact</strong><small>Production design contract</small></div>
+          <div class="top-actions">
+            <span class="location">North Street · Terminal 02</span>
+            <button class="icon-button" aria-label="Notifications">3</button>
+            <span class="avatar">MA</span>
+          </div>
+        </header>
+
+        <div class="content" id="overview">
+          <section class="page-head">
+            <div>
+              <p class="eyebrow">Live operations</p>
+              <h1>Good evening, Maya</h1>
+              <p>Everything your team needs for a fast, focused service.</p>
+            </div>
+            <div class="head-actions">
+              <button class="button secondary">View activity</button>
+              <button class="button primary">Open register</button>
+            </div>
+          </section>
+
+          <section class="metrics" aria-label="Daily metrics">
+            <article class="metric featured">
+              <div><span>Net sales</span><span class="badge live"><i></i>Live</span></div>
+              <strong>£4,820.40</strong>
+              <small><b>+12.8%</b> from yesterday</small>
+            </article>
+            <article class="metric">
+              <div><span>Orders</span><span class="trend">+8.4%</span></div>
+              <strong>184</strong>
+              <small>£26.20 average ticket</small>
+            </article>
+            <article class="metric">
+              <div><span>Open tables</span><span class="badge amber">7 active</span></div>
+              <strong>12 / 18</strong>
+              <small>4 ready for payment</small>
+            </article>
+            <article class="metric">
+              <div><span>Kitchen time</span><span class="trend cool">−1m 12s</span></div>
+              <strong>08:42</strong>
+              <small>Average fulfilment</small>
+            </article>
+          </section>
+
+          <section class="work-grid" id="register">
+            <article class="panel service-panel">
+              <div class="panel-head">
+                <div><p class="eyebrow">Current service</p><h2>Floor activity</h2></div>
+                <button class="button ghost">All tables</button>
+              </div>
+              <div class="activity-list">
+                <div class="activity">
+                  <span class="table-number">T4</span>
+                  <div><strong>Table 4</strong><small>4 guests · 32 min</small></div>
+                  <span class="amount">£86.40</span>
+                  <span class="badge amber">Preparing</span>
+                </div>
+                <div class="activity">
+                  <span class="table-number">T9</span>
+                  <div><strong>Table 9</strong><small>2 guests · 51 min</small></div>
+                  <span class="amount">£54.20</span>
+                  <span class="badge blue">Payment</span>
+                </div>
+                <div class="activity">
+                  <span class="table-number">T2</span>
+                  <div><strong>Table 2</strong><small>6 guests · 18 min</small></div>
+                  <span class="amount">£122.80</span>
+                  <span class="badge green">Served</span>
+                </div>
+              </div>
+            </article>
+
+            <article class="panel ticket" id="orders">
+              <div class="panel-head">
+                <div><p class="eyebrow">Order preview</p><h2>Ticket #1048</h2></div>
+                <span class="badge green">Paid</span>
+              </div>
+              <ul>
+                <li><span><b>2×</b> Ember burger<small>One without onions</small></span><strong>£28.00</strong></li>
+                <li><span><b>1×</b> Charred cauliflower</span><strong>£9.50</strong></li>
+                <li><span><b>2×</b> Sparkling water</span><strong>£7.00</strong></li>
+              </ul>
+              <div class="total"><span>Total</span><strong>£44.50</strong></div>
+              <button class="button primary wide">View receipt</button>
+            </article>
+          </section>
+
+          <section class="component-grid" id="system">
+            <article class="panel">
+              <div class="panel-head"><div><p class="eyebrow">Controls</p><h2>Inputs and actions</h2></div></div>
+              <div class="form-grid">
+                <label>Guest name<input value="Amelia Reed" /></label>
+                <label>Table<select><option>Table 9</option></select></label>
+                <label class="span-two">Order note<textarea>Allergy: no peanuts</textarea></label>
+              </div>
+              <div class="button-row">
+                <button class="button primary">Primary action</button>
+                <button class="button secondary">Secondary</button>
+                <button class="button danger">Void item</button>
+              </div>
+            </article>
+
+            <article class="panel kitchen" id="kitchen">
+              <div class="panel-head">
+                <div><p class="eyebrow">Kitchen display</p><h2>Order #1049</h2></div>
+                <span class="timer">06:18</span>
+              </div>
+              <div class="kitchen-lines">
+                <p><b>2</b><span>Ribeye steak<small>Medium · peppercorn sauce</small></span></p>
+                <p><b>1</b><span>Market salad<small>Dressing on side</small></span></p>
+              </div>
+              <button class="button primary wide">Mark ready</button>
+            </article>
+          </section>
+
+          <footer>
+            <span>EMBER POS · DESIGN ARTIFACT 01</span>
+            <span>#1A1410 · #FFFDF6 · #F97316 · #FBBF24 · #0EA5E9</span>
+          </footer>
+        </div>
+      </main>
+    </div>
+  </body>
+</html>

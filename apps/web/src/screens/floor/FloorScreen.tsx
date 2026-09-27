@@ -11,7 +11,9 @@ import { TableCard } from './TableCard'
 import { PageHeader } from '../../components/PageHeader'
 import { StatusBadge } from '../../components/StatusBadge'
 import { SelectField } from '../../components/SelectField'
-import { X } from '../../components/icons'
+import { Dialog } from '../../components/Dialog'
+import { LayoutGrid, Pencil, Plus, Trash2 } from '../../components/icons'
+import { currentAccess } from '../../terminal-auth/cache'
 import './floor.css'
 
 const SEAT_FROM: TableStatus = 'available'
@@ -24,7 +26,7 @@ const CLEANED_FROM: TableStatus = 'dirty'
 // to be a Transfer source or a Merge target/source.
 const OCCUPIED_STATUSES: readonly TableStatus[] = ['seated', 'ordering', 'served']
 
-export function FloorScreen() {
+export function FloorScreen({ terminal = false }: { terminal?: boolean }) {
   const navigate = useNavigate()
   const [storeId, setStoreId] = useState('')
   const [currency, setCurrency] = useState('')
@@ -54,6 +56,9 @@ export function FloorScreen() {
   const [tableActionBusy, setTableActionBusy] = useState(false)
   const [tableActionError, setTableActionError] = useState('')
   const [editTableOpen, setEditTableOpen] = useState(false)
+  const [managedTable, setManagedTable] = useState<RestaurantTable | null>(null)
+  const [deleteAreaId, setDeleteAreaId] = useState<string | null>(null)
+  const [deleteTableId, setDeleteTableId] = useState<string | null>(null)
   const [editTableLabel, setEditTableLabel] = useState('')
   const [editTableSeats, setEditTableSeats] = useState('')
   const [editTableAreaId, setEditTableAreaId] = useState('')
@@ -70,7 +75,7 @@ export function FloorScreen() {
   const clearCart = usePosStore(state => state.clearCart)
 
   const reload = async (id: string) => {
-    const plan = await fetchFloorPlan(id)
+    const plan = await fetchFloorPlan(id, terminal)
     setAreas(plan.areas); setTables(plan.tables); setEmployees(plan.employees)
     return plan
   }
@@ -80,13 +85,20 @@ export function FloorScreen() {
     const load = async () => {
       try {
         if (!navigator.onLine) throw new Error('Connect to load the floor plan.')
-        const client = requireSupabase()
-        const { data: { user }, error: userError } = await client.auth.getUser()
-        if (userError || !user) throw new Error('Sign in to view the floor.')
-        const { data, error: membershipError } = await client.from('store_memberships').select('store_id,role')
-          .eq('user_id', user.id).eq('active', true).in('role', ['owner', 'manager']).limit(1)
-        if (membershipError) throw membershipError
-        const id = data?.[0]?.store_id
+        let id: string | undefined
+        if (terminal) {
+          const access = await currentAccess()
+          if (!access?.policy.valid) throw new Error('Unlock this terminal to view the floor.')
+          id = access.cache.device.store_id
+        } else {
+          const client = requireSupabase()
+          const { data: { user }, error: userError } = await client.auth.getUser()
+          if (userError || !user) throw new Error('Sign in to view the floor.')
+          const { data, error: membershipError } = await client.from('store_memberships').select('store_id,role')
+            .eq('user_id', user.id).eq('active', true).in('role', ['owner', 'manager']).limit(1)
+          if (membershipError) throw membershipError
+          id = data?.[0]?.store_id
+        }
         if (!id) throw new Error('Store access is unavailable.')
         const config = await posDb.store_config.get(id)
         if (active) setStoreId(id)
@@ -123,7 +135,7 @@ export function FloorScreen() {
     setActionBusy(true)
     setActionError('')
     try {
-      const updated = await updateTableStatus(storeId, table.id, expectedStatus, status, assignedWaiterId)
+      const updated = await updateTableStatus(storeId, table.id, expectedStatus, status, assignedWaiterId, terminal)
       applyUpdatedTable(updated)
       return updated
     } catch (reason) {
@@ -156,7 +168,7 @@ export function FloorScreen() {
       return
     }
     const updated = await runTransition(table, ADD_ORDER_FROM, 'ordering')
-    if (updated) { setActiveTableId(table.id); navigate('/register') }
+    if (updated) { setActiveTableId(table.id); navigate(terminal ? '/pos/register' : '/register') }
   }
 
   async function handleBill(table: RestaurantTable) {
@@ -189,11 +201,11 @@ export function FloorScreen() {
   }
 
   async function handleDeleteArea(area: FloorArea) {
-    if (!window.confirm(`Delete "${area.name}"? This only works if it has no tables left in it.`)) return
     setAreaActionBusy(true); setAreaActionError('')
     try {
       await deleteFloorArea(storeId, area.id)
       if (selectedArea === area.id) setSelectedArea('all')
+      setDeleteAreaId(null)
       await reload(storeId)
     } catch (reason) { setAreaActionError(reason instanceof Error ? reason.message : 'Could not delete this area.') }
     finally { setAreaActionBusy(false) }
@@ -218,6 +230,7 @@ export function FloorScreen() {
   }
 
   function openEditTable(table: RestaurantTable) {
+    setManagedTable(table)
     setEditTableOpen(true)
     setEditTableLabel(table.label)
     setEditTableSeats(String(table.seats))
@@ -236,16 +249,19 @@ export function FloorScreen() {
       const updated = await updateRestaurantTable(storeId, table.id, { label: editTableLabel.trim(), seats, floor_area_id: editTableAreaId })
       applyUpdatedTable(updated)
       setEditTableOpen(false)
+      setManagedTable(null)
     } catch (reason) { setTableActionError(reason instanceof Error ? reason.message : 'Could not save this table.') }
     finally { setTableActionBusy(false) }
   }
 
   async function handleDeleteTable(table: RestaurantTable) {
-    if (!window.confirm(`Delete table ${table.label}? Only possible while it's available.`)) return
     setTableActionBusy(true); setTableActionError('')
     try {
       await deleteRestaurantTable(storeId, table.id)
       setSelectedTable(null)
+      setManagedTable(null)
+      setEditTableOpen(false)
+      setDeleteTableId(null)
       await reload(storeId)
     } catch (reason) { setTableActionError(reason instanceof Error ? reason.message : 'Could not delete this table.') }
     finally { setTableActionBusy(false) }
@@ -261,8 +277,8 @@ export function FloorScreen() {
     if (!moveTargetId) { setMoveError('Choose a table.'); return }
     setMoveBusy(true); setMoveError('')
     try {
-      if (moveMode === 'transfer') await transferTableParty(storeId, table.id, moveTargetId)
-      else await mergeTableParty(storeId, moveTargetId, table.id)
+      if (moveMode === 'transfer') await transferTableParty(storeId, table.id, moveTargetId, terminal)
+      else await mergeTableParty(storeId, moveTargetId, table.id, terminal)
       setMoveMode(null); setMoveTargetId('')
       const plan = await reload(storeId)
       // The acted-on table is freed either way (transferred away, or merged into the other) —
@@ -281,7 +297,12 @@ export function FloorScreen() {
       kicker="RESTAURANT FLOOR"
       title="Floor & Tables"
       subtitle="Every table across your dining areas, at a glance."
-      actions={<button type="button" className={editMode ? 'secondary-cta active' : 'secondary-cta'} onClick={() => setEditMode(value => !value)}>{editMode ? 'Done editing' : 'Edit floor'}</button>}
+      actions={!terminal && <button type="button" className="secondary-cta" onClick={() => {
+        setSelectedTable(null)
+        setEditMode(true)
+        setAreaActionError('')
+        setTableActionError('')
+      }}><Pencil aria-hidden="true" size={15} />Edit floor</button>}
     />
     {error && <p className="form-notice error" role="alert">{error}</p>}
     {loading && !error && <p role="status">Loading the floor…</p>}
@@ -290,12 +311,9 @@ export function FloorScreen() {
     {!loading && !error && <>
       <div className="floor-area-tabs" role="tablist" aria-label="Floor areas">
         <button type="button" className={selectedArea === 'all' ? 'active' : ''} onClick={() => setSelectedArea('all')}>All areas</button>
-        {areas.map(area => <span className="floor-area-tab-wrap" key={area.id}>
-          <button type="button" className={selectedArea === area.id ? 'active' : ''} onClick={() => setSelectedArea(area.id)}>{area.name}</button>
-          {editMode && <button type="button" className="floor-area-delete" aria-label={`Delete ${area.name}`} title="Delete area" disabled={areaActionBusy} onClick={() => void handleDeleteArea(area)}><X aria-hidden="true" size={14} /></button>}
-        </span>)}
+        {areas.map(area => <button key={area.id} type="button" className={selectedArea === area.id ? 'active' : ''} onClick={() => setSelectedArea(area.id)}>{area.name}</button>)}
       </div>
-      {editMode && <form className="floor-inline-form" onSubmit={event => void handleAddArea(event)}>
+      {false && editMode && <form className="floor-inline-form" onSubmit={event => void handleAddArea(event)}>
         <input type="text" maxLength={80} placeholder="New area name (e.g. Rooftop)" value={newAreaName} onChange={event => setNewAreaName(event.target.value)} />
         <button type="submit" className="secondary-cta" disabled={areaActionBusy || !newAreaName.trim()}>{areaActionBusy ? 'Adding…' : 'Add area'}</button>
       </form>}
@@ -304,9 +322,9 @@ export function FloorScreen() {
       <div className="floor-grid">
         {visibleTables.map(table => <TableCard key={table.id} table={table} areaName={areaName(table.floor_area_id)} currency={currency} onSelect={() => openTable(table)} />)}
         {visibleTables.length === 0 && !editMode && <p className="floor-empty">No tables in this area.</p>}
-        {editMode && !newTableOpen && <button type="button" className="floor-add-table-card" onClick={() => { setNewTableOpen(true); setTableActionError(''); if (!newTableAreaId) setNewTableAreaId(areas[0]?.id ?? '') }}>+ Add table</button>}
+        {false && editMode && !newTableOpen && <button type="button" className="floor-add-table-card" onClick={() => { setNewTableOpen(true); setTableActionError(''); if (!newTableAreaId) setNewTableAreaId(areas[0]?.id ?? '') }}>+ Add table</button>}
       </div>
-      {editMode && newTableOpen && <form className="floor-inline-form floor-new-table-form" onSubmit={event => void handleAddTable(event)}>
+      {false && editMode && newTableOpen && <form className="floor-inline-form floor-new-table-form" onSubmit={event => void handleAddTable(event)}>
         <label>Label<input type="text" maxLength={40} placeholder="T1" value={newTableLabel} onChange={event => setNewTableLabel(event.target.value)} /></label>
         <label>Seats<input type="number" min={1} value={newTableSeats} onChange={event => setNewTableSeats(event.target.value)} /></label>
         <SelectField label="Area" value={newTableAreaId} onChange={event => setNewTableAreaId(event.target.value)}>
@@ -319,6 +337,137 @@ export function FloorScreen() {
         {tableActionError && <p className="form-notice error" role="alert">{tableActionError}</p>}
       </form>}
     </>}
+    {editMode && <Dialog
+      title="Edit floor plan"
+      kicker="LAYOUT MANAGEMENT"
+      className="floor-manager-dialog"
+      onClose={() => {
+        if (areaActionBusy || tableActionBusy) return
+        setEditMode(false)
+        setNewTableOpen(false)
+        setEditTableOpen(false)
+        setManagedTable(null)
+        setDeleteAreaId(null)
+        setDeleteTableId(null)
+      }}
+    >
+      <div className="floor-manager-intro">
+        <div className="floor-manager-mark"><LayoutGrid aria-hidden="true" size={20} /></div>
+        <div>
+          <strong>Shape the room without interrupting service.</strong>
+          <p>Create dining areas, add tables, or update seating from one focused workspace.</p>
+        </div>
+      </div>
+
+      <div className="floor-manager-summary" aria-label="Floor plan summary">
+        <div><span>Areas</span><strong>{areas.length}</strong></div>
+        <div><span>Tables</span><strong>{tables.length}</strong></div>
+        <div><span>Total seats</span><strong>{tables.reduce((sum, table) => sum + table.seats, 0)}</strong></div>
+      </div>
+
+      <div className="floor-manager-grid">
+        <section className="floor-manager-section">
+          <div className="floor-manager-section-head">
+            <div><p className="kicker">DINING AREAS</p><h3>Organize the room</h3></div>
+          </div>
+          <form className="floor-manager-form" onSubmit={event => void handleAddArea(event)}>
+            <label>Area name
+              <input type="text" maxLength={80} placeholder="e.g. Rooftop" value={newAreaName} onChange={event => setNewAreaName(event.target.value)} />
+            </label>
+            <button type="submit" className="secondary-cta" disabled={areaActionBusy || !newAreaName.trim()}>
+              <Plus aria-hidden="true" size={15} />{areaActionBusy ? 'Adding...' : 'Add area'}
+            </button>
+          </form>
+          {areaActionError && <p className="form-notice error" role="alert">{areaActionError}</p>}
+          <ul className="floor-manager-list">
+            {areas.map(area => {
+              const areaTables = tables.filter(table => table.floor_area_id === area.id)
+              const confirming = deleteAreaId === area.id
+              return <li key={area.id}>
+                <div className="floor-manager-row-copy">
+                  <strong>{area.name}</strong>
+                  <span>{areaTables.length} {areaTables.length === 1 ? 'table' : 'tables'} · {areaTables.reduce((sum, table) => sum + table.seats, 0)} seats</span>
+                </div>
+                {!confirming ? <button type="button" className="icon-action danger" aria-label={`Delete ${area.name}`}
+                  disabled={areaActionBusy || areaTables.length > 0} title={areaTables.length ? 'Move or delete its tables first' : 'Delete area'}
+                  onClick={() => setDeleteAreaId(area.id)}><Trash2 aria-hidden="true" size={15} /></button>
+                  : <div className="floor-manager-confirm">
+                    <span>Delete?</span>
+                    <button type="button" className="text-action" onClick={() => setDeleteAreaId(null)}>Keep</button>
+                    <button type="button" className="danger-action" disabled={areaActionBusy} onClick={() => void handleDeleteArea(area)}>Delete</button>
+                  </div>}
+              </li>
+            })}
+            {!areas.length && <li className="floor-manager-list-empty">Add an area before creating tables.</li>}
+          </ul>
+        </section>
+
+        <section className="floor-manager-section">
+          <div className="floor-manager-section-head">
+            <div><p className="kicker">TABLES</p><h3>Manage seating</h3></div>
+            <button type="button" className="text-action" disabled={!areas.length} onClick={() => {
+              setNewTableOpen(true)
+              setManagedTable(null)
+              setEditTableOpen(false)
+              setTableActionError('')
+              if (!newTableAreaId) setNewTableAreaId(areas[0]?.id ?? '')
+            }}><Plus aria-hidden="true" size={14} />New table</button>
+          </div>
+
+          {newTableOpen && <form className="floor-manager-card-form" onSubmit={event => void handleAddTable(event)}>
+            <div className="floor-manager-form-title"><strong>Add a table</strong><span>Set the label, capacity, and dining area.</span></div>
+            <div className="floor-manager-fields">
+              <label>Table label<input type="text" maxLength={40} placeholder="T1" value={newTableLabel} onChange={event => setNewTableLabel(event.target.value)} /></label>
+              <label>Seats<input type="number" min={1} value={newTableSeats} onChange={event => setNewTableSeats(event.target.value)} /></label>
+              <SelectField label="Area" value={newTableAreaId} onChange={event => setNewTableAreaId(event.target.value)}>
+                {areas.map(area => <option key={area.id} value={area.id}>{area.name}</option>)}
+              </SelectField>
+            </div>
+            <div className="floor-manager-form-actions">
+              <button type="button" className="text-action" onClick={() => setNewTableOpen(false)}>Cancel</button>
+              <button type="submit" className="cta" disabled={tableActionBusy}>{tableActionBusy ? 'Creating...' : 'Create table'}</button>
+            </div>
+          </form>}
+
+          {editTableOpen && managedTable && <form className="floor-manager-card-form editing" onSubmit={event => { event.preventDefault(); void handleSaveTable(managedTable) }}>
+            <div className="floor-manager-form-title"><strong>Edit table {managedTable.label}</strong><span>Changes appear on the floor immediately.</span></div>
+            <div className="floor-manager-fields">
+              <label>Table label<input type="text" maxLength={40} value={editTableLabel} onChange={event => setEditTableLabel(event.target.value)} /></label>
+              <label>Seats<input type="number" min={1} value={editTableSeats} onChange={event => setEditTableSeats(event.target.value)} /></label>
+              <SelectField label="Area" value={editTableAreaId} onChange={event => setEditTableAreaId(event.target.value)}>
+                {areas.map(area => <option key={area.id} value={area.id}>{area.name}</option>)}
+              </SelectField>
+            </div>
+            <div className="floor-manager-form-actions">
+              <button type="button" className="text-action" onClick={() => { setEditTableOpen(false); setManagedTable(null) }}>Cancel</button>
+              <button type="submit" className="cta" disabled={tableActionBusy}>{tableActionBusy ? 'Saving...' : 'Save table'}</button>
+            </div>
+          </form>}
+
+          {tableActionError && <p className="form-notice error" role="alert">{tableActionError}</p>}
+          <ul className="floor-manager-list floor-manager-table-list">
+            {tables.map(table => {
+              const confirming = deleteTableId === table.id
+              return <li key={table.id} className={managedTable?.id === table.id ? 'selected' : undefined}>
+                <button type="button" className="floor-manager-table-main" onClick={() => { setNewTableOpen(false); openEditTable(table) }}>
+                  <span className="floor-manager-table-code">{table.label}</span>
+                  <span><strong>{areaName(table.floor_area_id)}</strong><small>{table.seats} seats · {TABLE_STATUS_LABELS[table.status]}</small></span>
+                  <Pencil aria-hidden="true" size={14} />
+                </button>
+                {!confirming ? <button type="button" className="icon-action danger" aria-label={`Delete table ${table.label}`}
+                  disabled={tableActionBusy || table.status !== 'available'} title={table.status !== 'available' ? 'Free the table before deleting it' : 'Delete table'}
+                  onClick={() => setDeleteTableId(table.id)}><Trash2 aria-hidden="true" size={15} /></button>
+                  : <div className="floor-manager-confirm">
+                    <button type="button" className="text-action" onClick={() => setDeleteTableId(null)}>Keep</button>
+                    <button type="button" className="danger-action" disabled={tableActionBusy} onClick={() => void handleDeleteTable(table)}>Delete</button>
+                  </div>}
+              </li>
+            })}
+            {!tables.length && <li className="floor-manager-list-empty">No tables yet. Add the first one above.</li>}
+          </ul>
+        </section>
+      </div>
+    </Dialog>}
     {selectedTable && <aside className="floor-detail" role="dialog" aria-label={`Table ${selectedTable.label}`}>
       <header><h2>Table {selectedTable.label}</h2><button type="button" className="text-action" onClick={() => setSelectedTable(null)}>Close</button></header>
       {!editTableOpen ? <dl>
@@ -371,8 +520,9 @@ export function FloorScreen() {
       <div className="floor-detail-actions">
         <button type="button" disabled={actionBusy || selectedTable.status !== SEAT_FROM} onClick={() => void handleSeat(selectedTable)}>Seat</button>
         <button type="button" disabled={actionBusy || selectedTable.status !== ADD_ORDER_FROM} onClick={() => void handleAddOrder(selectedTable)}>Add order</button>
-        <button type="button" disabled={actionBusy || selectedTable.status !== MARK_SERVED_FROM} onClick={() => void handleMarkServed(selectedTable)}
+        {!terminal && <button type="button" disabled={actionBusy || selectedTable.status !== MARK_SERVED_FROM} onClick={() => void handleMarkServed(selectedTable)}
           title="The kitchen normally does this automatically once every item on the ticket is served">Mark served</button>
+        }
         <button type="button" disabled={actionBusy || !OCCUPIED_STATUSES.includes(selectedTable.status)} onClick={() => openMove('transfer')}>Transfer</button>
         <button type="button" disabled={actionBusy || !OCCUPIED_STATUSES.includes(selectedTable.status)} onClick={() => openMove('merge')}>Merge</button>
         <button type="button" disabled={actionBusy || !BILLABLE_FROM.includes(selectedTable.status)} onClick={() => void handleBill(selectedTable)}>Bill</button>

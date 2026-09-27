@@ -9,6 +9,7 @@ import { requireSupabase } from '../lib/supabase'
 import { currentAccess } from '../terminal-auth/cache'
 import { LoyaltyBalance } from './loyalty/LoyaltyBalance'
 import { RewardRulesSection } from './loyalty/RewardRulesSection'
+import { LoyaltyTiersSection } from './loyalty/LoyaltyTiersSection'
 import { Dialog } from '../components/Dialog'
 import { PageHeader } from '../components/PageHeader'
 import { StatusBadge, type BadgeTone } from '../components/StatusBadge'
@@ -165,6 +166,9 @@ export function CustomerScreen({ terminal = false }: { terminal?: boolean }) {
       onSelect={terminal ? customer => { selectCustomer(customer); navigate('/pos/register') } : undefined}
       onViewProfile={terminal ? undefined : customer => setProfileCustomer(customer)} />}
     {profileCustomer && <CustomerProfile storeId={storeId} customer={profileCustomer} terminal={terminal} onClose={() => setProfileCustomer(null)} />}
-    {storeId && !terminal && <RewardRulesSection storeId={storeId} />}
+    {storeId && !terminal && <div className="loyalty-management-grid">
+      <LoyaltyTiersSection storeId={storeId} />
+      <RewardRulesSection storeId={storeId} />
+    </div>}
   </section>
 }

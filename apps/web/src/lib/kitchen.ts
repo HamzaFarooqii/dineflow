@@ -12,6 +12,7 @@ export interface KitchenTicketItem {
   served_at: string | null
   snapshot_name: string
   quantity: number
+  modifiers: { group_name: string; option_name: string }[]
 }
 export interface KitchenTicket {
   id: string
@@ -41,10 +42,10 @@ export async function fetchKitchenTickets(storeId: string, terminal = false): Pr
 
 // PATCH /kitchen/tickets/:id/items/:itemId — advance (or cancel) one ticket item. Owner/manager
 // only today, same as the rest of /kitchen (no terminal variant is wired up yet).
-export async function advanceKitchenTicketItem(storeId: string, ticketId: string, itemId: string, status: KitchenTicketStatus): Promise<{ ticket_id: string; ticket_status: KitchenTicketStatus }> {
-  const response = await fetch(`${configuredApiUrl()}/kitchen/tickets/${encodeURIComponent(ticketId)}/items/${encodeURIComponent(itemId)}`, {
-    method: 'PATCH', credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await accessToken()}` },
+export async function advanceKitchenTicketItem(storeId: string, ticketId: string, itemId: string, status: KitchenTicketStatus, terminal = false): Promise<{ ticket_id: string; ticket_status: KitchenTicketStatus }> {
+  const response = await fetch(`${configuredApiUrl()}${terminal ? '/pos/kitchen' : '/kitchen'}/tickets/${encodeURIComponent(ticketId)}/items/${encodeURIComponent(itemId)}`, {
+    method: 'PATCH', credentials: terminal ? 'include' : 'same-origin',
+    headers: { 'Content-Type': 'application/json', ...(terminal ? {} : { Authorization: `Bearer ${await accessToken()}` }) },
     body: JSON.stringify({ store_id: storeId, status }),
     signal: AbortSignal.timeout(15_000),
   })

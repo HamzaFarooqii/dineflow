@@ -12,7 +12,7 @@
 }
 
 .loyalty-balance-points {
-  font: 400 12px 'IBM Plex Mono', monospace;
+  font: 400 12px 'JetBrains Mono', monospace;
   font-variant-numeric: tabular-nums;
   color: var(--mise-ink-secondary);
 }
@@ -39,6 +39,26 @@
 /* Reward catalog (management Guests screen) */
 .loyalty-rules {
   margin-top: var(--mise-space-16);
+}
+
+.loyalty-management-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--mise-space-16);
+}
+
+.loyalty-section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--mise-space-16);
+}
+
+.loyalty-section-heading h2 { margin-top: var(--mise-space-4); }
+.loyalty-eyebrow {
+  color: var(--mise-orange);
+  font: 700 10px/1 'JetBrains Mono', monospace;
+  letter-spacing: .12em;
 }
 
 .loyalty-rules-list {
@@ -69,12 +89,12 @@
 }
 
 .loyalty-rules-list strong {
-  font: 600 14px 'Archivo', sans-serif;
+  font: 600 14px 'Inter', sans-serif;
   color: var(--mise-ink);
 }
 
 .loyalty-rules-list small {
-  font: 400 11px 'IBM Plex Mono', monospace;
+  font: 400 11px 'JetBrains Mono', monospace;
   font-variant-numeric: tabular-nums;
   color: var(--mise-ink-muted);
 }
@@ -95,7 +115,7 @@
 }
 
 .loyalty-rule-form h3 {
-  font: 600 14px 'Archivo', sans-serif;
+  font: 600 14px 'Inter', sans-serif;
   color: var(--mise-ink);
   margin: 0;
 }
@@ -106,13 +126,34 @@
   gap: var(--mise-space-16);
 }
 
+.loyalty-tier-form-row {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr 1fr;
+  gap: var(--mise-space-12);
+}
+
+.loyalty-tier-form-row small { color: var(--mise-ink-muted); }
+
+.loyalty-tier-list li {
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+}
+
+.loyalty-tier-rank {
+  color: var(--mise-orange);
+  font: 700 11px 'JetBrains Mono', monospace;
+}
+
 .loyalty-rule-form-actions {
   display: flex;
   gap: var(--mise-space-12);
 }
 
 @media (max-width: 768px) {
+  .loyalty-management-grid { grid-template-columns: 1fr; }
   .loyalty-rules-list li { grid-template-columns: minmax(0, 1fr) auto; }
   .loyalty-rule-actions { grid-column: 1 / -1; }
   .loyalty-rule-form-row { grid-template-columns: 1fr; }
+  .loyalty-tier-form-row { grid-template-columns: 1fr; }
+  .loyalty-tier-list li { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .loyalty-tier-list li .text-action { grid-column: 2 / -1; justify-self: start; }
 }

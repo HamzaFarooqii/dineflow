@@ -58,7 +58,10 @@ export async function completeLocalSale(items: CartItem[], storeId: string, meth
         order_type: orderType, table_id: tableId }
       const orderItems: LocalOrderItem[] = items.map((item, index) => ({ id: crypto.randomUUID(),
         order_id: operationId, product_id: item.productId, snapshot_name: item.name, snapshot_sku: item.sku,
-        snapshot_price_cents: item.unitPriceCents, snapshot_tax_bps: item.taxRateBps, catalog_version: item.catalogVersion, quantity: item.quantity,
+        snapshot_price_cents: item.unitPriceCents, base_price_cents: item.basePriceCents ?? item.unitPriceCents,
+        modifiers: (item.modifiers ?? []).map(modifier => ({ option_id: modifier.optionId, group_name: modifier.groupName,
+          option_name: modifier.optionName, price_delta_cents: modifier.priceDeltaCents })),
+        snapshot_tax_bps: item.taxRateBps, catalog_version: item.catalogVersion, quantity: item.quantity,
         subtotal_cents: lines[index].subtotalCents, discount_kind: item.discount?.kind ?? null,
         discount_value: item.discount ? (item.discount.kind === 'percent' ? item.discount.bps : item.discount.cents) : null,
         discount_applied_cents: lines[index].discountAppliedCents, taxable_cents: lines[index].taxableCents,

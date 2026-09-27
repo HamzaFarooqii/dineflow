@@ -114,6 +114,31 @@ test('loyalty API: accounts, enrollment, ledger, tiers and reward-rule CRUD', as
     assert.equal((await pos(`/tiers?${s}`)).status, 200)
   })
 
+  await t.test('POST and PATCH /tiers let an owner manage valid tier thresholds and multipliers', async () => {
+    const created = await web(`/tiers?${s}`, {
+      method: 'POST',
+      body: { name: ' Platinum ', min_lifetime_points: 10000, point_multiplier_bps: 17500 },
+    })
+    assert.equal(created.status, 201)
+    const tier = await created.json() as { id: string; name: string; min_lifetime_points: number; point_multiplier_bps: number }
+    assert.deepEqual([tier.name, tier.min_lifetime_points, tier.point_multiplier_bps], ['Platinum', 10000, 17500])
+
+    const updated = await web(`/tiers/${tier.id}?${s}`, {
+      method: 'PATCH',
+      body: { min_lifetime_points: 12000, point_multiplier_bps: 20000 },
+    })
+    assert.equal(updated.status, 200)
+    const updatedTier = await updated.json() as { min_lifetime_points: number; point_multiplier_bps: number }
+    assert.deepEqual([updatedTier.min_lifetime_points, updatedTier.point_multiplier_bps], [12000, 20000])
+    assert.equal((await web(`/tiers?${s}`, {
+      method: 'POST', body: { name: 'Nope', min_lifetime_points: 0, point_multiplier_bps: 10000 }, token: 'test-cashier',
+    })).status, 403)
+    assert.equal((await web(`/tiers?${s}`, {
+      method: 'POST', body: { name: 'Impossible', min_lifetime_points: -1, point_multiplier_bps: 100001 },
+    })).status, 422)
+    assert.equal((await pos(`/tiers?${s}`, 'POST')).status, 404)
+  })
+
   await t.test('GET /accounts/:customerId returns balance, lifetime points and the lifetime-based tier', async () => {
     const response = await pos(`/accounts/${guest}?${s}`)
     assert.equal(response.status, 200)

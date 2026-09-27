@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express'
 import { db } from '../db.js'
 import { ApiError, requireStoreMember, sendApiError } from './auth.js'
 import { calendarDayBoundsUtc } from '../lib/timezone.js'
+import { costRecipe, foodCostBps, type RecipeCostUnit } from '../../../../packages/domain/src/recipe-cost.js'
 
 export const reportsRouter = Router()
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -224,3 +225,340 @@ async function oversoldHandler(req: Request, res: Response) {
   } catch (reason) { sendApiError(res, reason) }
 }
 reportsRouter.get('/oversold', (req, res) => void oversoldHandler(req, res))
+
+function dateValue(value: unknown, label: string): string {
+  const date = String(value ?? '')
+  if (!dateRe.test(date)) throw new ApiError(400, 'validation_failed', `A valid ${label} date (YYYY-MM-DD) is required.`)
+  const [year, month, day] = date.split('-').map(Number)
+  const asUtc = new Date(Date.UTC(year, month - 1, day))
+  if (asUtc.getUTCFullYear() !== year || asUtc.getUTCMonth() !== month - 1 || asUtc.getUTCDate() !== day) {
+    throw new ApiError(400, 'validation_failed', `A valid ${label} date (YYYY-MM-DD) is required.`)
+  }
+  return date
+}
+
+export async function reportRange(storeId: string, from: string, to: string) {
+  const timezone = await storeTimezone(storeId)
+  const start = calendarDayBoundsUtc(from, timezone).startUtc
+  const end = calendarDayBoundsUtc(to, timezone).endUtc
+  if (Date.parse(start) >= Date.parse(end)) throw new ApiError(400, 'validation_failed', 'The from date must be on or before the to date.')
+  if ((Date.parse(end) - Date.parse(start)) / 86_400_000 > 367) throw new ApiError(400, 'validation_failed', 'Report ranges may not exceed 366 days.')
+  return { startUtc: start, endUtc: end }
+}
+
+function rangeParam(req: Request) {
+  return { from: dateValue(req.query.from, 'from'), to: dateValue(req.query.to, 'to') }
+}
+
+export interface CustomerReportRow {
+  id: string
+  name: string
+  visitCount: number
+  spendCents: number
+  lastVisit: string
+  pointsBalance: number
+  lifetimePoints: number
+  tierName: string | null
+}
+
+export interface CustomerReport {
+  uniqueGuests: number
+  returningGuests: number
+  newGuests: number
+  enrolledGuests: number
+  visits: number
+  guestRevenueCents: number
+  pointsEarned: number
+  pointsRedeemed: number
+  topGuests: CustomerReportRow[]
+}
+
+export async function loadCustomerReport(storeId: string, from: string, to: string): Promise<CustomerReport> {
+  const { startUtc, endUtc } = await reportRange(storeId, from, to)
+  const [guests, accounts, tiers, loyalty, enrolled, created] = await Promise.all([
+    db.query<{
+      id: string; name: string; visits: string; spend_cents: string; last_visit: string
+    }>(`
+      with refunds as (
+        select order_id, sum(amount_cents) as amount_cents from public.pos_refunds
+        where store_id=$1 group by order_id
+      )
+      select c.id, c.name, count(o.id)::text as visits,
+        coalesce(sum(greatest(o.total_cents-coalesce(r.amount_cents,0),0)),0)::text as spend_cents,
+        max(o.client_generated_at)::text as last_visit
+      from public.pos_customers c
+      join public.pos_orders o on o.store_id=c.store_id and o.customer_id=c.id
+        and o.client_generated_at >= $2 and o.client_generated_at < $3
+      left join refunds r on r.order_id=o.id
+      where c.store_id=$1
+      group by c.id, c.name
+      order by sum(greatest(o.total_cents-coalesce(r.amount_cents,0),0)) desc, count(o.id) desc, c.name`, [storeId, startUtc, endUtc]),
+    db.query<{ customer_id: string; points_balance: number; lifetime_points: number }>(
+      'select customer_id, points_balance, lifetime_points from public.loyalty_accounts where store_id=$1', [storeId]),
+    db.query<{ name: string; min_lifetime_points: number }>(
+      'select name, min_lifetime_points from public.loyalty_tiers where store_id=$1 order by min_lifetime_points desc, name', [storeId]),
+    db.query<{ earned: string; redeemed: string }>(`
+      select coalesce(sum(case when delta > 0 then delta else 0 end),0)::text as earned,
+        coalesce(sum(case when delta < 0 then -delta else 0 end),0)::text as redeemed
+      from public.loyalty_point_ledger
+      where store_id=$1 and created_at >= $2 and created_at < $3`, [storeId, startUtc, endUtc]),
+    db.query<{ count: string }>('select count(*)::text as count from public.loyalty_accounts where store_id=$1', [storeId]),
+    db.query<{ count: string }>('select count(*)::text as count from public.pos_customers where store_id=$1 and client_generated_at >= $2 and client_generated_at < $3', [storeId, startUtc, endUtc]),
+  ])
+  const accountsByCustomer = new Map(accounts.rows.map(row => [row.customer_id, row]))
+  const topGuests = guests.rows.map(row => {
+    const account = accountsByCustomer.get(row.id)
+    const tier = account ? tiers.rows.find(candidate => candidate.min_lifetime_points <= account.lifetime_points) : undefined
+    return {
+    id: row.id, name: row.name, visitCount: Number(row.visits), spendCents: Number(row.spend_cents),
+    lastVisit: row.last_visit, pointsBalance: Number(account?.points_balance ?? 0), lifetimePoints: Number(account?.lifetime_points ?? 0), tierName: tier?.name ?? null,
+    }
+  })
+  return {
+    uniqueGuests: topGuests.length,
+    returningGuests: topGuests.filter(row => row.visitCount > 1).length,
+    newGuests: Number(created.rows[0]?.count ?? 0),
+    enrolledGuests: Number(enrolled.rows[0]?.count ?? 0),
+    visits: topGuests.reduce((sum, row) => sum + row.visitCount, 0),
+    guestRevenueCents: topGuests.reduce((sum, row) => sum + row.spendCents, 0),
+    pointsEarned: Number(loyalty.rows[0]?.earned ?? 0),
+    pointsRedeemed: Number(loyalty.rows[0]?.redeemed ?? 0),
+    topGuests: topGuests.slice(0, 25),
+  }
+}
+
+async function customerReportHandler(req: Request, res: Response) {
+  try {
+    const storeId = storeIdParam(req)
+    await requireReportAccess(req, storeId)
+    const { from, to } = rangeParam(req)
+    res.json(await loadCustomerReport(storeId, from, to))
+  } catch (reason) { sendApiError(res, reason) }
+}
+reportsRouter.get('/customers', (req, res) => void customerReportHandler(req, res))
+
+export interface InventoryAlertRow {
+  id: string
+  name: string
+  unit: string
+  currentStock: number
+  reorderThreshold: number | null
+}
+export interface InventoryExpiryRow {
+  id: string
+  ingredientName: string
+  remainingQuantity: number
+  unit: string
+  expiresAt: string
+}
+export interface InventoryWastageRow {
+  ingredientId: string
+  ingredientName: string
+  quantity: number
+  unit: string
+  valueCents: number
+}
+export interface InventoryReport {
+  lowStockCount: number
+  outOfStockCount: number
+  expiredBatchCount: number
+  expiringBatchCount: number
+  wastageQuantity: number
+  wastageValueCents: number
+  lowStock: InventoryAlertRow[]
+  expiringBatches: InventoryExpiryRow[]
+  topWastage: InventoryWastageRow[]
+}
+
+export async function loadInventoryReport(storeId: string, from: string, to: string): Promise<InventoryReport> {
+  const { startUtc, endUtc } = await reportRange(storeId, from, to)
+  const [stock, expiry, wastage] = await Promise.all([
+    db.query<{ id: string; name: string; unit: string; current_stock: string; reorder_threshold: string | null }>(`
+      select i.id, i.name, u.abbreviation as unit, i.current_stock::text as current_stock,
+        i.reorder_threshold::text as reorder_threshold
+      from public.ingredients i join public.units u on u.store_id=i.store_id and u.id=i.unit_id
+      where i.store_id=$1 and i.active=true
+        and (i.current_stock <= 0 or (i.reorder_threshold is not null and i.current_stock <= i.reorder_threshold))
+      order by case when i.current_stock <= 0 then 0 else 1 end, i.current_stock, i.name`, [storeId]),
+    db.query<{ id: string; ingredient_name: string; remaining_quantity: string; unit: string; expires_at: string }>(`
+      select b.id, i.name as ingredient_name, b.remaining_quantity::text as remaining_quantity,
+        u.abbreviation as unit, b.expires_at::text as expires_at
+      from public.ingredient_batches b
+      join public.ingredients i on i.store_id=b.store_id and i.id=b.ingredient_id
+      join public.units u on u.store_id=i.store_id and u.id=i.unit_id
+      where b.store_id=$1 and b.remaining_quantity > 0 and b.expires_at is not null
+        and b.expires_at <= now() + interval '7 days'
+      order by b.expires_at, i.name`, [storeId]),
+    db.query<{ ingredient_id: string; ingredient_name: string; quantity: string; unit: string; value_cents: string }>(`
+      select i.id as ingredient_id, i.name as ingredient_name, abs(sum(m.delta))::text as quantity,
+        u.abbreviation as unit,
+        round(sum(abs(m.delta) * coalesce(b.cost_per_unit_cents, i.cost_per_unit_cents)))::text as value_cents
+      from public.stock_movements m
+      join public.ingredients i on i.store_id=m.store_id and i.id=m.ingredient_id
+      join public.units u on u.store_id=i.store_id and u.id=i.unit_id
+      left join public.ingredient_batches b on b.store_id=m.store_id and b.id=m.batch_id
+      where m.store_id=$1 and m.reason='wastage' and m.created_at >= $2 and m.created_at < $3
+      group by i.id, i.name, u.abbreviation
+      order by round(sum(abs(m.delta) * coalesce(b.cost_per_unit_cents, i.cost_per_unit_cents))) desc,
+        abs(sum(m.delta)) desc, i.name`, [storeId, startUtc, endUtc]),
+  ])
+  const lowStock = stock.rows.map(row => ({
+    id: row.id, name: row.name, unit: row.unit, currentStock: Number(row.current_stock),
+    reorderThreshold: row.reorder_threshold === null ? null : Number(row.reorder_threshold),
+  }))
+  const expiringBatches = expiry.rows.map(row => ({
+    id: row.id, ingredientName: row.ingredient_name, remainingQuantity: Number(row.remaining_quantity), unit: row.unit, expiresAt: row.expires_at,
+  }))
+  const topWastage = wastage.rows.map(row => ({
+    ingredientId: row.ingredient_id, ingredientName: row.ingredient_name, quantity: Number(row.quantity), unit: row.unit, valueCents: Number(row.value_cents),
+  }))
+  return {
+    lowStockCount: lowStock.filter(row => row.currentStock > 0).length,
+    outOfStockCount: lowStock.filter(row => row.currentStock <= 0).length,
+    expiredBatchCount: expiringBatches.filter(row => Date.parse(row.expiresAt) < Date.now()).length,
+    expiringBatchCount: expiringBatches.filter(row => Date.parse(row.expiresAt) >= Date.now()).length,
+    wastageQuantity: topWastage.reduce((sum, row) => sum + row.quantity, 0),
+    wastageValueCents: topWastage.reduce((sum, row) => sum + row.valueCents, 0),
+    lowStock,
+    expiringBatches,
+    topWastage,
+  }
+}
+
+async function inventoryReportHandler(req: Request, res: Response) {
+  try {
+    const storeId = storeIdParam(req)
+    await requireReportAccess(req, storeId)
+    const { from, to } = rangeParam(req)
+    res.json(await loadInventoryReport(storeId, from, to))
+  } catch (reason) { sendApiError(res, reason) }
+}
+reportsRouter.get('/inventory', (req, res) => void inventoryReportHandler(req, res))
+
+export interface DishProfitabilityRow {
+  productId: string
+  name: string
+  unitsSold: number
+  netRevenueCents: number
+  portionCostCents: number
+  estimatedFoodCostCents: number
+  grossProfitCents: number
+  foodCostBps: number | null
+  recipeComplete: boolean
+}
+
+export interface FoodCostReport {
+  netRevenueCents: number
+  estimatedFoodCostCents: number
+  grossProfitCents: number
+  foodCostBps: number | null
+  incompleteRecipeCount: number
+  dishes: DishProfitabilityRow[]
+}
+
+export async function loadFoodCostReport(storeId: string, from: string, to: string): Promise<FoodCostReport> {
+  const { startUtc, endUtc } = await reportRange(storeId, from, to)
+  const [products, recipeLines, sales] = await Promise.all([
+    db.query<{ product_id: string; name: string; recipe_id: string | null; yield_quantity: string | null }>(`
+      select p.id as product_id, p.name, r.id as recipe_id, r.yield_quantity::text as yield_quantity
+      from public.pos_products p left join public.recipes r on r.store_id=p.store_id and r.product_id=p.id
+      where p.store_id=$1 and p.active=true order by p.name`, [storeId]),
+    db.query<{
+      recipe_id: string; quantity: string; line_unit_id: string; line_kind: RecipeCostUnit['kind']; line_factor: number | null
+      ingredient_unit_id: string; ingredient_kind: RecipeCostUnit['kind']; ingredient_factor: number | null; cost_per_unit_cents: number
+    }>(`
+      select ri.recipe_id, ri.quantity::text as quantity,
+        lu.id as line_unit_id, lu.kind as line_kind, lu.factor_to_base::float8 as line_factor,
+        iu.id as ingredient_unit_id, iu.kind as ingredient_kind, iu.factor_to_base::float8 as ingredient_factor,
+        i.cost_per_unit_cents
+      from public.recipe_ingredients ri
+      join public.ingredients i on i.store_id=ri.store_id and i.id=ri.ingredient_id
+      join public.units lu on lu.store_id=ri.store_id and lu.id=ri.unit_id
+      join public.units iu on iu.store_id=i.store_id and iu.id=i.unit_id
+      where ri.store_id=$1`, [storeId]),
+    db.query<{ product_id: string; units: string; revenue: string }>(`
+      select oi.product_id, sum(oi.quantity)::text as units, sum(oi.taxable_cents)::text as revenue
+      from public.pos_order_items oi join public.pos_orders o on o.store_id=oi.store_id and o.id=oi.order_id
+      where oi.store_id=$1 and o.client_generated_at >= $2 and o.client_generated_at < $3
+        and not exists (select 1 from public.pos_refunds r where r.store_id=o.store_id and r.order_id=o.id)
+      group by oi.product_id`, [storeId, startUtc, endUtc]),
+  ])
+  const linesByRecipe = new Map<string, typeof recipeLines.rows>()
+  for (const line of recipeLines.rows) linesByRecipe.set(line.recipe_id, [...(linesByRecipe.get(line.recipe_id) ?? []), line])
+  const salesByProduct = new Map(sales.rows.map(row => [row.product_id, row]))
+  const dishes = products.rows.map(product => {
+    const sale = salesByProduct.get(product.product_id)
+    const unitsSold = Number(sale?.units ?? 0)
+    const netRevenueCents = Number(sale?.revenue ?? 0)
+    const lines = product.recipe_id ? linesByRecipe.get(product.recipe_id) ?? [] : []
+    const recipe = product.recipe_id && product.yield_quantity && lines.length
+      ? costRecipe(lines.map(line => ({ quantity: Number(line.quantity),
+          unit: { id: line.line_unit_id, kind: line.line_kind, factorToBase: line.line_factor },
+          ingredient: { unit: { id: line.ingredient_unit_id, kind: line.ingredient_kind, factorToBase: line.ingredient_factor }, costPerUnitCents: line.cost_per_unit_cents } })), Number(product.yield_quantity))
+      : null
+    const portionCostCents = recipe?.portionCostCents ?? 0
+    const estimatedFoodCostCents = portionCostCents * unitsSold
+    return { productId: product.product_id, name: product.name, unitsSold, netRevenueCents, portionCostCents,
+      estimatedFoodCostCents, grossProfitCents: netRevenueCents - estimatedFoodCostCents,
+      foodCostBps: foodCostBps(estimatedFoodCostCents, netRevenueCents), recipeComplete: Boolean(recipe?.complete) }
+  }).sort((a, b) => b.netRevenueCents - a.netRevenueCents || a.name.localeCompare(b.name))
+  const netRevenueCents = dishes.reduce((sum, row) => sum + row.netRevenueCents, 0)
+  const estimatedFoodCostCents = dishes.reduce((sum, row) => sum + row.estimatedFoodCostCents, 0)
+  return { netRevenueCents, estimatedFoodCostCents, grossProfitCents: netRevenueCents - estimatedFoodCostCents,
+    foodCostBps: foodCostBps(estimatedFoodCostCents, netRevenueCents), incompleteRecipeCount: dishes.filter(row => !row.recipeComplete).length, dishes }
+}
+
+async function foodCostReportHandler(req: Request, res: Response) {
+  try {
+    const storeId = storeIdParam(req); await requireReportAccess(req, storeId)
+    const { from, to } = rangeParam(req)
+    res.json(await loadFoodCostReport(storeId, from, to))
+  } catch (reason) { sendApiError(res, reason) }
+}
+reportsRouter.get('/food-cost', (req, res) => void foodCostReportHandler(req, res))
+
+export interface KitchenStationPerformance {
+  stationId: string | null
+  stationName: string
+  itemCount: number
+  completedCount: number
+  openCount: number
+  averagePrepSeconds: number | null
+  averageServeSeconds: number | null
+}
+export interface KitchenPerformanceReport { totalItems: number; completedItems: number; averagePrepSeconds: number | null; stations: KitchenStationPerformance[] }
+
+export async function loadKitchenPerformanceReport(storeId: string, from: string, to: string): Promise<KitchenPerformanceReport> {
+  const { startUtc, endUtc } = await reportRange(storeId, from, to)
+  const result = await db.query<{
+    station_id: string | null; station_name: string; item_count: string; completed_count: string; open_count: string
+    average_prep_seconds: string | null; average_serve_seconds: string | null
+  }>(`
+    select kti.station_id, coalesce(ks.name,'Unassigned') as station_name, count(*)::text as item_count,
+      count(*) filter (where kti.ready_at is not null)::text as completed_count,
+      count(*) filter (where kti.status in ('queued','preparing','ready'))::text as open_count,
+      round(avg(extract(epoch from (kti.ready_at-kti.fired_at))) filter (where kti.ready_at is not null and kti.fired_at is not null))::text as average_prep_seconds,
+      round(avg(extract(epoch from (kti.served_at-kti.fired_at))) filter (where kti.served_at is not null and kti.fired_at is not null))::text as average_serve_seconds
+    from public.kitchen_ticket_items kti
+    join public.kitchen_tickets kt on kt.store_id=kti.store_id and kt.id=kti.ticket_id
+    left join public.kitchen_stations ks on ks.store_id=kti.store_id and ks.id=kti.station_id
+    where kti.store_id=$1 and kt.created_at >= $2 and kt.created_at < $3
+    group by kti.station_id, ks.name order by count(*) desc, station_name`, [storeId, startUtc, endUtc])
+  const stations = result.rows.map(row => ({ stationId: row.station_id, stationName: row.station_name,
+    itemCount: Number(row.item_count), completedCount: Number(row.completed_count), openCount: Number(row.open_count),
+    averagePrepSeconds: row.average_prep_seconds === null ? null : Number(row.average_prep_seconds),
+    averageServeSeconds: row.average_serve_seconds === null ? null : Number(row.average_serve_seconds) }))
+  const completedItems = stations.reduce((sum, row) => sum + row.completedCount, 0)
+  const weightedPrep = stations.reduce((sum, row) => sum + (row.averagePrepSeconds ?? 0) * row.completedCount, 0)
+  return { totalItems: stations.reduce((sum, row) => sum + row.itemCount, 0), completedItems,
+    averagePrepSeconds: completedItems ? Math.round(weightedPrep / completedItems) : null, stations }
+}
+
+async function kitchenPerformanceHandler(req: Request, res: Response) {
+  try {
+    const storeId = storeIdParam(req); await requireReportAccess(req, storeId)
+    const { from, to } = rangeParam(req)
+    res.json(await loadKitchenPerformanceReport(storeId, from, to))
+  } catch (reason) { sendApiError(res, reason) }
+}
+reportsRouter.get('/kitchen-performance', (req, res) => void kitchenPerformanceHandler(req, res))

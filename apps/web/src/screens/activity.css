@@ -7,7 +7,7 @@
   padding: var(--mise-space-32) var(--mise-space-24) 64px;
   min-width: 0;
   align-self: start;
-  font-family: 'Archivo', sans-serif;
+  font-family: 'Inter', sans-serif;
   color: var(--mise-ink);
 }
 
@@ -43,19 +43,19 @@
 
 .mise-log-row { display: grid; gap: var(--mise-space-4); min-width: 0; }
 .mise-log-row strong {
-  font: 500 14px 'Archivo', sans-serif;
+  font: 500 14px 'Inter', sans-serif;
   color: var(--mise-ink);
   overflow-wrap: anywhere;
 }
 .mise-log-row span {
-  font: 400 12px 'IBM Plex Mono', monospace;
+  font: 400 12px 'JetBrains Mono', monospace;
   color: var(--mise-ink-muted);
   overflow-wrap: anywhere;
 }
 .mise-log-list small {
   justify-self: end;
   text-align: right;
-  font: 400 12px 'IBM Plex Mono', monospace;
+  font: 400 12px 'JetBrains Mono', monospace;
   font-variant-numeric: tabular-nums;
   color: var(--mise-ink-muted);
   white-space: nowrap;
@@ -77,7 +77,7 @@
 
 .mise-log-alert .mise-log-head h1,
 .mise-log-alert h2 {
-  font: 600 22px 'Archivo', sans-serif;
+  font: 600 22px 'Inter', sans-serif;
   letter-spacing: -.01em;
   margin: 0 0 var(--mise-space-8);
   color: var(--mise-ink);

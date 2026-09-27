@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { LocalOrder, LocalOrderItem, LocalPayment, OutboxEntry } from '../src/lib/db'
-import { calculateLocalSalesReport, calculateCashierShift, calendarDay } from '../src/lib/reporting'
+import { calculateLocalSalesReport, calculateCashierShift, calendarDay, calendarDayBoundsUtc } from '../src/lib/reporting'
 
 const order = (overrides: Partial<LocalOrder> & Pick<LocalOrder, 'id' | 'store_id' | 'client_generated_at'>): LocalOrder => ({
   receipt_number: `R-${overrides.id}`, subtotal_cents: 1000, tax_cents: 100, total_cents: 1100,
@@ -23,6 +23,15 @@ const outbox = (orderId: string, storeId: string, failureKind: OutboxEntry['fail
 test('uses the saved store timezone for calendar-day boundaries', () => {
   assert.equal(calendarDay('2026-09-15T18:59:59.000Z', 'Asia/Karachi'), '2026-09-15')
   assert.equal(calendarDay('2026-09-15T19:00:00.000Z', 'Asia/Karachi'), '2026-09-16')
+})
+
+test('builds UTC shift-query bounds from the store timezone, including DST days', () => {
+  assert.deepEqual(calendarDayBoundsUtc('2026-09-18', 'Asia/Karachi'), {
+    startUtc: '2026-09-17T19:00:00.000Z', endUtc: '2026-09-18T19:00:00.000Z',
+  })
+  assert.deepEqual(calendarDayBoundsUtc('2026-03-08', 'America/New_York'), {
+    startUtc: '2026-03-08T05:00:00.000Z', endUtc: '2026-03-09T04:00:00.000Z',
+  })
 })
 
 test('reconciles local sales, excludes cash change, and keeps unresolved sales in totals', () => {

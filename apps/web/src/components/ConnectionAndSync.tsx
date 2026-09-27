@@ -3,6 +3,7 @@ import { activeStoreId, configuredApiUrl } from '../lib/catalog'
 import { posDb } from '../lib/db'
 import { pushPendingOrders } from '../lib/order-sync'
 import { usePosStore } from '../lib/pos-store'
+import { RefreshCw } from './icons'
 
 export function ConnectionAndSync() {
   const catalogStatus = usePosStore(state => state.catalogStatus)
@@ -65,5 +66,7 @@ export function ConnectionAndSync() {
     role="status" title={syncMessage || detail}>{busy ? 'Synchronizing…' : syncMessage || detail}</div>
     <button className="sync" type="button" aria-label={busy ? 'Syncing orders' : `Sync pending orders${eligible ? `, ${eligible} eligible` : ''}`}
       title={eligible ? `Sync ${eligible} eligible order${eligible === 1 ? '' : 's'}` : 'No orders ready to sync'}
-      onClick={() => void sync()} disabled={busy || !apiReachable || !effectiveStoreId || eligible === 0}>↻</button></>
+      onClick={() => void sync()} disabled={busy || !apiReachable || !effectiveStoreId || eligible === 0}>
+      <RefreshCw aria-hidden="true" size={16} className={busy ? 'spin' : undefined} />
+    </button></>
 }
