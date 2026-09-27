@@ -1,4 +1,4 @@
-.floor-page{padding:28px 20px;max-width:1200px;font-family:'Archivo',sans-serif}
+.floor-page{padding:28px 20px;max-width:1200px;font-family:'Inter',sans-serif}
 /* Header (kicker/h1/subtitle/actions) now renders through the shared <PageHeader> -- .floor-page-head
    and the old .floor-page h1 rule are retired (both Floor and Inventory, which shares this file's
    page-shell classes, are migrated). */
@@ -7,21 +7,21 @@
 
 .floor-area-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;align-items:center}
 .floor-area-tab-wrap{display:inline-flex;align-items:center;gap:4px}
-.floor-area-tabs button{min-height:44px;padding:0 16px;border:1px solid var(--mise-border-strong);border-radius:var(--mise-r2);background:var(--mise-surface);color:var(--mise-ink-secondary);font:500 13px 'Archivo',sans-serif;transition:background .15s ease,border-color .15s ease,color .15s ease}
+.floor-area-tabs button{min-height:44px;padding:0 16px;border:1px solid var(--mise-border-strong);border-radius:var(--mise-r2);background:var(--mise-surface);color:var(--mise-ink-secondary);font:500 13px 'Inter',sans-serif;transition:background .15s ease,border-color .15s ease,color .15s ease}
 .floor-area-tabs button:hover{background:var(--mise-surface-sunken)}
 .floor-area-tabs button.active{background:var(--mise-ink);border-color:var(--mise-ink);color:var(--mise-ink-inverse)}
 .floor-area-delete{display:inline-flex;align-items:center;justify-content:center;min-height:32px!important;min-width:32px;padding:0!important;border-radius:50%!important;background:var(--mise-danger-fill)!important;color:var(--mise-danger)!important;border-color:transparent!important}
 .floor-area-delete:hover{background:var(--mise-danger)!important;color:var(--mise-ink-inverse)!important}
 
 .floor-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px}
-.floor-add-table-card{min-height:116px;padding:16px;border:1px dashed var(--mise-border-strong);border-radius:var(--mise-r3);background:transparent;color:var(--mise-ink-muted);font:600 13px 'Archivo',sans-serif;display:grid;place-items:center;transition:background .15s ease,border-color .15s ease,color .15s ease}
+.floor-add-table-card{min-height:116px;padding:16px;border:1px dashed var(--mise-border-strong);border-radius:var(--mise-r3);background:transparent;color:var(--mise-ink-muted);font:600 13px 'Inter',sans-serif;display:grid;place-items:center;transition:background .15s ease,border-color .15s ease,color .15s ease}
 .floor-add-table-card:hover{background:var(--mise-surface);border-color:var(--mise-ink);color:var(--mise-ink)}
 
 /* Shared inline add/edit form used for areas, new tables, editing a table, and Transfer/Merge's
    table picker — one pattern, not a different one per use site. */
 .floor-inline-form{display:flex;flex-wrap:wrap;align-items:end;gap:10px;margin:0 0 20px;padding:14px;border:1px solid var(--mise-border-hairline);border-radius:var(--mise-r3);background:var(--mise-surface)}
 .floor-inline-form label{display:grid;gap:6px;font-size:12px;color:var(--mise-ink-muted);min-width:0}
-.floor-inline-form input,.floor-inline-form select{min-height:40px;padding:0 10px;border:1px solid var(--mise-border-strong);border-radius:var(--mise-r2);background:var(--mise-surface);color:var(--mise-ink);font:500 13px 'Archivo',sans-serif}
+.floor-inline-form input,.floor-inline-form select{min-height:40px;padding:0 10px;border:1px solid var(--mise-border-strong);border-radius:var(--mise-r2);background:var(--mise-surface);color:var(--mise-ink);font:500 13px 'Inter',sans-serif}
 .floor-inline-form input:focus,.floor-inline-form select:focus{outline:0;border-color:var(--mise-saffron);box-shadow:0 0 0 3px var(--mise-saffron-fill)}
 .floor-inline-form-actions{display:flex;gap:8px;margin-left:auto}
 .floor-new-table-form{margin-top:-6px}
@@ -30,15 +30,15 @@
 .floor-detail-edit-actions{display:flex;justify-content:space-between;gap:8px;margin:0 0 16px}
 .floor-move-form{margin:0 0 16px;padding:12px;border:1px solid var(--mise-border-hairline);border-radius:var(--mise-r3);background:var(--mise-surface-sunken);display:grid;gap:10px}
 .floor-move-form label{display:grid;gap:6px;font-size:12px;color:var(--mise-ink-muted)}
-.floor-move-form select{min-height:44px;padding:0 10px;border:1px solid var(--mise-border-strong);border-radius:var(--mise-r2);background:var(--mise-surface);color:var(--mise-ink);font:500 13px 'Archivo',sans-serif}
+.floor-move-form select{min-height:44px;padding:0 10px;border:1px solid var(--mise-border-strong);border-radius:var(--mise-r2);background:var(--mise-surface);color:var(--mise-ink);font:500 13px 'Inter',sans-serif}
 
 .table-card{display:grid;gap:8px;justify-items:start;text-align:left;min-height:116px;padding:16px;border:1px solid var(--mise-border-hairline);border-radius:var(--mise-r3);background:var(--mise-surface);transition:background .15s ease,border-color .15s ease}
 .table-card:hover{background:var(--mise-canvas);border-color:var(--mise-border-strong)}
 .table-card-top{display:flex;align-items:center;justify-content:space-between;width:100%;gap:8px}
-.table-card-label{font:600 20px 'IBM Plex Mono',monospace;color:var(--mise-ink)}
+.table-card-label{font:600 20px 'JetBrains Mono',monospace;color:var(--mise-ink)}
 .table-card-seats{font-size:12px;color:var(--mise-ink-secondary)}
 .table-card-area{font-size:11px;color:var(--mise-ink-muted);text-transform:uppercase;letter-spacing:.06em}
-.table-card-meta{font-size:11px;color:var(--mise-ink-disabled);font-family:'IBM Plex Mono',monospace}
+.table-card-meta{font-size:11px;color:var(--mise-ink-disabled);font-family:'JetBrains Mono',monospace}
 
 /* Status chips (table status, ingredient/batch/movement status) now render through the shared
    <StatusBadge> (styles.css's .status-badge-*) -- .floor-status was the same tone-modifier recipe,
@@ -47,17 +47,149 @@
 
 .floor-detail{position:fixed;top:0;right:0;height:100vh;width:min(360px,100vw);background:var(--mise-surface);border-left:1px solid var(--mise-border-hairline);box-shadow:var(--mise-e3);padding:24px;overflow:auto;z-index:20}
 .floor-detail header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
-.floor-detail h2{font:600 20px 'Archivo',sans-serif;margin:0;color:var(--mise-ink)}
+.floor-detail h2{font:600 20px 'Inter',sans-serif;margin:0;color:var(--mise-ink)}
 .floor-detail dl{display:grid;gap:12px;margin:0 0 24px}
 .floor-detail dl>div{display:flex;justify-content:space-between;gap:12px;padding-bottom:10px;border-bottom:1px solid var(--mise-border-hairline)}
 .floor-detail dt{font-size:12px;color:var(--mise-ink-muted)}
 .floor-detail dd{margin:0;font-size:13px;font-weight:600;color:var(--mise-ink)}
 .floor-detail-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.floor-detail-actions button{min-height:44px;border:1px solid var(--mise-border-strong);border-radius:var(--mise-r2);background:var(--mise-surface);color:var(--mise-ink-disabled);font:500 13px 'Archivo',sans-serif;cursor:not-allowed}
+.floor-detail-actions button{min-height:44px;border:1px solid var(--mise-border-strong);border-radius:var(--mise-r2);background:var(--mise-surface);color:var(--mise-ink-disabled);font:500 13px 'Inter',sans-serif;cursor:not-allowed}
 .floor-detail-actions button:not(:disabled){color:var(--mise-ink);cursor:pointer;transition:background .15s ease,border-color .15s ease}
 .floor-detail-actions button:not(:disabled):hover{background:var(--mise-canvas);border-color:var(--mise-ink)}
 
 .floor-waiter-select{display:grid;gap:6px;margin:0 0 16px;font-size:12px;color:var(--mise-ink-muted)}
-.floor-waiter-select select{min-height:40px;padding:0 10px;border:1px solid var(--mise-border-strong);border-radius:var(--mise-r2);background:var(--mise-surface);color:var(--mise-ink);font:500 13px 'Archivo',sans-serif}
+.floor-waiter-select select{min-height:40px;padding:0 10px;border:1px solid var(--mise-border-strong);border-radius:var(--mise-r2);background:var(--mise-surface);color:var(--mise-ink);font:500 13px 'Inter',sans-serif}
 
 .form-notice .text-action{margin-left:8px}
+
+/* Floor plan manager: one focused Ember dialog replaces the old page-level edit bars. */
+.dialog-panel.floor-manager-dialog{
+  width:min(1080px,100%);
+  max-height:min(860px,calc(100vh - 32px));
+  padding:0;
+  overflow:hidden;
+}
+.floor-manager-dialog .dialog-head{
+  margin:0;
+  padding:22px 24px 18px;
+  background:var(--mise-surface);
+}
+.floor-manager-dialog .dialog-body{
+  max-height:calc(100vh - 126px);
+  overflow:auto;
+  padding:0 24px 24px;
+}
+.floor-manager-intro{
+  display:flex;
+  align-items:flex-start;
+  gap:12px;
+  margin:18px 0 14px;
+  padding:14px;
+  border:1px solid var(--mise-border-hairline);
+  border-radius:var(--mise-r3);
+  background:var(--mise-surface-ivory);
+}
+.floor-manager-intro strong{display:block;font-size:14px;color:var(--mise-ink)}
+.floor-manager-intro p{margin:3px 0 0;color:var(--mise-ink-muted);font-size:12px;line-height:1.5}
+.floor-manager-mark{
+  display:grid;
+  place-items:center;
+  width:40px;
+  height:40px;
+  flex:0 0 40px;
+  border-radius:var(--mise-r2);
+  background:var(--mise-service-base);
+  color:var(--mise-saffron);
+}
+.floor-manager-summary{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  overflow:hidden;
+  margin-bottom:16px;
+  border:1px solid var(--mise-border-hairline);
+  border-radius:var(--mise-r3);
+  background:var(--mise-surface);
+}
+.floor-manager-summary>div{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px}
+.floor-manager-summary>div+div{border-left:1px solid var(--mise-border-hairline)}
+.floor-manager-summary span{color:var(--mise-ink-muted);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+.floor-manager-summary strong{font:700 18px var(--mise-font-mono);color:var(--mise-ink)}
+.floor-manager-grid{display:grid;grid-template-columns:minmax(260px,.82fr) minmax(420px,1.3fr);gap:14px;align-items:start}
+.floor-manager-section{
+  min-width:0;
+  overflow:hidden;
+  border:1px solid var(--mise-border-hairline);
+  border-radius:var(--mise-r3);
+  background:var(--mise-surface);
+}
+.floor-manager-section-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px;border-bottom:1px solid var(--mise-border-hairline)}
+.floor-manager-section-head .kicker{margin-bottom:4px}
+.floor-manager-section-head h3{margin:0;font-size:16px;letter-spacing:-.02em}
+.floor-manager-section-head .text-action{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.floor-manager-form{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:8px;padding:14px 16px;border-bottom:1px solid var(--mise-border-hairline);background:var(--mise-surface-sunken)}
+.floor-manager-form label,.floor-manager-fields label{display:grid;gap:6px;color:var(--mise-ink-secondary);font-size:11px;font-weight:700}
+.floor-manager-form input,.floor-manager-fields input{
+  width:100%;
+  min-height:42px;
+  padding:0 11px;
+  border:1px solid var(--mise-border-strong);
+  border-radius:var(--mise-r2);
+  background:var(--mise-surface);
+  color:var(--mise-ink);
+}
+.floor-manager-form input:focus,.floor-manager-fields input:focus{outline:0;border-color:var(--mise-saffron);box-shadow:0 0 0 3px var(--mise-saffron-fill)}
+.floor-manager-form .secondary-cta{min-height:42px;padding-inline:13px}
+.floor-manager-list{display:grid;list-style:none;margin:0;padding:0}
+.floor-manager-list>li{display:flex;align-items:center;gap:10px;min-height:58px;padding:10px 12px 10px 16px;border-bottom:1px solid var(--mise-border-hairline)}
+.floor-manager-list>li:last-child{border-bottom:0}
+.floor-manager-list>li.selected{background:var(--mise-saffron-fill)}
+.floor-manager-row-copy{display:grid;gap:2px;min-width:0;flex:1}
+.floor-manager-row-copy strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;color:var(--mise-ink)}
+.floor-manager-row-copy span{font:500 11px var(--mise-font-mono);color:var(--mise-ink-muted)}
+.icon-action{
+  display:grid;
+  place-items:center;
+  width:36px;
+  height:36px;
+  flex:0 0 36px;
+  border:1px solid var(--mise-border-hairline);
+  border-radius:var(--mise-r2);
+  background:var(--mise-surface);
+  color:var(--mise-ink-muted);
+}
+.icon-action:hover:not(:disabled){border-color:var(--mise-saffron);background:var(--mise-saffron-fill);color:var(--mise-saffron-deep)}
+.icon-action.danger:hover:not(:disabled){border-color:var(--mise-danger);background:var(--mise-danger-fill);color:var(--mise-danger)}
+.danger-action{min-height:34px;padding:0 10px;border:1px solid var(--mise-danger);border-radius:var(--mise-r2);background:var(--mise-danger);color:white;font-size:11px;font-weight:700}
+.floor-manager-confirm{display:flex;align-items:center;justify-content:flex-end;gap:7px;flex-wrap:wrap}
+.floor-manager-confirm span{color:var(--mise-danger);font-size:11px;font-weight:700}
+.floor-manager-confirm .text-action{min-height:34px;padding-inline:5px}
+.floor-manager-list-empty{justify-content:center!important;color:var(--mise-ink-muted);font-size:12px;text-align:center}
+.floor-manager-card-form{display:grid;gap:13px;margin:12px;padding:14px;border:1px solid color-mix(in srgb,var(--mise-saffron) 34%,var(--mise-border-hairline));border-radius:var(--mise-r3);background:var(--mise-saffron-fill)}
+.floor-manager-card-form.editing{border-color:var(--mise-border-strong);background:var(--mise-surface-sunken)}
+.floor-manager-form-title{display:grid;gap:2px}
+.floor-manager-form-title strong{font-size:14px;color:var(--mise-ink)}
+.floor-manager-form-title span{font-size:11px;color:var(--mise-ink-muted)}
+.floor-manager-fields{display:grid;grid-template-columns:1.1fr .7fr 1.2fr;gap:9px}
+.floor-manager-fields .select-field{width:100%}
+.floor-manager-fields .select-field select{min-height:42px}
+.floor-manager-form-actions{display:flex;justify-content:flex-end;align-items:center;gap:9px}
+.floor-manager-form-actions .cta{min-height:40px;padding-inline:14px}
+.floor-manager-table-main{display:grid;grid-template-columns:44px minmax(0,1fr) auto;align-items:center;gap:10px;min-width:0;flex:1;padding:0;border:0;background:transparent;text-align:left;color:var(--mise-ink)}
+.floor-manager-table-main:hover{color:var(--mise-saffron-deep)}
+.floor-manager-table-main>span:nth-child(2){display:grid;gap:2px;min-width:0}
+.floor-manager-table-main strong,.floor-manager-table-main small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.floor-manager-table-main strong{font-size:12px}
+.floor-manager-table-main small{color:var(--mise-ink-muted);font-size:11px}
+.floor-manager-table-code{display:grid;place-items:center;width:42px;height:38px;border-radius:var(--mise-r2);background:var(--mise-service-base);color:white;font:700 12px var(--mise-font-mono)}
+
+@media(max-width:800px){
+  .dialog-panel.floor-manager-dialog{width:100%;height:100%;max-height:100vh;border-radius:0}
+  .floor-manager-dialog .dialog-body{max-height:calc(100vh - 78px);padding:0 14px 24px}
+  .floor-manager-grid{grid-template-columns:1fr}
+}
+@media(max-width:560px){
+  .floor-manager-summary{grid-template-columns:1fr}
+  .floor-manager-summary>div+div{border-left:0;border-top:1px solid var(--mise-border-hairline)}
+  .floor-manager-fields{grid-template-columns:1fr}
+  .floor-manager-form{grid-template-columns:1fr}
+}

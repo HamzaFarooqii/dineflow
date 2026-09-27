@@ -4,7 +4,7 @@ import { currentAccess, readTerminal, type TerminalCache } from './cache'
 import { pushPendingOrders } from '../lib/order-sync'
 import { ClockButton } from './ClockButton'
 import { roleHasCapability, type StaffCapability } from '../../../../packages/domain/src/staff-role'
-import { LayoutDashboard, ShoppingCart, UtensilsCrossed, ClipboardList, Users, Package, Settings as SettingsIcon, Store } from '../components/icons'
+import { LayoutDashboard, ShoppingCart, UtensilsCrossed, ClipboardList, Users, Package, Settings as SettingsIcon, Store, LayoutGrid } from '../components/icons'
 import './terminal-auth.css'
 import '../receipts/receipts.css'
 
@@ -16,14 +16,10 @@ import '../receipts/receipts.css'
 //
 // `capability`: gates visibility per packages/domain/src/staff-role.ts (a manager always passes).
 // Dashboard and Settings have none -- general/hardware screens every role can reasonably see.
-// Floor and Kitchen aren't listed here at all yet: FloorScreen/KitchenScreen are still web-only
-// (no `terminal` mode, unlike RegisterScreen/InventoryScreen), even though the API already has
-// terminalFloorRouter/terminalKitchenRouter ready for it -- a real gap for the waiter/chef roles
-// this file's capability gating exists for, tracked in docs/day-plans/day5-ahmed.md (Kitchen) and
-// docs/day-plans/day5-bisma.md (Floor) rather than rushed through here.
 const navigation: { label: string; to: string; icon: typeof LayoutDashboard; capability?: StaffCapability }[] = [
   { label: 'Dashboard', to: '/pos/dashboard', icon: LayoutDashboard },
   { label: 'Sell', to: '/pos/register', icon: ShoppingCart, capability: 'register' },
+  { label: 'Floor', to: '/pos/floor', icon: LayoutGrid, capability: 'floor' },
   { label: 'Products', to: '/pos/products', icon: UtensilsCrossed, capability: 'register' },
   { label: 'Orders', to: '/pos/orders', icon: ClipboardList, capability: 'register' },
   { label: 'Customers', to: '/pos/customers', icon: Users, capability: 'register' },
@@ -57,15 +53,16 @@ export function CashierPosLayout({ children }: { children: ReactNode }) {
   }, [])
   const cashier = terminal?.employees.find(employee => employee.id === terminal.session?.employee_id)
   const visibleNav = navigation.filter(item => !item.capability || !cashier || roleHasCapability(cashier.role, item.capability))
+  const isActiveNavigation = (item: typeof navigation[number]) => item.label === 'Sell'
+    ? ['/pos/register', '/pos/payment'].includes(pathname)
+    : item.label === 'Orders'
+      ? pathname.startsWith('/pos/orders')
+      : pathname === item.to
   return <div className="cashier-pos-shell">
     <aside className="cashier-pos-sidebar">
       <Link className="cashier-pos-brand" to="/pos/register"><span>D</span> Dineflow</Link>
       <nav aria-label="Cashier navigation">{visibleNav.map(item => {
-        const active = item.label === 'Sell'
-          ? ['/pos/register', '/pos/payment'].includes(pathname)
-          : item.label === 'Orders'
-            ? pathname.startsWith('/pos/orders')
-            : pathname === item.to
+        const active = isActiveNavigation(item)
         const Icon = item.icon
         return item.to
           ? <Link key={item.label} className={active ? 'active' : ''} aria-current={active ? 'page' : undefined} to={item.to}><Icon aria-hidden="true" size={18} />{item.label}</Link>
@@ -75,10 +72,13 @@ export function CashierPosLayout({ children }: { children: ReactNode }) {
     </aside>
     <main className="cashier-pos-main">
       <header className="cashier-pos-topbar"><span className="cashier-online"><i />{navigator.onLine ? 'Online' : 'Offline'}</span><span><Store aria-hidden="true" size={14} /> {terminal?.device.name ?? 'Terminal'}</span><span>{terminal?.device.receipt_prefix ?? 'Receipt prefix unavailable'}</span>{terminal?.device.store_id && <ClockButton storeId={terminal.device.store_id} />}<span className="cashier-profile">{cashier?.name ?? 'Cashier'}<small>{cashier?.role ?? 'Cashier'}</small></span></header>
-      <nav className="cashier-pos-mobile-nav" aria-label="Cashier navigation"><Link className={pathname === '/pos/register' ? 'active' : ''} to="/pos/register">Sell</Link><Link className={pathname === '/pos/customers' ? 'active' : ''} to="/pos/customers">Customers</Link></nav>
       {children}
       <footer className="cashier-pos-status"><span><i /> {navigator.onLine ? 'Connected' : 'Offline'}</span><span>{terminal?.device.name ?? 'Terminal'}</span><span>Receipt prefix: {terminal?.device.receipt_prefix ?? '—'}</span></footer>
     </main>
-    <nav className="cashier-mobile-nav" aria-label="Cashier navigation"><Link className={pathname === '/pos/dashboard' ? 'active' : ''} to="/pos/dashboard"><LayoutDashboard aria-hidden="true" size={18} />Dashboard</Link><Link className={pathname === '/pos/register' || pathname === '/pos/payment' ? 'active' : ''} to="/pos/register"><ShoppingCart aria-hidden="true" size={18} />Sell</Link></nav>
+    <nav className="cashier-mobile-nav" aria-label="Cashier navigation">{visibleNav.map(item => {
+      const Icon = item.icon
+      const active = isActiveNavigation(item)
+      return <Link key={item.label} className={active ? 'active' : ''} aria-current={active ? 'page' : undefined} to={item.to}><Icon aria-hidden="true" size={18} />{item.label}</Link>
+    })}</nav>
   </div>
 }

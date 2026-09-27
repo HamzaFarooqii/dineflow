@@ -12,6 +12,7 @@ import { posDb, type LocalCategory, type LocalProduct } from '../lib/db'
 import { currentAccess } from '../terminal-auth/cache'
 import { DishAvailability } from './menu/DishAvailability'
 import { MetricCard } from '../components/MetricCard'
+import { PageHeader } from '../components/PageHeader'
 import { StatusBadge } from '../components/StatusBadge'
 import { SelectField } from '../components/SelectField'
 import { Search, X } from '../components/icons'
@@ -77,11 +78,7 @@ export function CashierProductsScreen() {
   const isLoading = products === null && !loadErr
 
   return <div className="pc-page">
-    <div className="pc-hero"><div>
-      <p className="pc-breadcrumb">Service terminal <span>/</span> Menu</p>
-      <h1 className="pc-title">The menu.</h1>
-      <p className="pc-subtitle">Browse tonight's dishes, prices and stock. Ask a manager to add or edit a dish.</p>
-    </div></div>
+    <PageHeader kicker="SERVICE TERMINAL · MENU" title="The menu." subtitle="Browse tonight's dishes, prices and stock. Ask a manager to add or edit a dish." />
 
     {products !== null && <div className="pc-stats-strip">
       <MetricCard label="Menu Items" value={total} detail="Across all categories" />

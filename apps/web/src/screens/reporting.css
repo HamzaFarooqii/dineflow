@@ -3,7 +3,7 @@
    Rules of the system applied below:
      · Flat by default — a 1px hairline is the separator; no card shadows.
      · Elevation and position never change on hover; only colour does.
-     · Archivo for all text, IBM Plex Mono for every amount, count and percentage.
+     · Inter for UI and headings, JetBrains Mono for every amount, count and percentage.
      · Full-round (r4) only for dots and count bubbles — pills and buttons use r1/r2/r3.
      · Chart series palette, in order: info blue → saffron → success green → violet. */
 
@@ -11,7 +11,7 @@
   padding: clamp(20px, 3vw, 32px);
   max-width: 1280px;
   margin: 0 auto;
-  font-family: 'Archivo', sans-serif;
+  font-family: 'Inter', sans-serif;
   color: var(--mise-ink);
 }
 
@@ -27,7 +27,7 @@
 }
 
 .reporting-heading .kicker {
-  font: 500 10px 'IBM Plex Mono', monospace;
+  font: 500 10px 'JetBrains Mono', monospace;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--mise-ink-muted);
@@ -138,7 +138,7 @@
 }
 
 .panel-header h2 {
-  font-family: 'Archivo', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-weight: 600;
   font-size: 15px;
   letter-spacing: -0.01em;
@@ -192,13 +192,13 @@ h2 .panel-icon {
 .donut-card { stroke: var(--mise-saffron); }
 
 .donut-pct {
-  font: 500 15px 'IBM Plex Mono', monospace;
+  font: 500 15px 'JetBrains Mono', monospace;
   font-variant-numeric: tabular-nums;
   fill: var(--mise-ink);
 }
 
 .donut-label {
-  font: 600 7px 'Archivo', sans-serif;
+  font: 600 7px 'Inter', sans-serif;
   fill: var(--mise-ink-muted);
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -221,7 +221,7 @@ h2 .panel-icon {
 }
 
 .legend-item strong {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'JetBrains Mono', monospace;
   font-variant-numeric: tabular-nums;
   font-weight: 500;
   color: var(--mise-ink);
@@ -229,7 +229,7 @@ h2 .panel-icon {
 }
 
 .legend-item small {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'JetBrains Mono', monospace;
   font-variant-numeric: tabular-nums;
   color: var(--mise-ink-muted);
 }
@@ -259,6 +259,36 @@ h2 .panel-icon {
   margin-bottom: var(--mise-space-16);
 }
 
+/* Live operations layer on the owner dashboard. */
+.dashboard-operations-grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--mise-space-16);margin-bottom:var(--mise-space-16)}
+.operations-panel{min-width:0}
+.operations-panel .panel-header>div{min-width:0}
+.operations-counts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));overflow:hidden;margin-bottom:12px;border:1px solid var(--mise-border-hairline);border-radius:var(--mise-r2);background:var(--mise-surface-sunken)}
+.operations-counts>div{display:grid;gap:3px;padding:10px 12px}
+.operations-counts>div+div{border-left:1px solid var(--mise-border-hairline)}
+.operations-counts span{color:var(--mise-ink-muted);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+.operations-counts strong{font:700 19px var(--mise-font-mono);color:var(--mise-ink)}
+.operations-counts .attention{background:var(--mise-warning-fill)}
+.operations-counts .attention strong{color:var(--mise-warning)}
+.operations-list,.ticket-pulse-list{display:grid;list-style:none;margin:0;padding:0}
+.operations-list li,.ticket-pulse-list li{display:flex;align-items:center;gap:10px;min-height:54px;padding:9px 0;border-bottom:1px solid var(--mise-border-hairline)}
+.operations-list li:last-child,.ticket-pulse-list li:last-child{border-bottom:0}
+.operations-code{display:grid;place-items:center;width:42px;height:36px;flex:0 0 42px;border-radius:var(--mise-r2);background:var(--mise-service-base);color:white;font:700 11px var(--mise-font-mono)}
+.operations-copy{display:grid;gap:2px;min-width:0;flex:1}
+.operations-copy strong,.operations-copy small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.operations-copy strong{color:var(--mise-ink);font-size:12px;text-transform:capitalize}
+.operations-copy small{color:var(--mise-ink-muted);font-size:11px}
+.ticket-time{display:inline-flex;align-items:center;gap:4px;min-width:50px;color:var(--mise-saffron-deep);font:700 11px var(--mise-font-mono)}
+
+@media(max-width:900px){
+  .dashboard-operations-grid{grid-template-columns:1fr}
+}
+@media(max-width:520px){
+  .operations-counts{grid-template-columns:1fr}
+  .operations-counts>div{display:flex;align-items:center;justify-content:space-between}
+  .operations-counts>div+div{border-left:0;border-top:1px solid var(--mise-border-hairline)}
+}
+
 .dashboard-subgrid .unresolved-panel {
   margin-bottom: 0;
 }
@@ -268,7 +298,7 @@ h2 .panel-icon {
 }
 
 .unresolved-panel h2 {
-  font-family: 'Archivo', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-weight: 600;
   font-size: 15px;
   letter-spacing: -0.01em;
@@ -317,7 +347,7 @@ h2 .panel-icon {
 }
 
 .ranked-row b, .alert-row b {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'JetBrains Mono', monospace;
   font-variant-numeric: tabular-nums;
   font-weight: 500;
   font-size: 13px;
@@ -334,7 +364,7 @@ h2 .panel-icon {
   border-radius: var(--mise-r4);
   background: var(--mise-surface-sunken);
   color: var(--mise-ink-secondary);
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'JetBrains Mono', monospace;
   font-variant-numeric: tabular-nums;
   font-size: 11px;
   font-weight: 500;
@@ -366,7 +396,7 @@ h2 .panel-icon {
 .stock-pill {
   padding: var(--mise-space-4) var(--mise-space-8);
   border-radius: var(--mise-r2);
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'JetBrains Mono', monospace;
   font-variant-numeric: tabular-nums;
   font-size: 11px;
   font-weight: 500;
@@ -388,6 +418,43 @@ h2 .panel-icon {
   color: var(--mise-ink-muted);
   font-size: 12px;
   line-height: 1.5;
+}
+
+/* Day 5 reporting hub: one compact Ember workspace for sales, guests, stock, and labour. */
+.report-tabs{
+  display:flex;align-items:center;gap:4px;overflow-x:auto;margin:0 0 16px;padding:4px;
+  border:1px solid var(--mise-border-hairline);border-radius:var(--mise-r3);background:var(--mise-surface-sunken)
+}
+.report-tabs button{
+  min-height:38px;padding:0 14px;border:1px solid transparent;border-radius:var(--mise-r2);background:transparent;
+  color:var(--mise-ink-secondary);font:600 12px 'Inter',sans-serif;white-space:nowrap;cursor:pointer
+}
+.report-tabs button:hover{background:var(--mise-surface);color:var(--mise-ink)}
+.report-tabs button.active{border-color:var(--mise-border-hairline);background:var(--mise-service-base);color:var(--mise-ink-inverse)}
+.report-toolbar{
+  display:flex;align-items:end;gap:10px;margin-bottom:16px;padding:12px 14px;
+  border:1px solid var(--mise-border-hairline);border-radius:var(--mise-r3);background:var(--mise-surface)
+}
+.report-toolbar .day-picker{min-width:170px}
+.report-timezone{margin-left:auto;align-self:center;color:var(--mise-ink-muted);font:600 11px var(--mise-font-mono)}
+.report-loading{display:flex;align-items:center;justify-content:center;gap:10px;min-height:180px;border:1px solid var(--mise-border-hairline);border-radius:var(--mise-r3);background:var(--mise-surface);color:var(--mise-ink-muted);font-size:13px}
+.report-loading svg{animation:report-spin 1s linear infinite;color:var(--mise-action)}
+@keyframes report-spin{to{transform:rotate(360deg)}}
+.report-kpi-grid{margin-bottom:16px}
+.report-two-up{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-bottom:16px}
+.report-two-up .dashboard-panel,.report-two-up .unresolved-panel{margin-bottom:0;min-width:0}
+.report-data-panel{margin-bottom:16px;overflow:hidden}
+.report-data-panel .panel-header>div{min-width:0}
+.report-table{min-width:680px}
+.report-table td,.report-table th{padding-top:12px;padding-bottom:12px}
+.report-table .num{font-family:var(--mise-font-mono);font-variant-numeric:tabular-nums}
+.report-role{text-transform:capitalize}
+
+@media(max-width:760px){
+  .report-toolbar{align-items:stretch;flex-direction:column}
+  .report-toolbar .day-picker{min-width:0}
+  .report-timezone{margin-left:0;align-self:flex-start}
+  .report-two-up{grid-template-columns:1fr}
 }
 
 .empty-panel-copy.healthy {
@@ -440,7 +507,7 @@ h2 .panel-icon {
 .dashboard-table td:nth-child(2),
 .dashboard-table td:nth-child(3),
 .dashboard-table .num {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'JetBrains Mono', monospace;
   font-variant-numeric: tabular-nums;
 }
 
@@ -454,7 +521,7 @@ h2 .panel-icon {
 }
 
 .receipt-link {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'JetBrains Mono', monospace;
   font-variant-numeric: tabular-nums;
   color: var(--mise-ink);
   font-weight: 500;
@@ -471,7 +538,7 @@ h2 .panel-icon {
   display: inline-block;
   padding: 3px var(--mise-space-8);
   border-radius: var(--mise-r1);
-  font-family: 'Archivo', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.05em;
@@ -591,7 +658,7 @@ h2 .panel-icon {
 }
 
 .receipt-meta strong {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'JetBrains Mono', monospace;
   font-variant-numeric: tabular-nums;
   font-size: 13px;
   font-weight: 500;
@@ -611,7 +678,7 @@ h2 .panel-icon {
 }
 
 .receipt-end b {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'JetBrains Mono', monospace;
   font-variant-numeric: tabular-nums;
   font-size: 15px;
   font-weight: 500;
@@ -667,7 +734,7 @@ h2 .panel-icon {
 }
 
 .terminal-status-list code {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'JetBrains Mono', monospace;
   background: var(--mise-surface-sunken);
   padding: 2px var(--mise-space-8);
   border-radius: var(--mise-r2);
@@ -734,7 +801,7 @@ h2 .panel-icon {
 }
 
 .report-line b {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'JetBrains Mono', monospace;
   font-variant-numeric: tabular-nums;
   font-size: 15px;
   font-weight: 500;
@@ -770,7 +837,7 @@ h2 .panel-icon {
 }
 
 .report-access h2 {
-  font-family: 'Archivo', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-weight: 600;
   font-size: 18px;
   letter-spacing: -0.01em;
@@ -806,7 +873,7 @@ h2 .panel-icon {
   align-items: center;
   padding: 3px var(--mise-space-8);
   border-radius: var(--mise-r1);
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'JetBrains Mono', monospace;
   font-variant-numeric: tabular-nums;
   font-size: 10px;
   font-weight: 500;
@@ -848,7 +915,7 @@ h2 .panel-icon {
   background: var(--mise-surface);
   color: var(--mise-ink);
   padding: 0 var(--mise-space-12);
-  font: 400 13px 'IBM Plex Mono', monospace;
+  font: 400 13px 'JetBrains Mono', monospace;
   font-variant-numeric: tabular-nums;
   text-transform: none;
   letter-spacing: 0;
@@ -860,7 +927,7 @@ h2 .panel-icon {
 
 .export-csv-btn {
   cursor: pointer;
-  font-family: 'Archivo', sans-serif;
+  font-family: 'Inter', sans-serif;
 }
 
 /* ── Loading placeholders ───────────────────────────────────────────────────

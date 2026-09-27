@@ -1,9 +1,9 @@
 /**
  * ProductCatalogScreen — Menu management for the owner / manager back of house.
- * Styled with the MISE design system (see :root in styles.css):
+ * Styled with the shared Ember design system (see ember.css and docs/DESIGN_SYSTEM.md):
  * - Warm neutral canvas, white cards, hairline borders, flat by default
- * - Archivo for text, IBM Plex Mono for prices, SKUs and counts
- * - Saffron reserved for focus / action-needed, semantic fills for stock status
+ * - Inter for UI text, JetBrains Mono for prices, SKUs and counts
+ * - Ember orange reserved for focus / action-needed, semantic fills for stock status
  * - Offline-first liveQuery via Dexie, integer cents
  */
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
@@ -15,9 +15,11 @@ import { activeStoreId, accessToken, configuredApiUrl, loadCatalog } from '../li
 import { createIngredient } from '../lib/inventory'
 import { requireSupabase } from '../lib/supabase'
 import { MetricCard } from '../components/MetricCard'
+import { PageHeader } from '../components/PageHeader'
 import { StatusBadge } from '../components/StatusBadge'
 import { SelectField } from '../components/SelectField'
-import { Search, X } from '../components/icons'
+import { Dialog } from '../components/Dialog'
+import { Pencil, Plus, RefreshCw, ScanLine, Search, Trash2, X } from '../components/icons'
 import { DishAvailability } from './menu/DishAvailability'
 import { RecipeEditor } from './menu/RecipeEditor'
 import { createUnit, loadRecipeData, saveRecipe, type RecipeData } from './menu/recipe-api'
@@ -106,7 +108,12 @@ export function ProductCatalogScreen() {
 
   const [query, setQuery] = useState('')
   const [catFilter, setCatFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState<'active' | 'archived'>('active')
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [editingProduct, setEditingProduct] = useState<LocalProduct | null>(null)
+  const [deletingProduct, setDeletingProduct] = useState<LocalProduct | null>(null)
+  const [archiveBusy, setArchiveBusy] = useState(false)
+  const [archiveError, setArchiveError] = useState('')
   const [form, setForm] = useState<FormState>(EMPTY)
   const [errs, setErrs] = useState<FieldErrors>({})
   const [busy, setBusy] = useState(false)
@@ -250,6 +257,41 @@ export function ProductCatalogScreen() {
   const storeSavedRecipe = (saved: SavedRecipe) =>
     setRecipeData((d) => d && { ...d, recipes: [...d.recipes.filter((r) => r.product_id !== saved.product_id), saved] })
 
+  const openCreateDrawer = () => {
+    setEditingProduct(null)
+    setForm(EMPTY)
+    setImageFile(null)
+    setImageError('')
+    setRecipeDraft(EMPTY_RECIPE_DRAFT)
+    setRecipeErrs({})
+    setSubmitErr('')
+    setErrs({})
+    setDrawerOpen(true)
+  }
+
+  const openEditDrawer = (product: LocalProduct) => {
+    setEditingProduct(product)
+    setForm({
+      name: product.name,
+      sku: product.sku,
+      barcode: product.barcode ?? '',
+      categoryId: product.category_id ?? '',
+      newCategoryName: '',
+      taxRateId: product.tax_rate_id ?? '',
+      newTaxRateName: '',
+      newTaxRatePercent: '',
+      priceDisplay: (product.unit_price_cents / 100).toFixed(2),
+      initialStock: String(stockMap[product.id] ?? 0),
+    })
+    setImageFile(null)
+    setImageError('')
+    setRecipeDraft(draftFromRecipe(recipeByProduct[product.id]))
+    setRecipeErrs({})
+    setSubmitErr('')
+    setErrs({})
+    setDrawerOpen(true)
+  }
+
   const handleCreateUnit = async (unit: { name: string; abbreviation: string; kind: UnitKind; factor_to_base?: number | null }) => {
     const created = await createUnit(storeId, unit)
     setRecipeData((d) => d && { ...d, units: [...d.units, created].sort((a, b) => a.name.localeCompare(b.name)) })
@@ -319,6 +361,7 @@ export function ProductCatalogScreen() {
   const filtered = useMemo(() => {
     if (!products) return []
     return products.filter((p) => {
+      if (statusFilter === 'active' ? !p.active : p.active) return false
       if (catFilter !== 'all' && p.category_id !== catFilter) return false
       if (!q) return true
       return (
@@ -327,15 +370,16 @@ export function ProductCatalogScreen() {
         (p.barcode ?? '').toLowerCase().includes(q)
       )
     })
-  }, [products, catFilter, q])
+  }, [products, catFilter, q, statusFilter])
 
-  const total = products?.length ?? 0
-  const inStock = products?.filter((p) => (stockMap[p.id] ?? 0) > 5).length ?? 0
-  const lowStock = products?.filter((p) => {
+  const activeProducts = products?.filter(product => product.active) ?? []
+  const total = activeProducts.length
+  const inStock = activeProducts.filter((p) => (stockMap[p.id] ?? 0) > 5).length
+  const lowStock = activeProducts.filter((p) => {
     const s = stockMap[p.id] ?? 0
     return s > 0 && s <= 5
-  }).length ?? 0
-  const outStock = products?.filter((p) => (stockMap[p.id] ?? 0) <= 0).length ?? 0
+  }).length
+  const outStock = activeProducts.filter((p) => (stockMap[p.id] ?? 0) <= 0).length
 
   const setField = <K extends keyof FormState>(k: K, v: FormState[K]) => {
     setForm((f) => ({ ...f, [k]: v }))
@@ -375,9 +419,11 @@ export function ProductCatalogScreen() {
         e.price = err instanceof Error ? err.message : 'Invalid price.'
       }
     }
-    const qty = Number(form.initialStock)
-    if (!Number.isInteger(qty) || qty < 0) {
-      e.initialStock = 'Enter a whole number, 0 or more.'
+    if (!editingProduct) {
+      const qty = Number(form.initialStock)
+      if (!Number.isInteger(qty) || qty < 0) {
+        e.initialStock = 'Enter a whole number, 0 or more.'
+      }
     }
     return e
   }
@@ -397,14 +443,14 @@ export function ProductCatalogScreen() {
     setSubmitErr('')
     try {
       const priceCents = parseCents(form.priceDisplay)
-      const initialStock = Math.round(Number(form.initialStock))
+      const initialStock = editingProduct ? undefined : Math.round(Number(form.initialStock))
       const finalCategoryId = form.categoryId && form.categoryId !== '__new__' ? form.categoryId : null
       const newCatName =
-        form.categoryId === '__new__' && form.newCategoryName.trim()
+        !editingProduct && form.categoryId === '__new__' && form.newCategoryName.trim()
           ? form.newCategoryName.trim()
           : null
       const finalTaxRateId = form.taxRateId && form.taxRateId !== '__new__' ? form.taxRateId : null
-      const newTaxRateName = form.taxRateId === '__new__' ? form.newTaxRateName.trim() : null
+      const newTaxRateName = !editingProduct && form.taxRateId === '__new__' ? form.newTaxRateName.trim() : null
       const newTaxRateBps = newTaxRateName ? Math.round(Number(form.newTaxRatePercent) * 100) : null
 
       const token = await accessToken()
@@ -414,7 +460,7 @@ export function ProductCatalogScreen() {
       // than through our API — the API never needs to see the file itself, only the resulting
       // public URL. Path is "{store_id}/{uuid}.{ext}" so the storage RLS policy can check
       // is_store_admin() against the folder's store_id.
-      let imageUrl: string | null = null
+      let imageUrl: string | null = editingProduct?.image_url ?? null
       if (imageFile) {
         const extension = (imageFile.name.split('.').pop() ?? 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
         const path = `${storeId}/${crypto.randomUUID()}.${extension}`
@@ -425,8 +471,8 @@ export function ProductCatalogScreen() {
         imageUrl = requireSupabase().storage.from('product-images').getPublicUrl(path).data.publicUrl
       }
 
-      const resp = await fetch(`${configuredApiUrl()}/catalog/products`, {
-        method: 'POST',
+      const resp = await fetch(`${configuredApiUrl()}/catalog/products${editingProduct ? `/${encodeURIComponent(editingProduct.id)}` : ''}`, {
+        method: editingProduct ? 'PATCH' : 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
@@ -441,7 +487,8 @@ export function ProductCatalogScreen() {
           new_tax_rate_name: newTaxRateName,
           new_tax_rate_rate_bps: newTaxRateBps,
           unit_price_cents: priceCents,
-          initial_stock: initialStock,
+          ...(initialStock !== undefined ? { initial_stock: initialStock } : {}),
+          ...(editingProduct ? { active: editingProduct.active } : {}),
         }),
       })
       const data = (await resp.json()) as {
@@ -489,11 +536,14 @@ export function ProductCatalogScreen() {
         }
       }
       if (recipeFailure) {
-        setLoadErr(`"${data.product.name}" was added, but its recipe was not saved: ${recipeFailure} Open its recipe from the menu list to try again.`)
+        setLoadErr(`"${data.product.name}" was saved, but its recipe was not saved: ${recipeFailure} Open its recipe from the menu list to try again.`)
       } else {
-        setNotice(`"${data.product.name}" is on the menu and ready on the register.`)
+        setNotice(editingProduct
+          ? `"${data.product.name}" was updated across the menu.`
+          : `"${data.product.name}" is on the menu and ready on the register.`)
       }
       setDrawerOpen(false)
+      setEditingProduct(null)
       setForm(EMPTY)
       setErrs({})
       setImageFile(null)
@@ -522,11 +572,67 @@ export function ProductCatalogScreen() {
     }
   }
 
-  const hasFilters = q !== '' || catFilter !== 'all'
+  const handleArchive = async () => {
+    if (!deletingProduct || archiveBusy) return
+    setArchiveBusy(true)
+    setArchiveError('')
+    try {
+      const response = await fetch(`${configuredApiUrl()}/catalog/products/${encodeURIComponent(deletingProduct.id)}`, {
+        method: 'DELETE',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await accessToken()}` },
+        body: JSON.stringify({ store_id: storeId }),
+      })
+      const data = await response.json().catch(() => ({})) as { product?: LocalProduct; message?: string }
+      if (!response.ok || !data.product) throw new Error(data.message ?? 'Could not delete this menu item.')
+      await posDb.products.put(data.product)
+      setNotice(`"${data.product.name}" was removed from the active menu. Its sales history is preserved.`)
+      setDeletingProduct(null)
+    } catch (reason) {
+      setArchiveError(reason instanceof Error ? reason.message : 'Could not delete this menu item.')
+    } finally {
+      setArchiveBusy(false)
+    }
+  }
+
+  const handleRestore = async (product: LocalProduct) => {
+    if (archiveBusy) return
+    setArchiveBusy(true)
+    setLoadErr('')
+    try {
+      const response = await fetch(`${configuredApiUrl()}/catalog/products/${encodeURIComponent(product.id)}`, {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await accessToken()}` },
+        body: JSON.stringify({
+          store_id: storeId,
+          name: product.name,
+          sku: product.sku,
+          barcode: product.barcode,
+          category_id: product.category_id,
+          tax_rate_id: product.tax_rate_id,
+          unit_price_cents: product.unit_price_cents,
+          image_url: product.image_url ?? null,
+          active: true,
+        }),
+      })
+      const data = await response.json().catch(() => ({})) as { product?: LocalProduct; message?: string }
+      if (!response.ok || !data.product) throw new Error(data.message ?? 'Could not restore this menu item.')
+      await posDb.products.put(data.product)
+      setNotice(`"${data.product.name}" is active on the menu again.`)
+    } catch (reason) {
+      setLoadErr(reason instanceof Error ? reason.message : 'Could not restore this menu item.')
+    } finally {
+      setArchiveBusy(false)
+    }
+  }
+
+  const hasFilters = q !== '' || catFilter !== 'all' || statusFilter !== 'active'
   const isLoading = products === null && !loadErr
   const closeDrawer = () => {
     if (!busy) {
       setDrawerOpen(false)
+      setEditingProduct(null)
       setForm(EMPTY)
       setErrs({})
       setImageFile(null)
@@ -539,38 +645,31 @@ export function ProductCatalogScreen() {
   return (
     <div className="pc-page">
       {/* ── Header ── */}
-      <div className="pc-hero">
-        <div>
-          <p className="pc-breadcrumb">
-            Back of house <span>/</span> Menu
-          </p>
-          <h1 className="pc-title">The menu.</h1>
-          <p className="pc-subtitle">Build, price and track every dish your kitchen sends out.</p>
-        </div>
-        <div className="pc-actions">
+      <PageHeader
+        kicker="BACK OF HOUSE · MENU"
+        title="The menu."
+        subtitle="Build, price and track every dish your kitchen sends out."
+        actions={<>
           <button
             type="button"
             className="secondary-cta"
             onClick={() => void handleRefresh()}
             disabled={refreshing || !storeId}
           >
+            <RefreshCw aria-hidden="true" size={16} className={refreshing ? 'spin' : undefined} />
             {refreshing ? 'Refreshing…' : 'Refresh menu'}
           </button>
           <button
             id="pc-add-btn"
             type="button"
             className="cta"
-            onClick={() => {
-              setDrawerOpen(true)
-              setSubmitErr('')
-              setErrs({})
-            }}
+            onClick={openCreateDrawer}
             disabled={!storeId}
           >
-            + Add dish
+            <Plus aria-hidden="true" size={16} />Add dish
           </button>
-        </div>
-      </div>
+        </>}
+      />
 
       {/* ── Stat Strip ── */}
       {products !== null && (
@@ -644,6 +743,17 @@ export function ProductCatalogScreen() {
               ))}
           </SelectField>
 
+          <SelectField
+            id="pc-status-filter"
+            className="pc-status-select"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as 'active' | 'archived')}
+            aria-label="Filter by menu status"
+          >
+            <option value="active">Active menu</option>
+            <option value="archived">Archived dishes</option>
+          </SelectField>
+
           {hasFilters && (
             <button
               type="button"
@@ -651,6 +761,7 @@ export function ProductCatalogScreen() {
               onClick={() => {
                 setQuery('')
                 setCatFilter('all')
+                setStatusFilter('active')
               }}
             >
               Clear filters
@@ -675,6 +786,7 @@ export function ProductCatalogScreen() {
               <span>Category</span>
               <span>Price</span>
               <span>Stock</span>
+              <span>Actions</span>
             </div>
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="pc-skel-row">
@@ -689,6 +801,7 @@ export function ProductCatalogScreen() {
                 <div className="pc-bone" style={{ height: 20, width: 80, borderRadius: 10, marginLeft: 'auto' }} />
                 <div className="pc-bone" style={{ height: 16, width: 60, marginLeft: 'auto' }} />
                 <div className="pc-bone" style={{ height: 14, width: 75, marginLeft: 'auto' }} />
+                <div className="pc-bone" style={{ height: 34, width: 82, marginLeft: 'auto' }} />
               </div>
             ))}
           </div>
@@ -707,11 +820,7 @@ export function ProductCatalogScreen() {
               <button
                 type="button"
                 className="cta"
-                onClick={() => {
-                  setDrawerOpen(true)
-                  setSubmitErr('')
-                  setErrs({})
-                }}
+                onClick={openCreateDrawer}
               >
                 + Add first dish
               </button>
@@ -728,6 +837,7 @@ export function ProductCatalogScreen() {
               <span>Category</span>
               <span>Price</span>
               <span>Stock</span>
+              <span>Actions</span>
             </div>
             {filtered.map((product) => {
               const stock = stockMap[product.id] ?? 0
@@ -738,7 +848,7 @@ export function ProductCatalogScreen() {
               const pillLabel = stock > 5 ? 'In Stock' : stock > 0 ? 'Low Stock' : 'Out of Stock'
 
               return (
-                <div key={product.id} className="pc-row" role="row">
+                <div key={product.id} className={product.active ? 'pc-row' : 'pc-row archived'} role="row">
                   <div className="pc-cell-product" role="cell">
                     {product.image_url ? (
                       <img className="pc-avatar-img" src={product.image_url} alt="" aria-hidden="true" />
@@ -748,7 +858,9 @@ export function ProductCatalogScreen() {
                     <div style={{ minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
                         <span className="pc-prod-name" title={product.name}>{product.name}</span>
-                        <DishAvailability isAvailable={product.is_available} unavailableUntil={product.unavailable_until} />
+                        {product.active
+                          ? <DishAvailability isAvailable={product.is_available} unavailableUntil={product.unavailable_until} />
+                          : <StatusBadge tone="muted">Archived</StatusBadge>}
                       </div>
                       <div className="pc-prod-sku">{product.sku}</div>
                     </div>
@@ -788,6 +900,19 @@ export function ProductCatalogScreen() {
                     <StatusBadge tone={stockTone}>{pillLabel}</StatusBadge>
                     <span className="pc-stock-qty">{stockLabel}</span>
                   </div>
+                  <div className="pc-row-actions" role="cell">
+                    {product.active ? <>
+                      <button type="button" className="pc-icon-button" onClick={() => openEditDrawer(product)} aria-label={`Edit ${product.name}`} title="Edit dish">
+                        <Pencil aria-hidden="true" size={15} />
+                      </button>
+                      <button type="button" className="pc-icon-button danger" onClick={() => { setDeletingProduct(product); setArchiveError('') }}
+                        aria-label={`Delete ${product.name}`} title="Delete dish">
+                        <Trash2 aria-hidden="true" size={15} />
+                      </button>
+                    </> : <button type="button" className="secondary-cta pc-restore-button" disabled={archiveBusy} onClick={() => void handleRestore(product)}>
+                      Restore
+                    </button>}
+                  </div>
                 </div>
               )
             })}
@@ -801,7 +926,7 @@ export function ProductCatalogScreen() {
           className="pc-overlay"
           role="dialog"
           aria-modal="true"
-          aria-label="Add dish"
+          aria-label={editingProduct ? `Edit ${editingProduct.name}` : 'Add dish'}
           onClick={(e) => {
             if (e.target === e.currentTarget) closeDrawer()
           }}
@@ -810,8 +935,8 @@ export function ProductCatalogScreen() {
             {/* Header — flat surface, hairline separator */}
             <div className="pc-drawer-head">
               <div className="pc-drawer-head-copy">
-                <p className="pc-drawer-eyebrow">Menu management</p>
-                <h2 className="pc-drawer-title">Add a dish</h2>
+                <p className="pc-drawer-eyebrow">{editingProduct ? 'Edit menu item' : 'Menu management'}</p>
+                <h2 className="pc-drawer-title">{editingProduct ? editingProduct.name : 'Add a dish'}</h2>
               </div>
               <button
                 type="button"
@@ -890,7 +1015,7 @@ export function ProductCatalogScreen() {
                         placeholder="Scan or type"
                         autoComplete="off"
                       />
-                      <button className="pc-scan-button" type="button" onClick={() => barcodeRef.current?.focus()} aria-label="Scan barcode with connected scanner">⌁ Scan</button>
+                      <button className="pc-scan-button" type="button" onClick={() => barcodeRef.current?.focus()} aria-label="Scan barcode with connected scanner"><ScanLine aria-hidden="true" size={16} />Scan</button>
                     </div>
                     <p className="pc-field-hint">Select Scan, then use a connected USB or Bluetooth barcode scanner. Scanners enter the code here automatically.</p>
                     {errs.barcode && <p className="pc-field-err">{errs.barcode}</p>}
@@ -902,10 +1027,8 @@ export function ProductCatalogScreen() {
               <div className="pc-group">
                 <p className="pc-group-label">Menu Category & Tax</p>
                 <div className="pc-field">
-                  <label htmlFor="pf-cat">
-                    Category <span className="pc-opt">optional</span>
-                  </label>
-                  <select
+                  <SelectField
+                    label={<>Category <span className="pc-opt">optional</span></>}
                     id="pf-cat"
                     value={form.categoryId}
                     onChange={(e) => setField('categoryId', e.target.value)}
@@ -918,8 +1041,8 @@ export function ProductCatalogScreen() {
                           {c.name}
                         </option>
                       ))}
-                    <option value="__new__">+ Create new category…</option>
-                  </select>
+                    {!editingProduct && <option value="__new__">+ Create new category…</option>}
+                  </SelectField>
                   {form.categoryId === '__new__' && (
                     <input
                       className={`pc-newcat ${errs.newCategoryName ? 'err' : ''}`}
@@ -935,10 +1058,8 @@ export function ProductCatalogScreen() {
                 </div>
 
                 <div className="pc-field">
-                  <label htmlFor="pf-tax">
-                    Tax rate <span className="pc-opt">optional</span>
-                  </label>
-                  <select
+                  <SelectField
+                    label={<>Tax rate <span className="pc-opt">optional</span></>}
                     id="pf-tax"
                     value={form.taxRateId}
                     onChange={(e) => setField('taxRateId', e.target.value)}
@@ -951,8 +1072,8 @@ export function ProductCatalogScreen() {
                           {t.name} — {(t.rate_bps / 100).toFixed(2)}%
                         </option>
                       ))}
-                    <option value="__new__">+ Create new tax rate…</option>
-                  </select>
+                    {!editingProduct && <option value="__new__">+ Create new tax rate…</option>}
+                  </SelectField>
                   {form.taxRateId === '__new__' && (
                     <div className="pc-newtax">
                       <input
@@ -1005,7 +1126,7 @@ export function ProductCatalogScreen() {
                     )}
                   </div>
                   <div className="pc-field">
-                    <label htmlFor="pf-stock">Initial stock</label>
+                    <label htmlFor="pf-stock">{editingProduct ? 'Current stock' : 'Initial stock'}</label>
                     <input
                       id="pf-stock"
                       type="number"
@@ -1016,8 +1137,11 @@ export function ProductCatalogScreen() {
                       min={0}
                       step={1}
                       placeholder="0"
+                      disabled={Boolean(editingProduct)}
                     />
-                    {errs.initialStock && <p className="pc-field-err">{errs.initialStock}</p>}
+                    {editingProduct
+                      ? <p className="pc-field-hint">Stock is adjusted from Inventory so every movement remains auditable.</p>
+                      : errs.initialStock && <p className="pc-field-err">{errs.initialStock}</p>}
                   </div>
                 </div>
               </div>
@@ -1059,7 +1183,9 @@ export function ProductCatalogScreen() {
                   ) : imageFile ? (
                     <p className="pc-field-hint">{imageFile.name} selected. Shown on the register once saved.</p>
                   ) : (
-                    <p className="pc-field-hint">Shown on the menu and on the register. Falls back to a placeholder when absent.</p>
+                    <p className="pc-field-hint">{editingProduct?.image_url
+                      ? 'Choose a file only when you want to replace the current dish photo.'
+                      : 'Shown on the menu and on the register. Falls back to a placeholder when absent.'}</p>
                   )}
                 </div>
               </div>
@@ -1068,7 +1194,7 @@ export function ProductCatalogScreen() {
             {/* Footer */}
             <div className="pc-drawer-foot">
               <button type="submit" className="pc-submit" disabled={busy || !storeId}>
-                {busy ? 'Saving dish…' : 'Save to menu'}
+                {busy ? 'Saving dish…' : editingProduct ? 'Save changes' : 'Save to menu'}
               </button>
               <button type="button" className="pc-cancel" onClick={closeDrawer} disabled={busy}>
                 Cancel
@@ -1145,6 +1271,27 @@ export function ProductCatalogScreen() {
           </div>
         </div>
       )}
+      {deletingProduct && <Dialog
+        kicker="MENU SAFETY"
+        title={`Remove ${deletingProduct.name}?`}
+        className="pc-delete-dialog"
+        onClose={() => { if (!archiveBusy) { setDeletingProduct(null); setArchiveError('') } }}
+      >
+        <div className="pc-delete-message">
+          <span className="pc-delete-icon"><Trash2 aria-hidden="true" size={20} /></span>
+          <div>
+            <strong>This dish will disappear from every active register.</strong>
+            <p>Past receipts, sales reporting, and recipe history stay intact. You can restore it later from Archived dishes.</p>
+          </div>
+        </div>
+        {archiveError && <p className="form-notice error" role="alert">{archiveError}</p>}
+        <div className="pc-delete-actions">
+          <button type="button" className="secondary-cta" disabled={archiveBusy} onClick={() => { setDeletingProduct(null); setArchiveError('') }}>Keep dish</button>
+          <button type="button" className="danger-action" disabled={archiveBusy} onClick={() => void handleArchive()}>
+            {archiveBusy ? 'Removing...' : 'Remove from menu'}
+          </button>
+        </div>
+      </Dialog>}
     </div>
   )
 }

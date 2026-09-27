@@ -19,6 +19,8 @@ import { WastageForm } from './WastageForm'
 import { StockLedger } from './StockLedger'
 import { UnitSelector } from './UnitSelector'
 import { PageHeader } from '../../components/PageHeader'
+import { Dialog } from '../../components/Dialog'
+import { Package, Plus } from '../../components/icons'
 import './inventory.css'
 
 export function InventoryScreen({ terminal = false }: { terminal?: boolean }) {
@@ -227,7 +229,7 @@ export function InventoryScreen({ terminal = false }: { terminal?: boolean }) {
       <InventoryToolbar search={search} onSearchChange={setSearch} filter={filter} onFilterChange={setFilter}
         sort={sort} onSortChange={setSort} addOpen={addOpen} onAddIngredient={() => setAddOpen(value => !value)} />
 
-      {addOpen && <form className="floor-inline-form" onSubmit={event => void handleAddIngredient(event)}>
+      {false && addOpen && <form className="floor-inline-form" onSubmit={event => void handleAddIngredient(event)}>
         <label>Name<input type="text" maxLength={120} value={newName} onChange={event => setNewName(event.target.value)} /></label>
         <label>Unit<UnitSelector units={units} value={newUnitId} onChange={setNewUnitId} onCreateUnit={unit => createUnit(storeId, unit).then(created => { setUnits(current => [...current, created]); return created })} /></label>
         <label>Cost/unit<input type="number" min={0} step="0.01" value={newCost} onChange={event => setNewCost(event.target.value)} /></label>
@@ -241,6 +243,13 @@ export function InventoryScreen({ terminal = false }: { terminal?: boolean }) {
       <div className="inventory-layout">
         <IngredientList ingredients={ingredients} units={units} currency={currency} search={search} filter={filter} sort={sort}
           selectedId={selected?.id ?? null} onSelect={ingredient => void selectIngredient(ingredient)} />
+
+        {!selected && <div className="inventory-welcome">
+          <span><Package aria-hidden="true" size={24} /></span>
+          <h2>Select an ingredient</h2>
+          <p>Choose an item from the list to review stock, batches, cost, expiry, and movement history.</p>
+          <button type="button" className="secondary-cta" onClick={() => setAddOpen(true)}><Plus aria-hidden="true" size={15} />Add a new ingredient</button>
+        </div>}
 
         {selected && <div className="inventory-detail">
           <InventoryDetailHeader storeId={storeId} ingredient={selected} unit={selectedUnit} units={units} currency={currency} terminal={terminal}
@@ -268,6 +277,38 @@ export function InventoryScreen({ terminal = false }: { terminal?: boolean }) {
         </div>}
       </div>
     </>}
+
+    {addOpen && <Dialog
+      kicker="INVENTORY CATALOG"
+      title="Add an ingredient"
+      className="inventory-create-dialog"
+      onClose={() => { if (!addBusy) { setAddOpen(false); setAddError('') } }}
+    >
+      <div className="inventory-create-intro">
+        <span><Package aria-hidden="true" size={20} /></span>
+        <div><strong>Create the ingredient record first.</strong><p>Stock quantities are received separately so every movement stays traceable.</p></div>
+      </div>
+      <form className="inventory-create-form" onSubmit={event => void handleAddIngredient(event)}>
+        <label className="inventory-create-name">Ingredient name
+          <input autoFocus type="text" maxLength={120} placeholder="e.g. Mozzarella" value={newName} onChange={event => setNewName(event.target.value)} />
+        </label>
+        <div className="inventory-create-unit">
+          <span>Purchasing unit</span>
+          <UnitSelector units={units} value={newUnitId} onChange={setNewUnitId} onCreateUnit={unit => createUnit(storeId, unit).then(created => { setUnits(current => [...current, created]); return created })} />
+        </div>
+        <label>Cost per unit ({currency})
+          <input type="number" min={0} step="0.01" placeholder="0.00" value={newCost} onChange={event => setNewCost(event.target.value)} />
+        </label>
+        <label>Reorder point <small>Optional</small>
+          <input type="number" min={0} step="any" placeholder="Alert below..." value={newReorderThreshold} onChange={event => setNewReorderThreshold(event.target.value)} />
+        </label>
+        {addError && <p className="form-notice error" role="alert">{addError}</p>}
+        <div className="inventory-create-actions">
+          <button type="button" className="secondary-cta" disabled={addBusy} onClick={() => { setAddOpen(false); setAddError('') }}>Cancel</button>
+          <button type="submit" className="cta" disabled={addBusy || !newName.trim() || !newUnitId}><Plus aria-hidden="true" size={15} />{addBusy ? 'Adding...' : 'Add ingredient'}</button>
+        </div>
+      </form>
+    </Dialog>}
 
     {approvalOpen && terminal && terminalCache && <ManagerApprovalModal
       cache={terminalCache}

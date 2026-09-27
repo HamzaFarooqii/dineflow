@@ -132,7 +132,7 @@ not a solo change.
 **Acceptance:** a "French Toast" product can have a required "Size" group (Regular/Large, Large
 +$2.00) and an optional "Add-ons" group (Extra syrup +$0.50, multi-select); the register shows the
 picker, the line price reflects the selection, and the kitchen ticket shows which options were
-chosen.
+chosen. Similarly when the bill is printed the modifiers are also printed.
 
 ---
 

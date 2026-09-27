@@ -8,6 +8,7 @@ import { InventoryStatusBadge } from './InventoryStatusBadge'
 import { MetricCard } from '../../components/MetricCard'
 import { Quantity } from './Quantity'
 import { UnitSelector } from './UnitSelector'
+import { Dialog } from '../../components/Dialog'
 
 const KIND_SUBTITLE: Record<UnitKind, string> = { mass: 'Weight inventory', volume: 'Liquid inventory', count: 'Count inventory' }
 
@@ -125,7 +126,7 @@ export function InventoryDetailHeader({
     </div>
     {toggleError && <p className="form-notice error" role="alert">{toggleError}</p>}
 
-    {editOpen && <form className="floor-inline-form" onSubmit={event => { event.preventDefault(); void submitEdit() }}>
+    {false && editOpen && <form className="floor-inline-form" onSubmit={event => { event.preventDefault(); void submitEdit() }}>
       <label>Name<input type="text" maxLength={120} value={name} onChange={event => setName(event.target.value)} disabled={editBusy} /></label>
       <label>Unit<UnitSelector units={units} value={unitId} onChange={setUnitId} onCreateUnit={onCreateUnit} /></label>
       <label>Cost/unit<input type="number" min={0} step="0.01" value={cost} onChange={event => setCost(event.target.value)} disabled={editBusy} /></label>
@@ -135,5 +136,33 @@ export function InventoryDetailHeader({
       </div>
       {editError && <p className="form-notice error" role="alert">{editError}</p>}
     </form>}
+    {editOpen && <Dialog
+      kicker="INGREDIENT SETTINGS"
+      title={`Edit ${ingredient.name}`}
+      className="inventory-edit-dialog"
+      onClose={() => { if (!editBusy) { setEditOpen(false); setEditError('') } }}
+    >
+      <p className="inventory-edit-copy">Update purchasing details and the stock alert point. Existing stock movements remain unchanged.</p>
+      <form className="inventory-create-form" onSubmit={event => { event.preventDefault(); void submitEdit() }}>
+        <label className="inventory-create-name">Ingredient name
+          <input autoFocus type="text" maxLength={120} value={name} onChange={event => setName(event.target.value)} disabled={editBusy} />
+        </label>
+        <div className="inventory-create-unit">
+          <span>Purchasing unit</span>
+          <UnitSelector units={units} value={unitId} onChange={setUnitId} onCreateUnit={onCreateUnit} />
+        </div>
+        <label>Cost per unit ({currency})
+          <input type="number" min={0} step="0.01" value={cost} onChange={event => setCost(event.target.value)} disabled={editBusy} />
+        </label>
+        <label>Reorder point <small>Optional</small>
+          <input type="number" min={0} step="any" value={reorderThreshold} onChange={event => setReorderThreshold(event.target.value)} disabled={editBusy} />
+        </label>
+        {editError && <p className="form-notice error" role="alert">{editError}</p>}
+        <div className="inventory-create-actions">
+          <button type="button" className="secondary-cta" disabled={editBusy} onClick={() => { setEditOpen(false); setEditError('') }}>Cancel</button>
+          <button type="submit" className="cta" disabled={editBusy || !name.trim() || !unitId}>{editBusy ? 'Saving...' : 'Save changes'}</button>
+        </div>
+      </form>
+    </Dialog>}
   </div>
 }

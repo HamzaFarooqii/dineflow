@@ -5,6 +5,8 @@ import { requireSupabase } from '../lib/supabase'
 import { loadCatalog } from '../lib/catalog'
 import { provisionTerminal } from '../terminal-auth/cache'
 import { request } from '../terminal-auth/api'
+import { SelectField } from '../components/SelectField'
+import { Check } from '../components/icons'
 import '../terminal-auth/terminal-auth.css'
 
 type Store = { id: string; name: string; timezone: string; currency: string }
@@ -146,7 +148,7 @@ export function OnboardingWizard() {
   }
 
   const stepDone = (index: number) => index < step || (index === 1 && terminalDone) || (index === 2 && staffDone)
-  const stepNote = <ol className="onboarding-steps">{STEPS.map((item, index) => <li key={item.label} className={index === step ? 'active' : stepDone(index) ? 'done' : ''}><span aria-hidden="true">{stepDone(index) ? '✓' : index + 1}</span>{item.label}</li>)}</ol>
+  const stepNote = <ol className="onboarding-steps">{STEPS.map((item, index) => <li key={item.label} className={index === step ? 'active' : stepDone(index) ? 'done' : ''}><span aria-hidden="true">{stepDone(index) ? <Check size={14} /> : index + 1}</span>{item.label}</li>)}</ol>
 
   if (loading) return <main className="route-pending" role="status">Loading…</main>
   if (error && !store) return <AuthShell title="Something needs your attention." copy="We could not load your store." kicker="SET UP YOUR STORE" note={stepNote}><p role="alert" className="form-notice error">{error}</p></AuthShell>
@@ -158,7 +160,7 @@ export function OnboardingWizard() {
     {error && <p role="alert" className="form-notice error">{error}</p>}
     {step === 0 && store && <form onSubmit={event => void submitProfile(event)} noValidate>
       <label>Store name<input name="name" defaultValue={store.name} required minLength={2} maxLength={120} /></label>
-      <label>Currency<select name="currency" defaultValue={store.currency}>{CURRENCIES.map(([code, name]) => <option key={code} value={code}>{code} — {name}</option>)}</select></label>
+      <SelectField label="Currency" name="currency" defaultValue={store.currency}>{CURRENCIES.map(([code, name]) => <option key={code} value={code}>{code} — {name}</option>)}</SelectField>
       <label>Timezone<input name="timezone" defaultValue={store.timezone} required /></label>
       <button className="cta" type="submit" disabled={busy}>{busy ? 'Saving…' : 'Continue'}<b aria-hidden="true">→</b></button>
     </form>}

@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import type { PoolClient } from 'pg'
 import { db } from '../db.js'
 import { requireStoreMember, requireStoreManager, sendApiError, ApiError } from './auth.js'
 import { requireCashierTerminal } from '../terminal-auth/routes.js'
@@ -264,6 +265,173 @@ async function createProduct(req: import('express').Request, res: import('expres
   }
 }
 
+type ProductMutationRow = {
+  id: string
+  store_id: string
+  sku: string
+  barcode: string | null
+  name: string
+  category_id: string | null
+  tax_rate_id: string | null
+  unit_price_cents: string
+  active: boolean
+  revision: string
+  image_url: string | null
+  station_id: string | null
+  prep_time_seconds: number | null
+  course: string | null
+  kitchen_name: string | null
+  is_available: boolean
+  unavailable_until: string | null
+  sells_directly: boolean
+}
+
+function productPayload(row: ProductMutationRow) {
+  return {
+    ...row,
+    unit_price_cents: Number(row.unit_price_cents),
+    revision: Number(row.revision),
+  }
+}
+
+async function publishProductChange(
+  client: PoolClient,
+  storeId: string,
+  row: ProductMutationRow,
+  nextPosition: string,
+) {
+  const stock = await client.query(
+    'select product_id,current_stock,updated_at from public.pos_stock where store_id=$1 and product_id=$2',
+    [storeId, row.id],
+  )
+  const stockRow = stock.rows[0] as { product_id: string; current_stock: number; updated_at: string } | undefined
+  await client.query('update public.pos_sync_feed_state set last_position=$1 where store_id=$2', [nextPosition, storeId])
+  await client.query(
+    `insert into public.pos_change_feed (store_id, position, entity_type, entity_id, action, payload)
+     values ($1,$2,'product',$3,'upsert',$4::jsonb)`,
+    [storeId, nextPosition, row.id, JSON.stringify({ product: productPayload(row), ...(stockRow ? { stock: stockRow } : {}) })],
+  )
+  return stockRow
+}
+
+// PATCH /catalog/products/:productId - owner/manager updates an existing menu item.
+async function updateProduct(req: import('express').Request, res: import('express').Response) {
+  try {
+    const body = req.body as Record<string, unknown>
+    const storeId = storeIdFrom(body.store_id)
+    const productId = String(req.params.productId ?? '')
+    if (!UUID_RE.test(productId)) throw new ApiError(400, 'validation_failed', 'A valid product ID is required.')
+    await requireStoreManager(req, storeId)
+
+    const name = String(body.name ?? '').trim()
+    if (!name || name.length > 160) throw new ApiError(422, 'validation_failed', 'Product name is required and must be 1-160 characters.')
+    const sku = String(body.sku ?? '').trim()
+    if (!sku || sku.length > 80) throw new ApiError(422, 'validation_failed', 'SKU is required and must be 1-80 characters.')
+    const barcode = body.barcode === null || body.barcode === undefined || String(body.barcode).trim() === ''
+      ? null : String(body.barcode).trim()
+    if (barcode !== null && (!/^[A-Za-z0-9]+$/.test(barcode) || barcode.length > 80)) {
+      throw new ApiError(422, 'validation_failed', 'Barcode must be alphanumeric, 1-80 characters.')
+    }
+    const categoryId = body.category_id === null || body.category_id === undefined || body.category_id === ''
+      ? null : String(body.category_id)
+    if (categoryId !== null && !UUID_RE.test(categoryId)) throw new ApiError(422, 'validation_failed', 'Choose a valid category.')
+    const taxRateId = body.tax_rate_id === null || body.tax_rate_id === undefined || body.tax_rate_id === ''
+      ? null : String(body.tax_rate_id)
+    if (taxRateId !== null && !UUID_RE.test(taxRateId)) throw new ApiError(422, 'validation_failed', 'Choose a valid tax rate.')
+    if (!Number.isInteger(body.unit_price_cents) || (body.unit_price_cents as number) < 0 || (body.unit_price_cents as number) > 1_000_000_000) {
+      throw new ApiError(422, 'validation_failed', 'unit_price_cents must be a non-negative integer.')
+    }
+    const imageUrl = body.image_url === null || body.image_url === undefined || String(body.image_url).trim() === ''
+      ? null : String(body.image_url).trim()
+    if (imageUrl !== null && (imageUrl.length > 2048 || !/^https?:\/\//i.test(imageUrl))) {
+      throw new ApiError(422, 'validation_failed', 'image_url must be an http(s) URL of 2048 characters or fewer.')
+    }
+    const active = typeof body.active === 'boolean' ? body.active : true
+
+    const client = await db.connect()
+    try {
+      await client.query('begin')
+      const feed = await client.query('select last_position from public.pos_sync_feed_state where store_id=$1 for update', [storeId])
+      if (!feed.rows[0]) throw new ApiError(503, 'server_unavailable', 'Store is not initialized.')
+      const nextPosition = (BigInt(feed.rows[0].last_position as string | number) + 1n).toString()
+
+      if (categoryId) {
+        const category = await client.query('select 1 from public.pos_categories where store_id=$1 and id=$2', [storeId, categoryId])
+        if (!category.rowCount) throw new ApiError(422, 'validation_failed', 'Category does not belong to this store.')
+      }
+      if (taxRateId) {
+        const taxRate = await client.query('select 1 from public.pos_tax_rates where store_id=$1 and id=$2', [storeId, taxRateId])
+        if (!taxRate.rowCount) throw new ApiError(422, 'validation_failed', 'Tax rate does not belong to this store.')
+      }
+
+      let updated
+      try {
+        updated = await client.query(
+          `update public.pos_products
+             set name=$3, sku=$4, barcode=$5, category_id=$6, tax_rate_id=$7,
+                 unit_price_cents=$8, image_url=$9, active=$10, revision=revision+1
+           where store_id=$1 and id=$2
+           returning id,store_id,sku,barcode,name,category_id,tax_rate_id,
+             unit_price_cents::text,active,revision::text,image_url,station_id,
+             prep_time_seconds,course,kitchen_name,is_available,unavailable_until,sells_directly`,
+          [storeId, productId, name, sku, barcode, categoryId, taxRateId, body.unit_price_cents, imageUrl, active],
+        )
+      } catch (updateReason) {
+        if (typeof updateReason === 'object' && updateReason !== null && 'code' in updateReason && (updateReason as { code: string }).code === '23505') {
+          throw new ApiError(409, 'sku_conflict', 'A product with this SKU already exists in this store.')
+        }
+        throw updateReason
+      }
+      if (!updated.rows[0]) throw new ApiError(404, 'not_found', 'Menu item not found.')
+      const row = updated.rows[0] as ProductMutationRow
+      const stock = await publishProductChange(client, storeId, row, nextPosition)
+      await client.query('commit')
+      res.json({ product: productPayload(row), stock, checkpoint: nextPosition })
+    } catch (reason) {
+      await client.query('rollback')
+      throw reason
+    } finally {
+      client.release()
+    }
+  } catch (reason) { sendApiError(res, reason) }
+}
+
+// DELETE keeps historical orders and recipe references intact by archiving the dish.
+async function archiveProduct(req: import('express').Request, res: import('express').Response) {
+  try {
+    const body = req.body as Record<string, unknown>
+    const storeId = storeIdFrom(body.store_id)
+    const productId = String(req.params.productId ?? '')
+    if (!UUID_RE.test(productId)) throw new ApiError(400, 'validation_failed', 'A valid product ID is required.')
+    await requireStoreManager(req, storeId)
+    const client = await db.connect()
+    try {
+      await client.query('begin')
+      const feed = await client.query('select last_position from public.pos_sync_feed_state where store_id=$1 for update', [storeId])
+      if (!feed.rows[0]) throw new ApiError(503, 'server_unavailable', 'Store is not initialized.')
+      const nextPosition = (BigInt(feed.rows[0].last_position as string | number) + 1n).toString()
+      const updated = await client.query(
+        `update public.pos_products set active=false, revision=revision+1
+         where store_id=$1 and id=$2
+         returning id,store_id,sku,barcode,name,category_id,tax_rate_id,
+           unit_price_cents::text,active,revision::text,image_url,station_id,
+           prep_time_seconds,course,kitchen_name,is_available,unavailable_until,sells_directly`,
+        [storeId, productId],
+      )
+      if (!updated.rows[0]) throw new ApiError(404, 'not_found', 'Menu item not found.')
+      const row = updated.rows[0] as ProductMutationRow
+      const stock = await publishProductChange(client, storeId, row, nextPosition)
+      await client.query('commit')
+      res.json({ product: productPayload(row), stock, checkpoint: nextPosition })
+    } catch (reason) {
+      await client.query('rollback')
+      throw reason
+    } finally {
+      client.release()
+    }
+  } catch (reason) { sendApiError(res, reason) }
+}
+
 // ---------------------------------------------------------------------------
 // Recipes + units (Day 3). Recipes are back-office data only — terminals never need them, so
 // none of this goes through the sync feed. Ingredient lines live in Bisma's recipe_ingredients
@@ -492,6 +660,8 @@ export const catalogRouter = Router()
 export const terminalCatalogRouter = Router()
 catalogRouter.get('/snapshot', (req, res) => void snapshot(req, res))
 catalogRouter.post('/products', (req, res) => void createProduct(req, res))
+catalogRouter.patch('/products/:productId', (req, res) => void updateProduct(req, res))
+catalogRouter.delete('/products/:productId', (req, res) => void archiveProduct(req, res))
 catalogRouter.get('/recipes', (req, res) => void listRecipeData(req, res))
 catalogRouter.post('/units', (req, res) => void createUnit(req, res))
 catalogRouter.put('/products/:productId/recipe', (req, res) => void putRecipe(req, res))

@@ -8,7 +8,7 @@
 .recipe-lines { display: grid; gap: var(--mise-space-12); }
 .recipe-lines-label {
   margin: 0;
-  font: 600 12px 'Archivo', sans-serif;
+  font: 600 12px 'Inter', sans-serif;
   color: var(--mise-ink);
 }
 .recipe-add-line { justify-self: start; }
@@ -24,13 +24,13 @@
 .pc-field.recipe-line-top { display: grid; grid-template-columns: 1fr 44px; gap: var(--mise-space-8); }
 .pc-field.recipe-line-bottom { display: grid; grid-template-columns: 1fr 1.4fr auto; gap: var(--mise-space-8); align-items: center; }
 .pc-field.recipe-line-bottom input {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'JetBrains Mono', monospace;
   font-variant-numeric: tabular-nums;
 }
 .recipe-line-cost {
   min-width: 64px;
   text-align: right;
-  font: 500 13px 'IBM Plex Mono', monospace;
+  font: 500 13px 'JetBrains Mono', monospace;
   font-variant-numeric: tabular-nums;
   color: var(--mise-ink);
 }
@@ -41,7 +41,7 @@
   border-radius: var(--mise-r2);
   background: var(--mise-surface);
   color: var(--mise-ink-secondary);
-  font: 600 16px 'Archivo', sans-serif;
+  font: 600 16px 'Inter', sans-serif;
   cursor: pointer;
 }
 .recipe-line-remove:hover:not(:disabled) { background: var(--mise-surface-sunken); color: var(--mise-ink); }
@@ -57,14 +57,14 @@
 }
 .recipe-cost-summary div { display: grid; gap: var(--mise-space-2); }
 .recipe-cost-summary dt {
-  font: 600 10px 'Archivo', sans-serif;
+  font: 600 10px 'Inter', sans-serif;
   letter-spacing: .12em;
   text-transform: uppercase;
   color: var(--mise-ink-muted);
 }
 .recipe-cost-summary dd {
   margin: 0;
-  font: 600 16px 'IBM Plex Mono', monospace;
+  font: 600 16px 'JetBrains Mono', monospace;
   font-variant-numeric: tabular-nums;
   color: var(--mise-ink);
 }
@@ -77,16 +77,35 @@
   padding: 0;
   border: 0;
   background: none;
-  font: 600 11px 'Archivo', sans-serif;
+  font: 600 11px 'Inter', sans-serif;
   color: var(--mise-ink-secondary);
   text-align: right;
   cursor: pointer;
 }
 .recipe-row-link:hover { color: var(--mise-saffron-deep); }
 
+.dialog-panel.ingredient-create-dialog{width:min(560px,100%)}
+.ingredient-dialog-copy{margin:0 0 16px;color:var(--mise-ink-muted);font-size:13px;line-height:1.55}
+.ingredient-dialog-form{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.ingredient-dialog-form>label,.ingredient-dialog-field{display:grid;gap:7px;color:var(--mise-ink-secondary);font-size:12px;font-weight:700}
+.ingredient-dialog-form>label>input{
+  width:100%;
+  min-height:44px;
+  padding:0 12px;
+  border:1px solid var(--mise-border-strong);
+  border-radius:var(--mise-r2);
+  background:var(--mise-surface);
+  color:var(--mise-ink);
+}
+.ingredient-dialog-form>label>input:focus{outline:0;border-color:var(--mise-saffron);box-shadow:0 0 0 3px var(--mise-saffron-fill)}
+.ingredient-dialog-form>label:nth-child(3),.ingredient-dialog-form>.form-notice,.ingredient-dialog-actions{grid-column:1/-1}
+.ingredient-dialog-actions{display:flex;justify-content:flex-end;gap:8px;padding-top:4px}
+.ingredient-dialog-actions .cta{min-width:140px}
+
 @media (max-width: 480px) {
   .recipe-new-unit-row { grid-template-columns: 1fr; }
   .pc-field.recipe-line-bottom { grid-template-columns: 1fr 1fr; }
   .recipe-line-cost { grid-column: 1 / -1; }
   .recipe-cost-summary { grid-template-columns: 1fr; }
+  .ingredient-dialog-form{grid-template-columns:1fr}
 }

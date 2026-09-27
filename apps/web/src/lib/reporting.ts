@@ -48,6 +48,32 @@ export function todayInTimezone(timezone: string, now = new Date()): string {
   return calendarDay(now.toISOString(), timezone)
 }
 
+function timezoneOffsetMillis(instantMs: number, timezone: string): number {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: timezone, hourCycle: 'h23',
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    .formatToParts(new Date(instantMs))
+  const value = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find(part => part.type === type)?.value ?? 0)
+  return Date.UTC(value('year'), value('month') - 1, value('day'), value('hour'), value('minute'), value('second')) - instantMs
+}
+
+function localMidnightUtc(date: string, timezone: string): number {
+  const naiveUtc = Date.parse(`${date}T00:00:00.000Z`)
+  let guess = naiveUtc
+  for (let i = 0; i < 5; i++) {
+    const next = naiveUtc - timezoneOffsetMillis(guess, timezone)
+    if (next === guess) break
+    guess = next
+  }
+  return guess
+}
+
+export function calendarDayBoundsUtc(date: string, timezone: string): { startUtc: string; endUtc: string } {
+  const start = localMidnightUtc(date, timezone)
+  const [year, month, day] = date.split('-').map(Number)
+  const nextDate = new Date(Date.UTC(year, month - 1, day + 1)).toISOString().slice(0, 10)
+  return { startUtc: new Date(start).toISOString(), endUtc: new Date(localMidnightUtc(nextDate, timezone)).toISOString() }
+}
+
 export function calculateLocalSalesReport(storeId: string, day: string, timezone: string, data: ReportingData): LocalSalesReport {
   const report = emptyReport()
   const dayOrders = data.orders.filter(order => order.store_id === storeId && calendarDay(order.client_generated_at, timezone) === day)

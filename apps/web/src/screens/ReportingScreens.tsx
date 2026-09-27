@@ -11,6 +11,7 @@ import {
   calculateLowStockItems,
   getRecentOrders,
   calculateCashierShift,
+  calendarDayBoundsUtc,
   type LocalSalesReport,
   type TopProduct,
   type LowStockItem,
@@ -20,11 +21,19 @@ import {
 import { currentAccess } from '../terminal-auth/cache'
 import { configuredApiUrl, loadCatalog } from '../lib/catalog'
 import { classifySyncState, type SyncState } from '../lib/order-sync-core'
-import { fetchDailySummary, fetchOrdersPage, fetchOversold, type ServerOversoldProduct } from '../lib/server-reports'
+import {
+  fetchCustomerReport, fetchDailySummary, fetchInventoryReport, fetchOrdersPage, fetchOversold, fetchShifts,
+  type CustomerReport, type InventoryReport, type ServerOversoldProduct, type ShiftRow,
+} from '../lib/server-reports'
+import { fetchFloorPlan, type FloorPlan } from '../lib/floor'
+import { fetchKitchenTickets, type KitchenTicket } from '../lib/kitchen'
 import { buildCsv, downloadCsv } from '../lib/csv'
 import { PageHeader } from '../components/PageHeader'
 import { MetricCard } from '../components/MetricCard'
-import { Wallet, RefreshCw, Award, AlertTriangle, CircleAlert, Receipt } from '../components/icons'
+import { StatusBadge } from '../components/StatusBadge'
+import { TABLE_STATUS_LABELS, TABLE_STATUS_TONE } from '../../../../packages/domain/src/table-status'
+import { KITCHEN_TICKET_STATUS_LABELS, KITCHEN_TICKET_STATUS_TONE } from '../../../../packages/domain/src/kitchen-ticket-status'
+import { Wallet, RefreshCw, Award, AlertTriangle, CircleAlert, Receipt, ShoppingCart, Users, LayoutGrid, ChefHat, Clock, Package, Calendar } from '../components/icons'
 import './reporting.css'
 
 // Health-check the API the same way ConnectionAndSync/CashierDashboardScreen do: navigator.onLine
@@ -191,6 +200,39 @@ function useOversoldProducts(storeId: string | undefined) {
   return { products, error }
 }
 
+interface OperationsSnapshot {
+  floor: FloorPlan
+  tickets: KitchenTicket[]
+}
+
+function useOperationsSnapshot(storeId: string | undefined) {
+  const [snapshot, setSnapshot] = useState<OperationsSnapshot>()
+  const [error, setError] = useState('')
+  useEffect(() => {
+    let active = true
+    setSnapshot(undefined)
+    setError('')
+    if (!storeId) return
+    const load = async () => {
+      try {
+        const [floor, tickets] = await Promise.all([fetchFloorPlan(storeId), fetchKitchenTickets(storeId)])
+        if (active) { setSnapshot({ floor, tickets }); setError('') }
+      } catch (reason) {
+        if (active) setError(reason instanceof Error ? reason.message : 'Live operations are unavailable.')
+      }
+    }
+    void load()
+    const refresh = window.setInterval(() => void load(), 30_000)
+    return () => { active = false; window.clearInterval(refresh) }
+  }, [storeId])
+  return { snapshot, error }
+}
+
+function elapsedMinutes(createdAt: string): string {
+  const minutes = Math.max(0, Math.floor((Date.now() - Date.parse(createdAt)) / 60_000))
+  return minutes < 1 ? 'Now' : `${minutes}m`
+}
+
 // Shifts a YYYY-MM-DD calendar-day string by a number of whole days. Pure date-string arithmetic
 // (no timezone lookup) — good enough for a "vs yesterday" comparison per the visual-redesign scope,
 // which is explicitly meant to stay simple rather than reproduce calendarDay()'s timezone precision.
@@ -338,6 +380,7 @@ export function OwnerDashboardScreen({ greetingName }: { greetingName?: string }
   const { state, error } = useFinancialReport()
   const { products: oversoldProducts, error: oversoldError } = useOversoldProducts(state?.storeId)
   const previousDayTotal = usePreviousDayTotal(state?.storeId, state?.day)
+  const { snapshot: operations, error: operationsError } = useOperationsSnapshot(state?.storeId)
   if (error) return <AccessMessage message={error} />
   if (!state) return <DashboardSkeleton />
   const { report, config, topProducts, lowStock, recentOrders } = state
@@ -346,6 +389,15 @@ export function OwnerDashboardScreen({ greetingName }: { greetingName?: string }
   const cashPct = totalTakings > 0 ? Math.round((report.cashTakingsCents / totalTakings) * 100) : 0
   const cardPct = totalTakings > 0 ? 100 - cashPct : 0
   const delta = previousDayTotal === undefined ? undefined : computeDelta(report.recordedTotalCents, previousDayTotal) ?? undefined
+  const availableTables = operations?.floor.tables.filter(table => table.status === 'available').length ?? 0
+  const occupiedTables = operations?.floor.tables.filter(table => ['seated', 'ordering', 'served'].includes(table.status)).length ?? 0
+  const attentionTables = operations?.floor.tables.filter(table => ['bill_requested', 'dirty'].includes(table.status)).length ?? 0
+  const floorPulse = operations?.floor.tables
+    .slice()
+    .sort((a, b) => (a.status === 'available' ? 1 : 0) - (b.status === 'available' ? 1 : 0))
+    .slice(0, 6) ?? []
+  const activeTickets = operations?.tickets.filter(ticket => ticket.status !== 'served') ?? []
+  const readyTickets = activeTickets.filter(ticket => ticket.status === 'ready').length
 
   return (
     <section className="reporting-page owner-dashboard">
@@ -354,8 +406,8 @@ export function OwnerDashboardScreen({ greetingName }: { greetingName?: string }
         title={`${timeGreeting()}${greetingName ? `, ${greetingName}` : ''}.`}
         subtitle={`Recorded sales for today in ${config.timezone}. Offline and pending sales remain included.`}
         actions={<>
-          <Link className="report-secondary" to="/reports">Daily report <span aria-hidden="true">→</span></Link>
-          <Link className="report-primary" to="/register">Open register <span aria-hidden="true">→</span></Link>
+          <Link className="secondary-cta" to="/reports">Daily report <span aria-hidden="true">→</span></Link>
+          <Link className="cta" to="/register">Open register <span aria-hidden="true">→</span></Link>
         </>}
       />
 
@@ -410,6 +462,59 @@ export function OwnerDashboardScreen({ greetingName }: { greetingName?: string }
           </div>
           <MetricCard label="Pending sync" value={report.pendingCount} detail={<Money cents={report.pendingAmountCents} currency={config.currency} />} />
           <MetricCard label="Rejected" value={report.rejectedCount} detail={<Money cents={report.rejectedAmountCents} currency={config.currency} />} className="rejected" />
+        </section>
+      </div>
+
+      <div className="dashboard-operations-grid">
+        <section className="dashboard-panel operations-panel">
+          <div className="panel-header">
+            <div>
+              <h2><LayoutGrid aria-hidden="true" size={16} className="panel-icon" />Floor pulse</h2>
+              <small>Live table availability and service attention</small>
+            </div>
+            <Link className="panel-link" to="/floor">Open floor <span aria-hidden="true">→</span></Link>
+          </div>
+          {operationsError ? <p className="empty-panel-copy">{operationsError}</p> : !operations ? (
+            <p className="empty-panel-copy" role="status">Loading live floor status…</p>
+          ) : <>
+            <div className="operations-counts">
+              <div><span>Available</span><strong>{availableTables}</strong></div>
+              <div><span>Occupied</span><strong>{occupiedTables}</strong></div>
+              <div className={attentionTables ? 'attention' : ''}><span>Needs attention</span><strong>{attentionTables}</strong></div>
+            </div>
+            {floorPulse.length ? <ul className="operations-list">
+              {floorPulse.map(table => <li key={table.id}>
+                <span className="operations-code">{table.label}</span>
+                <span className="operations-copy">
+                  <strong>{operations.floor.areas.find(area => area.id === table.floor_area_id)?.name ?? 'Unassigned'}</strong>
+                  <small>{table.seats} seats{table.assigned_waiter_name ? ` · ${table.assigned_waiter_name}` : ''}</small>
+                </span>
+                <StatusBadge tone={TABLE_STATUS_TONE[table.status]}>{TABLE_STATUS_LABELS[table.status]}</StatusBadge>
+              </li>)}
+            </ul> : <p className="empty-panel-copy">No tables are configured yet.</p>}
+          </>}
+        </section>
+
+        <section className="dashboard-panel operations-panel">
+          <div className="panel-header">
+            <div>
+              <h2><ChefHat aria-hidden="true" size={16} className="panel-icon" />Kitchen tickets</h2>
+              <small>{readyTickets ? `${readyTickets} ready to run` : 'Active preparation queue'}</small>
+            </div>
+            <Link className="panel-link" to="/kitchen">Open kitchen <span aria-hidden="true">→</span></Link>
+          </div>
+          {operationsError ? <p className="empty-panel-copy">{operationsError}</p> : !operations ? (
+            <p className="empty-panel-copy" role="status">Loading kitchen tickets…</p>
+          ) : activeTickets.length ? <ul className="ticket-pulse-list">
+            {activeTickets.slice(0, 5).map(ticket => <li key={ticket.id}>
+              <span className="ticket-time"><Clock aria-hidden="true" size={13} />{elapsedMinutes(ticket.created_at)}</span>
+              <span className="operations-copy">
+                <strong>{ticket.table_label ? `Table ${ticket.table_label}` : ticket.order_type.replaceAll('_', ' ')}</strong>
+                <small>{ticket.receipt_number} · {ticket.items.length} {ticket.items.length === 1 ? 'item' : 'items'}</small>
+              </span>
+              <StatusBadge tone={KITCHEN_TICKET_STATUS_TONE[ticket.status]}>{KITCHEN_TICKET_STATUS_LABELS[ticket.status]}</StatusBadge>
+            </li>)}
+          </ul> : <p className="empty-panel-copy healthy">Kitchen is clear. No active tickets.</p>}
         </section>
       </div>
 
@@ -533,7 +638,7 @@ export function OwnerDashboardScreen({ greetingName }: { greetingName?: string }
   )
 }
 
-export function ReportsScreen() {
+function DailySalesReport({ tabs }: { tabs?: ReactNode }) {
   const [day, setDay] = useState('')
   const { state, error } = useFinancialReport(day || undefined)
   const { rows: cashierRows, error: cashierError } = useCashierBreakdown(state?.storeId, state?.day)
@@ -552,12 +657,13 @@ export function ReportsScreen() {
               Report date
               <input type="date" value={day} onChange={event => setDay(event.target.value)} />
             </label>
-            <button type="button" className="report-secondary export-csv-btn" onClick={() => exportDailyReportCsv(state)}>
+            <button type="button" className="secondary-cta export-csv-btn" onClick={() => exportDailyReportCsv(state)}>
               Export CSV <span aria-hidden="true">↓</span>
             </button>
           </div>
         )}
       />
+      {tabs}
       {error && <AccessMessage message={error} embedded />}
       {!error && !state && <ReportLinesSkeleton />}
       {state && (
@@ -616,6 +722,148 @@ export function ReportsScreen() {
       )}
     </section>
   )
+}
+
+type ReportTab = 'sales' | 'guests' | 'inventory' | 'hours'
+
+interface HoursWorkedRow {
+  employeeId: string
+  name: string
+  role: string
+  totalMs: number
+  closedShifts: number
+  openShift: ShiftRow | null
+}
+
+function groupHoursWorked(shifts: ShiftRow[]): HoursWorkedRow[] {
+  const rows = new Map<string, HoursWorkedRow>()
+  for (const shift of shifts) {
+    const row = rows.get(shift.employee_id) ?? {
+      employeeId: shift.employee_id, name: shift.employee_name, role: shift.employee_role,
+      totalMs: 0, closedShifts: 0, openShift: null,
+    }
+    if (shift.clocked_out_at) {
+      row.totalMs += Math.max(0, Date.parse(shift.clocked_out_at) - Date.parse(shift.clocked_in_at))
+      row.closedShifts += 1
+    } else row.openShift = shift
+    rows.set(shift.employee_id, row)
+  }
+  return Array.from(rows.values()).sort((a, b) => Number(Boolean(b.openShift)) - Number(Boolean(a.openShift)) || b.totalMs - a.totalMs || a.name.localeCompare(b.name))
+}
+
+function hoursLabel(ms: number): string {
+  const minutes = Math.round(ms / 60_000)
+  return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m`
+}
+
+function GuestReport({ report, currency }: { report: CustomerReport; currency: string }) {
+  return <>
+    <div className="metric-grid report-kpi-grid">
+      <MetricCard label="Guest revenue" value={<Money cents={report.guestRevenueCents} currency={currency} />} detail={`${report.visits} attached visits`} featured />
+      <MetricCard label="Unique guests" value={report.uniqueGuests} detail={`${report.returningGuests} returning`} />
+      <MetricCard label="New profiles" value={report.newGuests} detail={`${report.enrolledGuests} total loyalty members`} />
+      <MetricCard label="Points activity" value={report.pointsEarned} detail={`${report.pointsRedeemed} redeemed`} />
+    </div>
+    <section className="dashboard-panel report-data-panel">
+      <div className="panel-header"><div><h2><Users aria-hidden="true" size={16} className="panel-icon" />Guest performance</h2><small>Ranked by net spend after refunds</small></div></div>
+      {report.topGuests.length ? <div className="table-wrapper"><table className="dashboard-table report-table"><thead><tr><th>Guest</th><th>Tier</th><th className="num">Visits</th><th className="num">Points</th><th className="num">Spend</th><th>Last visit</th></tr></thead><tbody>
+        {report.topGuests.map(guest => <tr key={guest.id}><td><strong>{guest.name}</strong></td><td><StatusBadge tone={guest.tierName ? 'info' : 'muted'}>{guest.tierName ?? 'Not enrolled'}</StatusBadge></td><td className="num">{guest.visitCount}</td><td className="num">{guest.pointsBalance}</td><td className="num"><Money cents={guest.spendCents} currency={currency} /></td><td>{new Date(guest.lastVisit).toLocaleDateString()}</td></tr>)}
+      </tbody></table></div> : <p className="empty-panel-copy">No guest-linked orders in this date range.</p>}
+    </section>
+  </>
+}
+
+function InventoryReportView({ report, currency }: { report: InventoryReport; currency: string }) {
+  return <>
+    <div className="metric-grid report-kpi-grid">
+      <MetricCard label="Wastage value" value={<Money cents={report.wastageValueCents} currency={currency} />} detail={`${report.wastageQuantity.toLocaleString()} units recorded`} featured />
+      <MetricCard label="Low stock" value={report.lowStockCount} detail="At or below reorder level" />
+      <MetricCard label="Out of stock" value={report.outOfStockCount} detail="Immediate attention" className={report.outOfStockCount ? 'rejected' : ''} />
+      <MetricCard label="Expiry risk" value={report.expiredBatchCount + report.expiringBatchCount} detail={`${report.expiredBatchCount} expired / ${report.expiringBatchCount} within 7 days`} />
+    </div>
+    <div className="report-two-up">
+      <section className="dashboard-panel report-data-panel">
+        <div className="panel-header"><div><h2><AlertTriangle aria-hidden="true" size={16} className="panel-icon" />Stock attention</h2><small>Live ingredient levels</small></div></div>
+        {report.lowStock.length ? <ul className="alert-list">{report.lowStock.map(item => <li className="alert-row" key={item.id}><div><strong>{item.name}</strong><small>{item.reorderThreshold === null ? 'No reorder threshold' : `Reorder at ${item.reorderThreshold} ${item.unit}`}</small></div><span className={`stock-pill ${item.currentStock <= 0 ? 'out' : 'low'}`}>{item.currentStock} {item.unit}</span></li>)}</ul> : <p className="empty-panel-copy healthy">All active ingredients are above their reorder levels.</p>}
+      </section>
+      <section className="dashboard-panel report-data-panel">
+        <div className="panel-header"><div><h2><Calendar aria-hidden="true" size={16} className="panel-icon" />Expiry watch</h2><small>Expired or due within 7 days</small></div></div>
+        {report.expiringBatches.length ? <ul className="alert-list">{report.expiringBatches.map(batch => { const expired = Date.parse(batch.expiresAt) < Date.now(); return <li className="alert-row" key={batch.id}><div><strong>{batch.ingredientName}</strong><small>{batch.remainingQuantity} {batch.unit} remaining</small></div><span className={`stock-pill ${expired ? 'out' : 'low'}`}>{expired ? 'Expired' : new Date(batch.expiresAt).toLocaleDateString()}</span></li> })}</ul> : <p className="empty-panel-copy healthy">No batches expire in the next 7 days.</p>}
+      </section>
+    </div>
+    <section className="dashboard-panel report-data-panel">
+      <div className="panel-header"><div><h2><Package aria-hidden="true" size={16} className="panel-icon" />Wastage by ingredient</h2><small>Recorded inside the selected date range</small></div></div>
+      {report.topWastage.length ? <div className="table-wrapper"><table className="dashboard-table report-table"><thead><tr><th>Ingredient</th><th className="num">Quantity</th><th className="num">Estimated value</th></tr></thead><tbody>{report.topWastage.map(row => <tr key={row.ingredientId}><td><strong>{row.ingredientName}</strong></td><td className="num">{row.quantity} {row.unit}</td><td className="num"><Money cents={row.valueCents} currency={currency} /></td></tr>)}</tbody></table></div> : <p className="empty-panel-copy">No wastage was recorded in this date range.</p>}
+    </section>
+  </>
+}
+
+function HoursReport({ rows }: { rows: HoursWorkedRow[] }) {
+  const totalMs = rows.reduce((sum, row) => sum + row.totalMs, 0)
+  return <>
+    <div className="metric-grid report-kpi-grid">
+      <MetricCard label="Closed hours" value={hoursLabel(totalMs)} detail="Completed shifts in range" featured />
+      <MetricCard label="Team members" value={rows.length} detail="With shift activity" />
+      <MetricCard label="On shift now" value={rows.filter(row => row.openShift).length} detail="Open shifts are not added to totals" />
+      <MetricCard label="Closed shifts" value={rows.reduce((sum, row) => sum + row.closedShifts, 0)} detail="Clocked out successfully" />
+    </div>
+    <section className="dashboard-panel report-data-panel">
+      <div className="panel-header"><div><h2><Clock aria-hidden="true" size={16} className="panel-icon" />Hours worked</h2><small>Closed-shift totals grouped by employee</small></div></div>
+      {rows.length ? <div className="table-wrapper"><table className="dashboard-table report-table"><thead><tr><th>Employee</th><th>Role</th><th>Status</th><th className="num">Closed shifts</th><th className="num">Hours</th></tr></thead><tbody>{rows.map(row => <tr key={row.employeeId}><td><strong>{row.name}</strong></td><td className="report-role">{row.role.replaceAll('_', ' ')}</td><td>{row.openShift ? <StatusBadge tone="success">On shift now</StatusBadge> : <StatusBadge tone="muted">Off shift</StatusBadge>}</td><td className="num">{row.closedShifts}</td><td className="num"><strong>{hoursLabel(row.totalMs)}</strong></td></tr>)}</tbody></table></div> : <p className="empty-panel-copy">No shifts started in this date range.</p>}
+    </section>
+  </>
+}
+
+export function ReportsScreen() {
+  const [tab, setTab] = useState<ReportTab>('sales')
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
+  const { state, error } = useFinancialReport()
+  const [customerReport, setCustomerReport] = useState<CustomerReport>()
+  const [inventoryReport, setInventoryReport] = useState<InventoryReport>()
+  const [hoursRows, setHoursRows] = useState<HoursWorkedRow[]>()
+  const [operationalError, setOperationalError] = useState('')
+  const [operationalLoading, setOperationalLoading] = useState(false)
+
+  useEffect(() => {
+    if (!state || to) return
+    const today = todayInTimezone(state.config.timezone)
+    setTo(today); setFrom(shiftDay(today, -6))
+  }, [state, to])
+
+  useEffect(() => {
+    let active = true
+    if (tab === 'sales' || !state || !from || !to) return
+    if (from > to) { setOperationalError('The start date must be on or before the end date.'); return }
+    setOperationalLoading(true); setOperationalError('')
+    const load = tab === 'guests'
+      ? fetchCustomerReport(state.storeId, from, to).then(result => { if (active) setCustomerReport(result) })
+      : tab === 'inventory'
+        ? fetchInventoryReport(state.storeId, from, to).then(result => { if (active) setInventoryReport(result) })
+        : fetchShifts(state.storeId, calendarDayBoundsUtc(from, state.config.timezone).startUtc, calendarDayBoundsUtc(to, state.config.timezone).endUtc).then(result => { if (active) setHoursRows(groupHoursWorked(result)) })
+    void load.catch(reason => { if (active) setOperationalError(reason instanceof Error ? reason.message : 'This report could not be loaded.') })
+      .finally(() => { if (active) setOperationalLoading(false) })
+    return () => { active = false }
+  }, [tab, state, from, to])
+
+  const tabs: { id: ReportTab; label: string }[] = [
+    { id: 'sales', label: 'Sales' }, { id: 'guests', label: 'Guests & loyalty' },
+    { id: 'inventory', label: 'Inventory' }, { id: 'hours', label: 'Hours worked' },
+  ]
+  const tabControls = <div className="report-tabs" role="tablist" aria-label="Report sections">{tabs.map(item => <button key={item.id} type="button" role="tab" aria-selected={tab === item.id} className={tab === item.id ? 'active' : ''} onClick={() => setTab(item.id)}>{item.label}</button>)}</div>
+  if (tab === 'sales') return <DailySalesReport tabs={tabControls} />
+  return <section className="reporting-page reports-hub">
+    <PageHeader kicker="RESTAURANT INTELLIGENCE" title="Reports" subtitle="Sales, guests, stock, and team activity in one operational view." />
+    {tabControls}
+    <div className="report-toolbar"><label className="day-picker">From<input type="date" value={from} onChange={event => setFrom(event.target.value)} /></label><label className="day-picker">To<input type="date" value={to} onChange={event => setTo(event.target.value)} /></label><span className="report-timezone">{state?.config.timezone ?? 'Store timezone'}</span></div>
+    {error && <AccessMessage message={error} embedded />}
+    {!error && !state && <ReportLinesSkeleton />}
+    {state && operationalError && <AccessMessage message={operationalError} embedded />}
+    {state && operationalLoading && <div className="report-loading" role="status"><RefreshCw aria-hidden="true" size={18} />Loading report data...</div>}
+    {state && tab === 'guests' && !operationalLoading && !operationalError && customerReport && <GuestReport report={customerReport} currency={state.config.currency} />}
+    {state && tab === 'inventory' && !operationalLoading && !operationalError && inventoryReport && <InventoryReportView report={inventoryReport} currency={state.config.currency} />}
+    {state && tab === 'hours' && !operationalLoading && !operationalError && hoursRows && <HoursReport rows={hoursRows} />}
+  </section>
 }
 
 interface CashierDashboardState {
@@ -719,14 +967,12 @@ export function CashierDashboardScreen() {
 
   return (
     <section className="reporting-page cashier-dashboard">
-      <header className="reporting-heading">
-        <div>
-          <p className="kicker">SERVICE TERMINAL · {state.terminal}</p>
-          <h1>Hello, {state.cashier}.</h1>
-          <p>Terminal ready for service. Shift sales and recent checks are saved locally.</p>
-        </div>
-        <Link className="report-primary" to="/pos/register">Open register <span aria-hidden="true">→</span></Link>
-      </header>
+      <PageHeader
+        kicker={'SERVICE TERMINAL · ' + state.terminal}
+        title={<>Hello, {state.cashier}.</>}
+        subtitle="Terminal ready for service. Shift sales and recent checks are saved locally."
+        actions={<Link className="cta" to="/pos/register">Open register <span aria-hidden="true">→</span></Link>}
+      />
 
       {/* Shift Register Metrics */}
       <div className="metric-grid">
@@ -739,21 +985,21 @@ export function CashierDashboardScreen() {
       {/* Quick Register Actions */}
       <div className="cashier-actions-bar">
         <Link className="cashier-action-btn primary" to="/pos/register">
-          <span aria-hidden="true">⌁</span>
+          <ShoppingCart aria-hidden="true" size={22} />
           <div>
             <strong>New check</strong>
             <small>Open the register</small>
           </div>
         </Link>
         <Link className="cashier-action-btn" to="/pos/orders">
-          <span aria-hidden="true">▤</span>
+          <Receipt aria-hidden="true" size={22} />
           <div>
             <strong>Receipt history</strong>
             <small>Look up & reprint</small>
           </div>
         </Link>
         <Link className="cashier-action-btn" to="/pos/customers">
-          <span aria-hidden="true">♧</span>
+          <Users aria-hidden="true" size={22} />
           <div>
             <strong>Guests</strong>
             <small>Directory & lookup</small>
@@ -841,7 +1087,7 @@ export function CashierDashboardScreen() {
           </dl>
           {state.syncCounts.rejected > 0 && (
             <p className="operation-warning" role="status">
-              ⚠ {state.syncCounts.rejected} sync operation{state.syncCounts.rejected === 1 ? '' : 's'} {state.syncCounts.rejected === 1 ? 'needs' : 'need'} review. Ask a manager for assistance.
+              <AlertTriangle aria-hidden="true" size={16} /> {state.syncCounts.rejected} sync operation{state.syncCounts.rejected === 1 ? '' : 's'} {state.syncCounts.rejected === 1 ? 'needs' : 'need'} review. Ask a manager for assistance.
             </p>
           )}
           <Link className="reprint-btn sync-center-link" to="/pos/sync">Open Sync Center →</Link>

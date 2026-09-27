@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { parseCents } from '../../../../../packages/domain/src/money'
 import { UnitSelector } from '../inventory/UnitSelector'
+import { Dialog } from '../../components/Dialog'
 import '../inventory/inventory.css'
 import type { RecipeIngredientOption, RecipeUnit, UnitKind } from './recipe-draft'
 
@@ -70,37 +71,48 @@ export function IngredientSelector({ ingredients, value, onChange, units, onCrea
     }
   }
 
-  if (creating) {
-    return <div className="unit-selector recipe-new-unit">
-      <div className="recipe-new-unit-row">
-        <input aria-label="New ingredient name" placeholder="Ingredient name (e.g. Bread slice)" maxLength={120}
-          value={form.name} onChange={event => setForm(current => ({ ...current, name: event.target.value }))} disabled={busy} />
-        <input aria-label="Cost per unit" type="text" inputMode="decimal" placeholder={`Cost/unit (${currency})`}
-          value={form.cost} onChange={event => setForm(current => ({ ...current, cost: event.target.value }))} disabled={busy} />
+  return <>
+    <div className="unit-selector">
+      <input type="search" className="unit-selector-search" placeholder="Search ingredients…" value={search}
+        onChange={event => setSearch(event.target.value)} aria-label="Search ingredients" disabled={disabled} />
+      <select aria-label="Ingredient" className={hasError ? 'err' : ''} value={value} disabled={disabled}
+        onChange={event => onChange(event.target.value)} size={Math.min(8, Math.max(4, options.length + 1))}>
+        {value === '' && <option value="" disabled>Choose ingredient…</option>}
+        {options.map(ingredient => (
+          <option key={ingredient.id} value={ingredient.id}>{ingredient.name}{ingredient.active ? '' : ' (inactive)'}</option>
+        ))}
+      </select>
+      <div className="unit-selector-suggestions">
+        {search.trim() && !exactMatch
+          ? <button type="button" className="unit-suggestion-chip" disabled={disabled} onClick={startCreating}>+ Create “{search.trim()}”…</button>
+          : <button type="button" className="unit-suggestion-chip" disabled={disabled} onClick={startCreating}>+ Create new ingredient…</button>}
       </div>
-      <UnitSelector units={units as RecipeUnit[]} value={form.unitId} onChange={unitId => setForm(current => ({ ...current, unitId }))} onCreateUnit={onCreateUnit} />
-      <div className="recipe-new-unit-actions">
-        <button type="button" className="pc-btn-ghost" onClick={() => { setCreating(false); setError('') }} disabled={busy}>Cancel</button>
-        <button type="button" className="pc-btn-primary" onClick={() => void submitCreate()} disabled={busy}>{busy ? 'Adding…' : 'Add ingredient'}</button>
-      </div>
-      {error && <p className="pc-field-err" role="alert">{error}</p>}
     </div>
-  }
-
-  return <div className="unit-selector">
-    <input type="search" className="unit-selector-search" placeholder="Search ingredients…" value={search}
-      onChange={event => setSearch(event.target.value)} aria-label="Search ingredients" disabled={disabled} />
-    <select aria-label="Ingredient" className={hasError ? 'err' : ''} value={value} disabled={disabled}
-      onChange={event => onChange(event.target.value)} size={Math.min(8, Math.max(4, options.length + 1))}>
-      {value === '' && <option value="" disabled>Choose ingredient…</option>}
-      {options.map(ingredient => (
-        <option key={ingredient.id} value={ingredient.id}>{ingredient.name}{ingredient.active ? '' : ' (inactive)'}</option>
-      ))}
-    </select>
-    <div className="unit-selector-suggestions">
-      {search.trim() && !exactMatch
-        ? <button type="button" className="unit-suggestion-chip" disabled={disabled} onClick={startCreating}>+ Create “{search.trim()}”…</button>
-        : <button type="button" className="unit-suggestion-chip" disabled={disabled} onClick={startCreating}>+ Create new ingredient…</button>}
-    </div>
-  </div>
+    {creating && <Dialog
+      kicker="RECIPE INGREDIENT"
+      title="Add a new ingredient"
+      className="ingredient-create-dialog"
+      onClose={() => { if (!busy) { setCreating(false); setError('') } }}
+    >
+      <p className="ingredient-dialog-copy">Add its purchasing unit and cost now. The new ingredient will be selected on this recipe automatically.</p>
+      <form className="ingredient-dialog-form" onSubmit={event => { event.preventDefault(); void submitCreate() }}>
+        <label>Ingredient name
+          <input autoFocus placeholder="e.g. Bread slice" maxLength={120}
+            value={form.name} onChange={event => setForm(current => ({ ...current, name: event.target.value }))} disabled={busy} />
+        </label>
+        <label>Cost per unit ({currency})
+          <input type="text" inputMode="decimal" placeholder="0.00"
+            value={form.cost} onChange={event => setForm(current => ({ ...current, cost: event.target.value }))} disabled={busy} />
+        </label>
+        <label>Purchasing unit
+          <UnitSelector units={units as RecipeUnit[]} value={form.unitId} onChange={unitId => setForm(current => ({ ...current, unitId }))} onCreateUnit={onCreateUnit} />
+        </label>
+        {error && <p className="form-notice error" role="alert">{error}</p>}
+        <div className="ingredient-dialog-actions">
+          <button type="button" className="secondary-cta" onClick={() => { setCreating(false); setError('') }} disabled={busy}>Cancel</button>
+          <button type="submit" className="cta" disabled={busy}>{busy ? 'Adding…' : 'Add ingredient'}</button>
+        </div>
+      </form>
+    </Dialog>}
+  </>
 }
