@@ -1,5 +1,5 @@
 import type { StockMovementReason } from '../../../../packages/domain/src/stock-movement-reason'
-import { accessToken, configuredApiUrl } from './catalog'
+import { authenticatedFetch, configuredApiUrl } from './catalog'
 import type { ManagerApprovalEvidence } from '../terminal-auth/ManagerApprovalModal'
 
 export interface Ingredient {
@@ -56,12 +56,16 @@ function managerEvidenceBody(approval: ManagerApprovalEvidence | null): Record<s
   return { manager_id: approval?.managerId ?? null, manager_approved_at: approval?.approvedAt ?? null }
 }
 
+function inventoryFetch(url: string, terminal: boolean, init: RequestInit = {}): Promise<Response> {
+  if (terminal) return fetch(url, { ...init, credentials: 'include' })
+  return authenticatedFetch(url, { ...init, credentials: 'same-origin' })
+}
+
 async function inventoryRequest<T>(path: string, method: string, storeId: string, terminal: boolean, body?: Record<string, unknown>): Promise<T> {
   const query = new URLSearchParams({ store_id: storeId })
-  const response = await fetch(`${configuredApiUrl()}${terminal ? '/pos/inventory' : '/inventory'}${path}?${query}`, {
+  const response = await inventoryFetch(`${configuredApiUrl()}${terminal ? '/pos/inventory' : '/inventory'}${path}?${query}`, terminal, {
     method,
-    credentials: terminal ? 'include' : 'same-origin',
-    headers: { 'Content-Type': 'application/json', ...(terminal ? {} : { Authorization: `Bearer ${await accessToken()}` }) },
+    headers: { 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined,
     signal: AbortSignal.timeout(15_000),
   })
@@ -78,9 +82,7 @@ export class WastageValidationError extends Error {}
 export async function fetchIngredients(storeId: string, terminal = false, includeInactive = false): Promise<Ingredient[]> {
   const query = new URLSearchParams({ store_id: storeId })
   if (includeInactive) query.set('include_inactive', 'true')
-  const response = await fetch(`${configuredApiUrl()}${terminal ? '/pos/inventory' : '/inventory'}/ingredients?${query}`, {
-    credentials: terminal ? 'include' : 'same-origin',
-    headers: terminal ? {} : { Authorization: `Bearer ${await accessToken()}` },
+  const response = await inventoryFetch(`${configuredApiUrl()}${terminal ? '/pos/inventory' : '/inventory'}/ingredients?${query}`, terminal, {
     signal: AbortSignal.timeout(15_000),
   })
   const body = await response.json().catch(() => ({})) as { ingredients?: Ingredient[]; message?: string }
@@ -107,9 +109,7 @@ export async function recordIngredientBatch(storeId: string, ingredientId: strin
 
 export async function fetchIngredientBatches(storeId: string, ingredientId: string, terminal = false): Promise<IngredientBatch[]> {
   const query = new URLSearchParams({ store_id: storeId })
-  const response = await fetch(`${configuredApiUrl()}${terminal ? '/pos/inventory' : '/inventory'}/ingredients/${ingredientId}/batches?${query}`, {
-    credentials: terminal ? 'include' : 'same-origin',
-    headers: terminal ? {} : { Authorization: `Bearer ${await accessToken()}` },
+  const response = await inventoryFetch(`${configuredApiUrl()}${terminal ? '/pos/inventory' : '/inventory'}/ingredients/${ingredientId}/batches?${query}`, terminal, {
     signal: AbortSignal.timeout(15_000),
   })
   const body = await response.json().catch(() => ({})) as { batches?: IngredientBatch[]; message?: string }
@@ -120,9 +120,7 @@ export async function fetchIngredientBatches(storeId: string, ingredientId: stri
 export async function fetchStockMovements(storeId: string, ingredientId: string, terminal = false, before?: string | null, limit = 50): Promise<StockMovementsPage> {
   const query = new URLSearchParams({ store_id: storeId, limit: String(limit) })
   if (before) query.set('before', before)
-  const response = await fetch(`${configuredApiUrl()}${terminal ? '/pos/inventory' : '/inventory'}/ingredients/${ingredientId}/movements?${query}`, {
-    credentials: terminal ? 'include' : 'same-origin',
-    headers: terminal ? {} : { Authorization: `Bearer ${await accessToken()}` },
+  const response = await inventoryFetch(`${configuredApiUrl()}${terminal ? '/pos/inventory' : '/inventory'}/ingredients/${ingredientId}/movements?${query}`, terminal, {
     signal: AbortSignal.timeout(15_000),
   })
   const body = await response.json().catch(() => ({})) as Partial<StockMovementsPage> & { message?: string }
@@ -136,9 +134,7 @@ export async function recordWastage(storeId: string, ingredientId: string, input
 
 export async function fetchExpiringBatchCount(storeId: string, terminal = false): Promise<number> {
   const query = new URLSearchParams({ store_id: storeId })
-  const response = await fetch(`${configuredApiUrl()}${terminal ? '/pos/inventory' : '/inventory'}/summary?${query}`, {
-    credentials: terminal ? 'include' : 'same-origin',
-    headers: terminal ? {} : { Authorization: `Bearer ${await accessToken()}` },
+  const response = await inventoryFetch(`${configuredApiUrl()}${terminal ? '/pos/inventory' : '/inventory'}/summary?${query}`, terminal, {
     signal: AbortSignal.timeout(15_000),
   })
   const body = await response.json().catch(() => ({})) as { expiring_batches_count?: number; message?: string }

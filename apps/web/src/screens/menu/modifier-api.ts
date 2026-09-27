@@ -1,12 +1,12 @@
-import { accessToken, configuredApiUrl } from '../../lib/catalog'
+import { authenticatedFetch, configuredApiUrl } from '../../lib/catalog'
 import type { LocalModifierGroup } from '../../lib/db'
 import { parseModifierDraft, type ModifierGroupDraft } from './modifier-draft'
 export { draftFromModifierGroups, parseModifierDraft, type ModifierGroupDraft, type ModifierOptionDraft } from './modifier-draft'
 
 export async function saveModifierGroups(storeId: string, productId: string, draft: ModifierGroupDraft[]): Promise<LocalModifierGroup[]> {
-  const response = await fetch(`${configuredApiUrl()}/catalog/products/${encodeURIComponent(productId)}/modifiers`, {
+  const response = await authenticatedFetch(`${configuredApiUrl()}/catalog/products/${encodeURIComponent(productId)}/modifiers`, {
     method: 'PUT', credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await accessToken()}` },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ store_id: storeId, groups: parseModifierDraft(draft) }),
     signal: AbortSignal.timeout(15_000),
   })

@@ -852,6 +852,13 @@ h2 .panel-icon {
   line-height: 1.5;
 }
 
+.report-access .secondary-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--mise-space-8);
+  margin-top: var(--mise-space-16);
+}
+
 .operation-warning {
   margin-top: var(--mise-space-16);
   border: 1px solid var(--mise-border-hairline);

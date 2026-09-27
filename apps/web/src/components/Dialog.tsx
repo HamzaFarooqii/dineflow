@@ -17,22 +17,39 @@ export function Dialog({ title, kicker, onClose, children, labelledBy, className
 }) {
   const closeButton = useRef<HTMLButtonElement>(null)
   const dialog = useRef<HTMLDivElement>(null)
+  const onCloseRef = useRef(onClose)
   const titleId = useRef(`dialog-title-${Math.random().toString(36).slice(2)}`).current
 
+  // Callers commonly pass an inline close handler because they also reset local form errors.
+  // Keep the latest handler without re-running the focus effect on every controlled-input render.
+  // Previously that effect focused the X button after every keystroke, making modal forms
+  // effectively impossible to type into.
+  useEffect(() => { onCloseRef.current = onClose }, [onClose])
+
   useEffect(() => {
-    closeButton.current?.focus()
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const animationFrame = window.requestAnimationFrame(() => {
+      const requested = dialog.current?.querySelector<HTMLElement>('[autofocus], [data-dialog-autofocus]')
+      ;(requested ?? closeButton.current)?.focus()
+    })
     const handleKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') { onClose(); return }
+      if (event.key === 'Escape') { onCloseRef.current(); return }
       if (event.key !== 'Tab' || !dialog.current) return
-      const focusable = [...dialog.current.querySelectorAll<HTMLElement>('button:not([disabled]), select:not([disabled]), input:not([disabled]), a[href]')]
+      const focusable = [...dialog.current.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), select:not([disabled]), input:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
+      )]
       if (!focusable.length) return
       const first = focusable[0], last = focusable.at(-1)!
       if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus() }
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
     }
     document.addEventListener('keydown', handleKey)
-    return () => document.removeEventListener('keydown', handleKey)
-  }, [onClose])
+    return () => {
+      window.cancelAnimationFrame(animationFrame)
+      document.removeEventListener('keydown', handleKey)
+      if (previouslyFocused?.isConnected) previouslyFocused.focus()
+    }
+  }, [])
 
   return <div className="dialog-overlay" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
     <div ref={dialog} className={className ? `dialog-panel ${className}` : 'dialog-panel'} role="dialog" aria-modal="true" aria-labelledby={labelledBy ?? (title ? titleId : undefined)}>

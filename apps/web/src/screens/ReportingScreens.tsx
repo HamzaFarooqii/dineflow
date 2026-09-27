@@ -868,6 +868,7 @@ export function ReportsScreen() {
   const [hoursRows, setHoursRows] = useState<HoursWorkedRow[]>()
   const [operationalError, setOperationalError] = useState('')
   const [operationalLoading, setOperationalLoading] = useState(false)
+  const [operationalReload, setOperationalReload] = useState(0)
 
   useEffect(() => {
     if (!state || to) return
@@ -892,23 +893,33 @@ export function ReportsScreen() {
     void load.catch(reason => { if (active) setOperationalError(reason instanceof Error ? reason.message : 'This report could not be loaded.') })
       .finally(() => { if (active) setOperationalLoading(false) })
     return () => { active = false }
-  }, [tab, state, from, to])
+  }, [tab, state, from, to, operationalReload])
 
   const tabs: { id: ReportTab; label: string }[] = [
     { id: 'sales', label: 'Sales' }, { id: 'guests', label: 'Guests & loyalty' },
     { id: 'food-cost', label: 'Food cost' }, { id: 'kitchen', label: 'Kitchen' },
     { id: 'inventory', label: 'Inventory' }, { id: 'hours', label: 'Hours worked' },
   ]
-  const tabControls = <div className="report-tabs" role="tablist" aria-label="Report sections">{tabs.map(item => <button key={item.id} type="button" role="tab" aria-selected={tab === item.id} className={tab === item.id ? 'active' : ''} onClick={() => setTab(item.id)}>{item.label}</button>)}</div>
+  const tabControls = <div className="report-tabs" role="tablist" aria-label="Report sections">{tabs.map(item => <button key={item.id} type="button" role="tab" aria-selected={tab === item.id} className={tab === item.id ? 'active' : ''} onClick={() => {
+    setOperationalError('')
+    setTab(item.id)
+  }}>{item.label}</button>)}</div>
   if (tab === 'sales') return <DailySalesReport tabs={tabControls} />
+  const selectedReportReady = tab === 'guests' ? Boolean(customerReport)
+    : tab === 'inventory' ? Boolean(inventoryReport)
+      : tab === 'food-cost' ? Boolean(foodCostReport)
+        : tab === 'kitchen' ? Boolean(kitchenReport)
+          : Boolean(hoursRows)
+  const selectedLabel = tabs.find(item => item.id === tab)?.label ?? 'Operational'
   return <section className="reporting-page reports-hub">
     <PageHeader kicker="RESTAURANT INTELLIGENCE" title="Reports" subtitle="Sales, guests, stock, and team activity in one operational view." />
     {tabControls}
     <div className="report-toolbar"><label className="day-picker">From<input type="date" value={from} onChange={event => setFrom(event.target.value)} /></label><label className="day-picker">To<input type="date" value={to} onChange={event => setTo(event.target.value)} /></label><span className="report-timezone">{state?.config.timezone ?? 'Store timezone'}</span></div>
     {error && <AccessMessage message={error} embedded />}
     {!error && !state && <ReportLinesSkeleton />}
-    {state && operationalError && <AccessMessage message={operationalError} embedded />}
+    {state && operationalError && <AccessMessage message={operationalError} embedded onRetry={() => setOperationalReload(value => value + 1)} />}
     {state && operationalLoading && <div className="report-loading" role="status"><RefreshCw aria-hidden="true" size={18} />Loading report data...</div>}
+    {state && !operationalLoading && !operationalError && !selectedReportReady && <div className="report-loading" role="status"><RefreshCw aria-hidden="true" size={18} />Preparing {selectedLabel.toLowerCase()} report...</div>}
     {state && tab === 'guests' && !operationalLoading && !operationalError && customerReport && <GuestReport report={customerReport} currency={state.config.currency} />}
     {state && tab === 'inventory' && !operationalLoading && !operationalError && inventoryReport && <InventoryReportView report={inventoryReport} currency={state.config.currency} />}
     {state && tab === 'food-cost' && !operationalLoading && !operationalError && foodCostReport && <FoodCostReportView report={foodCostReport} currency={state.config.currency} />}
@@ -1148,11 +1159,12 @@ export function CashierDashboardScreen() {
   )
 }
 
-function AccessMessage({ message, embedded = false }: { message: string; embedded?: boolean }) {
+function AccessMessage({ message, embedded = false, onRetry }: { message: string; embedded?: boolean; onRetry?: () => void }) {
   return (
     <section className={embedded ? 'report-access embedded' : 'reporting-page report-access'} role="alert">
       <h2>Reporting unavailable</h2>
       <p>{message}</p>
+      {onRetry && <button type="button" className="secondary-cta" onClick={onRetry}><RefreshCw aria-hidden="true" size={14} />Try again</button>}
     </section>
   )
 }

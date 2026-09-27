@@ -1,4 +1,4 @@
-import { requireSupabase } from './supabase'
+import { authenticatedFetch, configuredApiUrl } from './catalog'
 
 export class ServerReportError extends Error {
   constructor(public status: number, public code: string, message: string) { super(message) }
@@ -7,11 +7,7 @@ export class ServerReportError extends Error {
 // Mirrors terminal-auth/api.ts's request() (Supabase session -> Authorization: Bearer -> fetch),
 // but lives in lib/ since reports aren't a terminal-auth concern and always require a manager/owner session.
 async function request<T>(path: string): Promise<T> {
-  const { data } = await requireSupabase().auth.getSession()
-  const session = data.session
-  if (!session) throw new Error('Sign in with your owner or manager email account.')
-  const response = await fetch(`/api${path}`, {
-    headers: { Authorization: `Bearer ${session.access_token}` },
+  const response = await authenticatedFetch(`${configuredApiUrl()}${path}`, {
     credentials: 'same-origin',
     signal: AbortSignal.timeout(15_000),
   })

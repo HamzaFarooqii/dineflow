@@ -1169,7 +1169,7 @@ export function ProductCatalogScreen() {
 
               <div className="pc-group">
                 <p className="pc-group-label">Modifiers &amp; add-ons</p>
-                {editingProduct ? <ModifierEditor storeId={storeId} productId={editingProduct.id}
+                {editingProduct ? <ModifierEditor storeId={storeId} productId={editingProduct.id} currency={currency}
                   groups={editingProduct.modifier_groups ?? []} disabled={busy}
                   onSaved={groups => {
                     const updated = { ...editingProduct, modifier_groups: groups }

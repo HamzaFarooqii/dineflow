@@ -11,6 +11,28 @@ export async function accessToken(): Promise<string> {
   if (error || !data.session?.access_token) throw new Error('Sign in before syncing this store.')
   return data.session.access_token
 }
+
+/**
+ * Owner/manager API request with one safe session-refresh retry.
+ *
+ * A browser can stay open past the access-token lifetime while Supabase still has a valid refresh
+ * token. Reads from Dexie continue to look healthy in that state, but the next API write used to
+ * fail with "Your session is no longer valid." Refresh once on a 401 and replay the same request;
+ * if the refresh token is genuinely invalid, return the original response so the caller keeps the
+ * server's honest sign-in message.
+ */
+export async function authenticatedFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+  const send = (token: string) => {
+    const headers = new Headers(init.headers)
+    headers.set('Authorization', `Bearer ${token}`)
+    return fetch(input, { ...init, headers, credentials: init.credentials ?? 'same-origin' })
+  }
+  const first = await send(await accessToken())
+  if (first.status !== 401) return first
+  const { data, error } = await requireSupabase().auth.refreshSession()
+  if (error || !data.session?.access_token) return first
+  return send(data.session.access_token)
+}
 export interface ActiveStoreOption { store_id: string; store_name: string; role: string }
 
 /**
