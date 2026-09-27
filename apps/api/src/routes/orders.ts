@@ -68,6 +68,21 @@ function parseDiscount(item: JsonRecord, label: string): LineDiscount {
   return kind === 'percent' ? { kind: 'percent', bps: item.discount_value as number } : { kind: 'fixed', cents: item.discount_value as number }
 }
 
+function parseItemModifiers(item: JsonRecord, label: string) {
+  const raw = item.modifiers
+  if (raw === undefined || raw === null) return { supplied: false, rows: [] as { option_id: string; group_name: string; option_name: string; price_delta_cents: number }[] }
+  if (!Array.isArray(raw) || raw.length > 50) throw new ApiError(422, 'validation_failed', `${label} modifiers are invalid.`)
+  const rows = raw.map((value, index) => {
+    const modifier = record(value, `${label} modifier ${index + 1}`)
+    const delta = modifier.price_delta_cents
+    if (!Number.isSafeInteger(delta) || (delta as number) < -MAX_CENTS || (delta as number) > MAX_CENTS) throw new ApiError(422, 'validation_failed', `${label} modifier price is invalid.`)
+    return { option_id: id(modifier.option_id, 'Modifier option ID'), group_name: text(modifier.group_name, 'Modifier group', 60),
+      option_name: text(modifier.option_name, 'Modifier option', 60), price_delta_cents: delta as number }
+  })
+  if (new Set(rows.map(row => row.option_id)).size !== rows.length) throw new ApiError(422, 'validation_failed', `${label} contains a duplicate modifier option.`)
+  return { supplied: true, rows }
+}
+
 export function validateOperation(raw: unknown) {
   const body = record(raw, 'Operation')
   const order = record(body.order, 'Order')
@@ -84,6 +99,12 @@ export function validateOperation(raw: unknown) {
       throw new ApiError(422, 'validation_failed', `Item ${index + 1} catalog version is invalid.`)
     }
     const price = cents(item.snapshot_price_cents, 'Unit price')
+    const modifiers = parseItemModifiers(item, `Item ${index + 1}`)
+    const basePrice = item.base_price_cents === undefined || item.base_price_cents === null ? price : cents(item.base_price_cents, 'Base price')
+    const modifierPrice = modifiers.rows.reduce((sum, modifier) => sum + modifier.price_delta_cents, 0)
+    if (!Number.isSafeInteger(basePrice + modifierPrice) || basePrice + modifierPrice !== price) {
+      throw new ApiError(422, 'total_mismatch', `Item ${index + 1} modifier prices do not match its unit price.`)
+    }
     const discount = parseDiscount(item, `Item ${index + 1}`)
     let line: ReturnType<typeof calculateDiscountedLine>
     try { line = calculateDiscountedLine(price, item.quantity as number, item.snapshot_tax_bps as number, discount) }
@@ -94,7 +115,8 @@ export function validateOperation(raw: unknown) {
     }
     return { id: id(item.id, 'Item ID'), product_id: id(item.product_id, 'Product ID'),
       snapshot_name: text(item.snapshot_name, 'Item name'), snapshot_sku: text(item.snapshot_sku, 'Item SKU', 80),
-      snapshot_price_cents: price, snapshot_tax_bps: item.snapshot_tax_bps as number,
+      snapshot_price_cents: price, base_price_cents: basePrice, modifiers: modifiers.rows, modifiers_supplied: modifiers.supplied,
+      snapshot_tax_bps: item.snapshot_tax_bps as number,
       catalog_version: item.catalog_version as number, quantity: item.quantity as number,
       discount_kind: discount?.kind ?? null, discount_value: discount ? (discount.kind === 'percent' ? discount.bps : discount.cents) : null,
       subtotal_cents: line.subtotalCents, discount_applied_cents: line.discountAppliedCents,
@@ -189,6 +211,32 @@ async function push(req: import('express').Request, res: import('express').Respo
         'select id, station_id from public.pos_products where store_id=$1 and id = any($2::uuid[])', [operation.storeId, productIds])
       if (products.rowCount !== productIds.length) throw new ApiError(422, 'cross_store_reference', 'An item refers to a product outside this store.')
       const stationByProduct = new Map(products.rows.map(row => [row.id, row.station_id]))
+      const modifierCatalog = await client.query<{ product_id: string; group_id: string; group_name: string; selection: 'single' | 'multi'; required: boolean; option_id: string | null }>(
+        `select pmg.product_id, mg.id as group_id, mg.name as group_name, mg.selection, mg.required, mo.id as option_id
+         from public.product_modifier_groups pmg
+         join public.modifier_groups mg on mg.store_id=pmg.store_id and mg.id=pmg.group_id
+         left join public.modifier_options mo on mo.store_id=mg.store_id and mo.group_id=mg.id
+         where pmg.store_id=$1 and pmg.product_id=any($2::uuid[])`,
+        [operation.storeId, productIds],
+      )
+      for (const item of operation.items) {
+        if (!item.modifiers_supplied) continue // compatibility for sales queued before modifiers existed
+        const catalogRows = modifierCatalog.rows.filter(row => row.product_id === item.product_id)
+        const optionToGroup = new Map(catalogRows.filter(row => row.option_id).map(row => [row.option_id as string, row]))
+        const selectedCounts = new Map<string, number>()
+        for (const modifier of item.modifiers) {
+          const catalog = optionToGroup.get(modifier.option_id)
+          if (!catalog) throw new ApiError(422, 'validation_failed', `${item.snapshot_name} has a modifier that is not attached to this dish.`)
+          if (catalog.group_name !== modifier.group_name) throw new ApiError(422, 'validation_failed', `${item.snapshot_name} modifier group snapshot is invalid.`)
+          selectedCounts.set(catalog.group_id, (selectedCounts.get(catalog.group_id) ?? 0) + 1)
+        }
+        const groups = new Map(catalogRows.map(row => [row.group_id, row]))
+        for (const group of groups.values()) {
+          const count = selectedCounts.get(group.group_id) ?? 0
+          if (group.required && count === 0) throw new ApiError(422, 'validation_failed', `${item.snapshot_name} requires a ${group.group_name} selection.`)
+          if (group.selection === 'single' && count > 1) throw new ApiError(422, 'validation_failed', `${item.snapshot_name} allows only one ${group.group_name} selection.`)
+        }
+      }
       if (operation.order.customer_id) {
         const customer = await client.query('select 1 from public.pos_customers where store_id=$1 and id=$2', [operation.storeId, operation.order.customer_id])
         if (!customer.rowCount) {
@@ -238,6 +286,13 @@ async function push(req: import('express').Request, res: import('express').Respo
           [item.id, operation.storeId, operation.operationId, item.product_id, item.snapshot_name, item.snapshot_sku,
             item.snapshot_price_cents, item.snapshot_tax_bps, item.catalog_version, item.quantity, item.discount_kind, item.discount_value,
             item.subtotal_cents, item.discount_applied_cents, item.taxable_cents, item.tax_cents, item.total_cents])
+        for (const modifier of item.modifiers) {
+          await client.query(
+            `insert into public.pos_order_item_modifiers(store_id,order_item_id,snapshot_group_name,snapshot_option_name,price_delta_cents)
+             values ($1,$2,$3,$4,$5)`,
+            [operation.storeId, item.id, modifier.group_name, modifier.option_name, modifier.price_delta_cents],
+          )
+        }
       }
       // Kitchen ticket — one per order, one item per order line, each tagged with its product's
       // kitchen station (Day 1's pos_products.station_id, nullable). Created for every order type,

@@ -29,6 +29,7 @@ interface TicketItemRow {
   item_id: string; order_item_id: string; station_id: string | null; station_name: string | null
   item_status: KitchenTicketStatus; fired_at: string | null; ready_at: string | null; served_at: string | null
   snapshot_name: string; quantity: number
+  modifiers: { group_name: string; option_name: string }[]
 }
 
 // Active board only — a ticket disappears once every item is served (or the whole ticket is
@@ -38,11 +39,13 @@ const TICKETS_QUERY = `
     kt.order_id, po.receipt_number, po.order_type, kt.created_at,
     kti.id as item_id, kti.order_item_id, kti.station_id, ks.name as station_name,
     kti.status as item_status, kti.fired_at, kti.ready_at, kti.served_at,
-    poi.snapshot_name, poi.quantity
+    poi.snapshot_name, poi.quantity,
+    coalesce((select json_agg(json_build_object('group_name', m.snapshot_group_name, 'option_name', m.snapshot_option_name) order by m.snapshot_group_name, m.snapshot_option_name)
+      from public.pos_order_item_modifiers m where m.store_id=poi.store_id and m.order_item_id=poi.id), '[]'::json) as modifiers
   from public.kitchen_tickets kt
   join public.pos_orders po on po.store_id = kt.store_id and po.id = kt.order_id
   join public.kitchen_ticket_items kti on kti.store_id = kt.store_id and kti.ticket_id = kt.id
-  join public.pos_order_items poi on poi.id = kti.order_item_id
+  join public.pos_order_items poi on poi.store_id = kti.store_id and poi.id = kti.order_item_id
   left join public.restaurant_tables rt on rt.store_id = kt.store_id and rt.id = kt.table_id
   left join public.kitchen_stations ks on ks.store_id = kt.store_id and ks.id = kti.station_id
   where kt.store_id = $1 and kt.status in ('queued', 'preparing', 'ready')
@@ -57,7 +60,7 @@ function groupTickets(rows: TicketItemRow[]) {
     ticket.items.push({
       id: row.item_id, order_item_id: row.order_item_id, station_id: row.station_id, station_name: row.station_name,
       status: row.item_status, fired_at: row.fired_at, ready_at: row.ready_at, served_at: row.served_at,
-      snapshot_name: row.snapshot_name, quantity: row.quantity,
+      snapshot_name: row.snapshot_name, quantity: row.quantity, modifiers: row.modifiers,
     })
   }
   return [...byId.values()]
@@ -67,7 +70,7 @@ function ticketShape(row: TicketItemRow) {
     order_type: row.order_type, table_id: row.table_id, table_label: row.table_label, created_at: row.created_at,
     items: [] as { id: string; order_item_id: string; station_id: string | null; station_name: string | null
       status: KitchenTicketStatus; fired_at: string | null; ready_at: string | null; served_at: string | null
-      snapshot_name: string; quantity: number }[] }
+      snapshot_name: string; quantity: number; modifiers: { group_name: string; option_name: string }[] }[] }
 }
 
 // GET /kitchen/tickets and GET /pos/kitchen/tickets — active kitchen tickets for a store, one
@@ -91,7 +94,7 @@ async function getTickets(req: Request, res: Response, terminal = false) {
 // { store_id, status }. Rejects any transition not listed in KITCHEN_TICKET_ITEM_TRANSITIONS,
 // then recomputes the parent ticket's status from all its items (deriveTicketStatus) — a
 // ticket's status is never set directly, only read off its items.
-async function patchItem(req: Request, res: Response) {
+async function patchItem(req: Request, res: Response, terminal = false) {
   try {
     const storeId = uuidParam((req.body as Record<string, unknown>)?.store_id, 'Store ID')
     const ticketId = uuidParam(req.params.id, 'Ticket ID')
@@ -100,7 +103,12 @@ async function patchItem(req: Request, res: Response) {
     if (typeof nextStatus !== 'string' || !KITCHEN_TICKET_STATUSES.includes(nextStatus as KitchenTicketStatus)) {
       throw new ApiError(422, 'validation_failed', 'Status is invalid.')
     }
-    await requireStoreMember(req, storeId)
+    if (terminal) {
+      const session = await requireCashierTerminal(req, db)
+      if (session.storeId !== storeId) throw new ApiError(403, 'cross_store_reference', 'This terminal belongs to a different store.')
+    } else {
+      await requireStoreMember(req, storeId)
+    }
 
     const client = await db.connect()
     try {
@@ -249,3 +257,4 @@ export async function consumeRecipeIngredients(client: import('pg').PoolClient, 
 kitchenRouter.get('/tickets', (req, res) => getTickets(req, res))
 terminalKitchenRouter.get('/tickets', (req, res) => getTickets(req, res, true))
 kitchenRouter.patch('/tickets/:id/items/:itemId', (req, res) => patchItem(req, res))
+terminalKitchenRouter.patch('/tickets/:id/items/:itemId', (req, res) => patchItem(req, res, true))

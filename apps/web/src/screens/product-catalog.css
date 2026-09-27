@@ -801,3 +801,24 @@
   .pc-row>*:nth-child(6){display:flex}
   .pc-skel-row>*:nth-child(6){display:block}
 }
+/* Modifier builder — compact operational editor inside the dish drawer. */
+.modifier-editor { display: grid; gap: var(--mise-space-12); }
+.modifier-editor-intro { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--mise-space-12); }
+.modifier-editor-intro p { margin: 0; color: var(--mise-ink-secondary); font-size: 12px; }
+.modifier-editor-intro .secondary-cta { white-space: nowrap; display: inline-flex; align-items: center; gap: var(--mise-space-4); }
+.modifier-empty { padding: var(--mise-space-16); border: 1px dashed var(--mise-border); border-radius: var(--mise-r3); color: var(--mise-ink-muted); font-size: 12px; }
+.modifier-group-editor { margin: 0; padding: var(--mise-space-12); border: 1px solid var(--mise-border-hairline); border-radius: var(--mise-r3); background: var(--mise-surface-soft); }
+.modifier-group-head { display: grid; grid-template-columns: minmax(140px, 1fr) 140px auto 32px; gap: var(--mise-space-8); align-items: center; }
+.modifier-required { display: inline-flex !important; flex-direction: row !important; align-items: center; gap: var(--mise-space-4); white-space: nowrap; margin: 0 !important; }
+.modifier-required input { width: auto !important; }
+.modifier-options-editor { display: grid; gap: var(--mise-space-8); margin: var(--mise-space-12) 0 0 var(--mise-space-16); padding-left: var(--mise-space-12); border-left: 2px solid var(--mise-orange-soft); }
+.modifier-option-row { display: grid; grid-template-columns: minmax(120px, 1fr) 130px auto; gap: var(--mise-space-8); align-items: end; }
+.modifier-option-row label { margin: 0; }
+.modifier-option-row label span { color: var(--mise-ink-muted); font-size: 10px; }
+.modifier-option-row .danger { color: var(--mise-danger); }
+.modifier-save { justify-self: start; }
+@media (max-width: 720px) {
+  .modifier-editor-intro { display: grid; }
+  .modifier-group-head, .modifier-option-row { grid-template-columns: 1fr; }
+  .modifier-options-editor { margin-left: 0; }
+}

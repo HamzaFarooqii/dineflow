@@ -33,6 +33,7 @@ const chain = [
   '202609240004_inventory_terminal_audit.sql',
   '202609250002_inventory_batch_tracking.sql',
   '202609260001_unit_conversion.sql',
+  '202609270001_modifiers.sql',
 ]
 
 async function seededDatabase() {

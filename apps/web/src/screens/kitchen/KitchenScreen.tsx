@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { ORDER_TYPE_LABELS, type OrderType } from '../../../../../packages/domain/src/order-type'
 import { advanceKitchenTicketItem, fetchKitchenTickets, type KitchenTicket } from '../../lib/kitchen'
 import { requireSupabase } from '../../lib/supabase'
+import { currentAccess } from '../../terminal-auth/cache'
 import { KitchenTicketCard } from './KitchenTicketCard'
 import { PageHeader } from '../../components/PageHeader'
 import './kitchen.css'
@@ -11,7 +12,7 @@ import './kitchen.css'
 // doesn't exist anywhere else in this codebase yet.
 const POLL_MS = 15_000
 
-export function KitchenScreen() {
+export function KitchenScreen({ terminal = false }: { terminal?: boolean }) {
   const [storeId, setStoreId] = useState('')
   const [tickets, setTickets] = useState<KitchenTicket[]>([])
   const [selectedStation, setSelectedStation] = useState<string>('all')
@@ -24,16 +25,23 @@ export function KitchenScreen() {
     const load = async () => {
       try {
         if (!navigator.onLine) throw new Error('Connect to load the kitchen board.')
-        const client = requireSupabase()
-        const { data: { user }, error: userError } = await client.auth.getUser()
-        if (userError || !user) throw new Error('Sign in to view the kitchen.')
-        const { data, error: membershipError } = await client.from('store_memberships').select('store_id,role')
-          .eq('user_id', user.id).eq('active', true).in('role', ['owner', 'manager']).limit(1)
-        if (membershipError) throw membershipError
-        const id = data?.[0]?.store_id
+        let id: string | undefined
+        if (terminal) {
+          const access = await currentAccess()
+          if (!access?.policy.valid) throw new Error('Unlock this terminal to view the kitchen.')
+          id = access.cache.device.store_id
+        } else {
+          const client = requireSupabase()
+          const { data: { user }, error: userError } = await client.auth.getUser()
+          if (userError || !user) throw new Error('Sign in to view the kitchen.')
+          const { data, error: membershipError } = await client.from('store_memberships').select('store_id,role')
+            .eq('user_id', user.id).eq('active', true).in('role', ['owner', 'manager']).limit(1)
+          if (membershipError) throw membershipError
+          id = data?.[0]?.store_id
+        }
         if (!id) throw new Error('Store access is unavailable.')
         if (active) setStoreId(id)
-        const list = await fetchKitchenTickets(id)
+        const list = await fetchKitchenTickets(id, terminal)
         if (active) setTickets(list)
       } catch (reason) {
         if (active) setError(reason instanceof Error ? reason.message : 'Could not load the kitchen board.')
@@ -41,17 +49,17 @@ export function KitchenScreen() {
     }
     void load()
     return () => { active = false }
-  }, [])
+  }, [terminal])
 
   useEffect(() => {
     if (!storeId) return
     let active = true
     const interval = window.setInterval(() => {
       if (!navigator.onLine) return
-      void fetchKitchenTickets(storeId).then(list => { if (active) setTickets(list) }).catch(() => undefined)
+      void fetchKitchenTickets(storeId, terminal).then(list => { if (active) setTickets(list) }).catch(() => undefined)
     }, POLL_MS)
     return () => { active = false; window.clearInterval(interval) }
-  }, [storeId])
+  }, [storeId, terminal])
 
   const stations = [...new Map(tickets.flatMap(ticket => ticket.items)
     .filter(item => item.station_id)
@@ -64,8 +72,8 @@ export function KitchenScreen() {
     setBusyItemId(itemId)
     setError('')
     try {
-      await advanceKitchenTicketItem(storeId, ticket.id, itemId, nextStatus)
-      const refreshed = await fetchKitchenTickets(storeId)
+      await advanceKitchenTicketItem(storeId, ticket.id, itemId, nextStatus, terminal)
+      const refreshed = await fetchKitchenTickets(storeId, terminal)
       setTickets(refreshed)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not update this ticket.')
@@ -73,7 +81,7 @@ export function KitchenScreen() {
   }
 
   return <section className="kitchen-page">
-    <PageHeader kicker="KITCHEN DISPLAY" title="Kitchen" subtitle="Every ticket firing for this restaurant, grouped by station." />
+    <PageHeader kicker={terminal ? 'SERVICE TERMINAL' : 'KITCHEN DISPLAY'} title="Kitchen" subtitle="Every ticket firing for this restaurant, grouped by station." />
     {error && <p className="form-notice error" role="alert">{error}</p>}
     {loading && !error && <p role="status">Loading the kitchen board…</p>}
     {!loading && !error && tickets.length === 0 && <p className="kitchen-empty">No tickets are firing right now.</p>}

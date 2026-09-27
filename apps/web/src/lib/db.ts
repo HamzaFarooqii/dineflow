@@ -42,6 +42,23 @@ export interface LocalTaxRate {
 
 export type MenuCourse = 'appetizer' | 'main' | 'dessert' | 'side' | 'beverage'
 
+export interface LocalModifierOption {
+  id: string
+  name: string
+  price_delta_cents: number
+  active: boolean
+}
+
+export interface LocalModifierGroup {
+  id: string
+  product_id: string
+  name: string
+  selection: 'single' | 'multi'
+  required: boolean
+  sort_order: number
+  options: LocalModifierOption[]
+}
+
 export interface LocalProduct {
   id: string
   store_id: string
@@ -64,6 +81,7 @@ export interface LocalProduct {
   is_available?: boolean
   unavailable_until?: string | null // ISO 8601
   sells_directly?: boolean
+  modifier_groups?: LocalModifierGroup[]
 }
 
 export interface LocalStock {
@@ -123,6 +141,8 @@ export interface LocalOrderItem {
   snapshot_name: string
   snapshot_sku: string
   snapshot_price_cents: number  // integer cents
+  base_price_cents?: number
+  modifiers?: { option_id: string; group_name: string; option_name: string; price_delta_cents: number }[]
   snapshot_tax_bps: number
   catalog_version: number
   quantity: number

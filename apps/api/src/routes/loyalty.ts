@@ -56,6 +56,73 @@ async function listTiers(req: Request, res: Response, terminal = false) {
   } catch (reason) { sendApiError(res, reason) }
 }
 
+function nonNegativeInt(value: unknown, label: string): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
+    throw new ApiError(422, 'validation_failed', `${label} must be a non-negative whole number.`)
+  }
+  return value
+}
+
+function tierName(value: unknown): string {
+  const text = typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : ''
+  if (!text || text.length > 40) throw new ApiError(422, 'validation_failed', 'Tier name must be 1–40 characters.')
+  return text
+}
+
+/** Validates a tier create or partial update without accepting unknown lifecycle fields. */
+export function parseTierBody(raw: unknown, partial: boolean): Partial<Omit<TierRow, 'id'>> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new ApiError(422, 'validation_failed', 'A JSON object is required.')
+  const body = raw as Record<string, unknown>
+  const parsed: Partial<Omit<TierRow, 'id'>> = {}
+  if (!partial || body.name !== undefined) parsed.name = tierName(body.name)
+  if (!partial || body.min_lifetime_points !== undefined) parsed.min_lifetime_points = nonNegativeInt(body.min_lifetime_points, 'Lifetime-points threshold')
+  if (!partial || body.point_multiplier_bps !== undefined) {
+    const multiplier = body.point_multiplier_bps
+    if (typeof multiplier !== 'number' || !Number.isSafeInteger(multiplier) || multiplier <= 0 || multiplier > 100_000) {
+      throw new ApiError(422, 'validation_failed', 'Point multiplier must be a positive whole number no greater than 100,000 basis points.')
+    }
+    parsed.point_multiplier_bps = multiplier
+  }
+  if (partial && !Object.keys(parsed).length) throw new ApiError(422, 'validation_failed', 'Nothing to update.')
+  return parsed
+}
+
+const TIER_COLUMNS = 'id, name, min_lifetime_points, point_multiplier_bps'
+
+async function createTier(req: Request, res: Response) {
+  try {
+    const storeId = storeIdParam(req)
+    await requireStoreManager(req, storeId)
+    const tier = parseTierBody(req.body, false)
+    const result = await db.query<TierRow>(
+      `insert into public.loyalty_tiers (store_id, name, min_lifetime_points, point_multiplier_bps)
+       values ($1, $2, $3, $4) returning ${TIER_COLUMNS}`,
+      [storeId, tier.name, tier.min_lifetime_points, tier.point_multiplier_bps],
+    )
+    res.status(201).json(result.rows[0])
+  } catch (reason) { sendApiError(res, reason) }
+}
+
+async function updateTier(req: Request, res: Response) {
+  try {
+    const storeId = storeIdParam(req)
+    await requireStoreManager(req, storeId)
+    const tierId = idParam(req)
+    const changes = parseTierBody(req.body, true)
+    const updates: string[] = []
+    const values: unknown[] = []
+    for (const [column, value] of Object.entries(changes)) { values.push(value); updates.push(`${column} = $${values.length}`) }
+    values.push(tierId, storeId)
+    const result = await db.query<TierRow>(
+      `update public.loyalty_tiers set ${updates.join(', ')} where id = $${values.length - 1} and store_id = $${values.length}
+       returning ${TIER_COLUMNS}`,
+      values,
+    )
+    if (!result.rowCount) throw new ApiError(404, 'loyalty_tier_not_found', 'Tier not found in this store.')
+    res.json(result.rows[0])
+  } catch (reason) { sendApiError(res, reason) }
+}
+
 // --- Accounts --------------------------------------------------------------------------------
 //
 // Enrollment is explicit opt-in (POST .../enroll), never a side effect of a read: a GET for a
@@ -290,6 +357,8 @@ async function deactivateRewardRule(req: Request, res: Response) {
 }
 
 loyaltyRouter.get('/tiers', (req, res) => listTiers(req, res))
+loyaltyRouter.post('/tiers', (req, res) => createTier(req, res))
+loyaltyRouter.patch('/tiers/:id', (req, res) => updateTier(req, res))
 loyaltyRouter.get('/accounts/:customerId', (req, res) => getAccount(req, res))
 loyaltyRouter.post('/accounts/:customerId/enroll', (req, res) => enroll(req, res))
 loyaltyRouter.get('/accounts/:customerId/ledger', (req, res) => listLedger(req, res))

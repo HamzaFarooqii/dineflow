@@ -1,5 +1,11 @@
 # Module Status
 
+> **Day 5 branch status (2026-09-28):** Bisma's completed reporting/floor work is on
+> `feature/bisma/day5-reports`. Ahmed's completed loyalty tiers, real menu modifiers,
+> terminal Kitchen mode, food-cost profitability, and kitchen-performance reports are on
+> `feature/ahmed/day5-loyalty-modifiers-reports`. Both are pending PR review and merge into
+> `develop`; the detailed table below still describes the current `develop` baseline.
+
 Living document — update at the end of every development day (`RULES.md` §Daily Completion).
 Reflects `develop` after a post-Day-4 gap-filling pass (Hamza, ahead of Day 5): unit conversion in
 recipes, ingredient edit/deactivate/reactivate, real staff roles beyond cashier/manager, clock-in/

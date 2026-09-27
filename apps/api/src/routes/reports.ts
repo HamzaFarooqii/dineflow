@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express'
 import { db } from '../db.js'
 import { ApiError, requireStoreMember, sendApiError } from './auth.js'
 import { calendarDayBoundsUtc } from '../lib/timezone.js'
+import { costRecipe, foodCostBps, type RecipeCostUnit } from '../../../../packages/domain/src/recipe-cost.js'
 
 export const reportsRouter = Router()
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -433,3 +434,131 @@ async function inventoryReportHandler(req: Request, res: Response) {
   } catch (reason) { sendApiError(res, reason) }
 }
 reportsRouter.get('/inventory', (req, res) => void inventoryReportHandler(req, res))
+
+export interface DishProfitabilityRow {
+  productId: string
+  name: string
+  unitsSold: number
+  netRevenueCents: number
+  portionCostCents: number
+  estimatedFoodCostCents: number
+  grossProfitCents: number
+  foodCostBps: number | null
+  recipeComplete: boolean
+}
+
+export interface FoodCostReport {
+  netRevenueCents: number
+  estimatedFoodCostCents: number
+  grossProfitCents: number
+  foodCostBps: number | null
+  incompleteRecipeCount: number
+  dishes: DishProfitabilityRow[]
+}
+
+export async function loadFoodCostReport(storeId: string, from: string, to: string): Promise<FoodCostReport> {
+  const { startUtc, endUtc } = await reportRange(storeId, from, to)
+  const [products, recipeLines, sales] = await Promise.all([
+    db.query<{ product_id: string; name: string; recipe_id: string | null; yield_quantity: string | null }>(`
+      select p.id as product_id, p.name, r.id as recipe_id, r.yield_quantity::text as yield_quantity
+      from public.pos_products p left join public.recipes r on r.store_id=p.store_id and r.product_id=p.id
+      where p.store_id=$1 and p.active=true order by p.name`, [storeId]),
+    db.query<{
+      recipe_id: string; quantity: string; line_unit_id: string; line_kind: RecipeCostUnit['kind']; line_factor: number | null
+      ingredient_unit_id: string; ingredient_kind: RecipeCostUnit['kind']; ingredient_factor: number | null; cost_per_unit_cents: number
+    }>(`
+      select ri.recipe_id, ri.quantity::text as quantity,
+        lu.id as line_unit_id, lu.kind as line_kind, lu.factor_to_base::float8 as line_factor,
+        iu.id as ingredient_unit_id, iu.kind as ingredient_kind, iu.factor_to_base::float8 as ingredient_factor,
+        i.cost_per_unit_cents
+      from public.recipe_ingredients ri
+      join public.ingredients i on i.store_id=ri.store_id and i.id=ri.ingredient_id
+      join public.units lu on lu.store_id=ri.store_id and lu.id=ri.unit_id
+      join public.units iu on iu.store_id=i.store_id and iu.id=i.unit_id
+      where ri.store_id=$1`, [storeId]),
+    db.query<{ product_id: string; units: string; revenue: string }>(`
+      select oi.product_id, sum(oi.quantity)::text as units, sum(oi.taxable_cents)::text as revenue
+      from public.pos_order_items oi join public.pos_orders o on o.store_id=oi.store_id and o.id=oi.order_id
+      where oi.store_id=$1 and o.client_generated_at >= $2 and o.client_generated_at < $3
+        and not exists (select 1 from public.pos_refunds r where r.store_id=o.store_id and r.order_id=o.id)
+      group by oi.product_id`, [storeId, startUtc, endUtc]),
+  ])
+  const linesByRecipe = new Map<string, typeof recipeLines.rows>()
+  for (const line of recipeLines.rows) linesByRecipe.set(line.recipe_id, [...(linesByRecipe.get(line.recipe_id) ?? []), line])
+  const salesByProduct = new Map(sales.rows.map(row => [row.product_id, row]))
+  const dishes = products.rows.map(product => {
+    const sale = salesByProduct.get(product.product_id)
+    const unitsSold = Number(sale?.units ?? 0)
+    const netRevenueCents = Number(sale?.revenue ?? 0)
+    const lines = product.recipe_id ? linesByRecipe.get(product.recipe_id) ?? [] : []
+    const recipe = product.recipe_id && product.yield_quantity && lines.length
+      ? costRecipe(lines.map(line => ({ quantity: Number(line.quantity),
+          unit: { id: line.line_unit_id, kind: line.line_kind, factorToBase: line.line_factor },
+          ingredient: { unit: { id: line.ingredient_unit_id, kind: line.ingredient_kind, factorToBase: line.ingredient_factor }, costPerUnitCents: line.cost_per_unit_cents } })), Number(product.yield_quantity))
+      : null
+    const portionCostCents = recipe?.portionCostCents ?? 0
+    const estimatedFoodCostCents = portionCostCents * unitsSold
+    return { productId: product.product_id, name: product.name, unitsSold, netRevenueCents, portionCostCents,
+      estimatedFoodCostCents, grossProfitCents: netRevenueCents - estimatedFoodCostCents,
+      foodCostBps: foodCostBps(estimatedFoodCostCents, netRevenueCents), recipeComplete: Boolean(recipe?.complete) }
+  }).sort((a, b) => b.netRevenueCents - a.netRevenueCents || a.name.localeCompare(b.name))
+  const netRevenueCents = dishes.reduce((sum, row) => sum + row.netRevenueCents, 0)
+  const estimatedFoodCostCents = dishes.reduce((sum, row) => sum + row.estimatedFoodCostCents, 0)
+  return { netRevenueCents, estimatedFoodCostCents, grossProfitCents: netRevenueCents - estimatedFoodCostCents,
+    foodCostBps: foodCostBps(estimatedFoodCostCents, netRevenueCents), incompleteRecipeCount: dishes.filter(row => !row.recipeComplete).length, dishes }
+}
+
+async function foodCostReportHandler(req: Request, res: Response) {
+  try {
+    const storeId = storeIdParam(req); await requireReportAccess(req, storeId)
+    const { from, to } = rangeParam(req)
+    res.json(await loadFoodCostReport(storeId, from, to))
+  } catch (reason) { sendApiError(res, reason) }
+}
+reportsRouter.get('/food-cost', (req, res) => void foodCostReportHandler(req, res))
+
+export interface KitchenStationPerformance {
+  stationId: string | null
+  stationName: string
+  itemCount: number
+  completedCount: number
+  openCount: number
+  averagePrepSeconds: number | null
+  averageServeSeconds: number | null
+}
+export interface KitchenPerformanceReport { totalItems: number; completedItems: number; averagePrepSeconds: number | null; stations: KitchenStationPerformance[] }
+
+export async function loadKitchenPerformanceReport(storeId: string, from: string, to: string): Promise<KitchenPerformanceReport> {
+  const { startUtc, endUtc } = await reportRange(storeId, from, to)
+  const result = await db.query<{
+    station_id: string | null; station_name: string; item_count: string; completed_count: string; open_count: string
+    average_prep_seconds: string | null; average_serve_seconds: string | null
+  }>(`
+    select kti.station_id, coalesce(ks.name,'Unassigned') as station_name, count(*)::text as item_count,
+      count(*) filter (where kti.ready_at is not null)::text as completed_count,
+      count(*) filter (where kti.status in ('queued','preparing','ready'))::text as open_count,
+      round(avg(extract(epoch from (kti.ready_at-kti.fired_at))) filter (where kti.ready_at is not null and kti.fired_at is not null))::text as average_prep_seconds,
+      round(avg(extract(epoch from (kti.served_at-kti.fired_at))) filter (where kti.served_at is not null and kti.fired_at is not null))::text as average_serve_seconds
+    from public.kitchen_ticket_items kti
+    join public.kitchen_tickets kt on kt.store_id=kti.store_id and kt.id=kti.ticket_id
+    left join public.kitchen_stations ks on ks.store_id=kti.store_id and ks.id=kti.station_id
+    where kti.store_id=$1 and kt.created_at >= $2 and kt.created_at < $3
+    group by kti.station_id, ks.name order by count(*) desc, station_name`, [storeId, startUtc, endUtc])
+  const stations = result.rows.map(row => ({ stationId: row.station_id, stationName: row.station_name,
+    itemCount: Number(row.item_count), completedCount: Number(row.completed_count), openCount: Number(row.open_count),
+    averagePrepSeconds: row.average_prep_seconds === null ? null : Number(row.average_prep_seconds),
+    averageServeSeconds: row.average_serve_seconds === null ? null : Number(row.average_serve_seconds) }))
+  const completedItems = stations.reduce((sum, row) => sum + row.completedCount, 0)
+  const weightedPrep = stations.reduce((sum, row) => sum + (row.averagePrepSeconds ?? 0) * row.completedCount, 0)
+  return { totalItems: stations.reduce((sum, row) => sum + row.itemCount, 0), completedItems,
+    averagePrepSeconds: completedItems ? Math.round(weightedPrep / completedItems) : null, stations }
+}
+
+async function kitchenPerformanceHandler(req: Request, res: Response) {
+  try {
+    const storeId = storeIdParam(req); await requireReportAccess(req, storeId)
+    const { from, to } = rangeParam(req)
+    res.json(await loadKitchenPerformanceReport(storeId, from, to))
+  } catch (reason) { sendApiError(res, reason) }
+}
+reportsRouter.get('/kitchen-performance', (req, res) => void kitchenPerformanceHandler(req, res))

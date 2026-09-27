@@ -37,7 +37,9 @@ export function KitchenTicketCard({ ticket, orderTypeLabel, busyItemId, onAdvanc
       {ticket.items.map(item => {
         const action = NEXT_ACTION[item.status]
         return <li key={item.id} className="kitchen-ticket-item">
-          <span className="kitchen-item-name"><b>{item.quantity}×</b> {item.snapshot_name}{item.station_name && <small> · {item.station_name}</small>}</span>
+          <span className="kitchen-item-name"><b>{item.quantity}×</b> {item.snapshot_name}{item.station_name && <small> · {item.station_name}</small>}
+            {Boolean(item.modifiers?.length) && <small className="kitchen-item-modifiers">{item.modifiers.map(modifier => modifier.option_name).join(' · ')}</small>}
+          </span>
           <StatusBadge tone={KITCHEN_TICKET_STATUS_TONE[item.status]}>{KITCHEN_TICKET_STATUS_LABELS[item.status]}</StatusBadge>
           {action && <button type="button" className="secondary-cta" disabled={busyItemId === item.id}
             onClick={() => onAdvance(item.id, action.next)}>{busyItemId === item.id ? 'Updating…' : action.label}</button>}

@@ -8,10 +8,20 @@ import { PGlite } from '@electric-sql/pglite'
 // Same pattern as floor.test.ts: pure validation never opens a connection; the PGlite-backed
 // tests below monkey-patch db.query/db.connect before use.
 process.env.DATABASE_URL ??= 'postgresql://localhost:5432/validation_only'
-const { parseRecipeBody, parseUnitBody, saveRecipe } = await import('./catalog.js')
+const { parseModifierGroups, parseRecipeBody, parseUnitBody, saveRecipe } = await import('./catalog.js')
 const { db } = await import('../db.js')
 
 const unitA = randomUUID(), unitB = randomUUID(), ingredientA = randomUUID()
+
+test('parseModifierGroups accepts Size/Add-ons and rejects incomplete groups', () => {
+  const parsed = parseModifierGroups([{ name: ' Size ', selection: 'single', required: true, options: [
+    { name: 'Regular', price_delta_cents: 0 }, { name: 'Large', price_delta_cents: 200 },
+  ] }])
+  assert.equal(parsed[0].name, 'Size')
+  assert.equal(parsed[0].options[1].price_delta_cents, 200)
+  assert.throws(() => parseModifierGroups([{ name: 'Add-ons', selection: 'multi', required: false, options: [] }]), /needs 1 to 50 options/)
+  assert.throws(() => parseModifierGroups([{ name: 'Size', selection: 'single', required: true, options: [{ name: 'Large', price_delta_cents: 1.5 }] }]), /price is invalid/)
+})
 
 test('parseUnitBody trims and validates name, abbreviation and kind', () => {
   assert.deepEqual(parseUnitBody({ name: ' Kilogram ', abbreviation: ' kg ', kind: 'mass' }), { name: 'Kilogram', abbreviation: 'kg', kind: 'mass', factor_to_base: null })

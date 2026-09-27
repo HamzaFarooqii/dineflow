@@ -23,10 +23,20 @@ async function snapshot(req: import('express').Request, res: import('express').R
       const taxRates = await client.query('select id,store_id,name,rate_bps,active from public.pos_tax_rates where store_id = $1', [storeId])
       const products = await client.query('select id,store_id,sku,barcode,name,category_id,tax_rate_id,unit_price_cents::text,active,revision::text,image_url,' +
         'station_id,prep_time_seconds,course,kitchen_name,is_available,unavailable_until,sells_directly from public.pos_products where store_id = $1 order by name', [storeId])
+      const modifiers = await client.query(
+        `select pmg.product_id, mg.id, mg.name, mg.selection, mg.required, pmg.sort_order,
+                mo.id as option_id, mo.name as option_name, mo.price_delta_cents, mo.active
+         from public.product_modifier_groups pmg
+         join public.modifier_groups mg on mg.store_id=pmg.store_id and mg.id=pmg.group_id
+         left join public.modifier_options mo on mo.store_id=mg.store_id and mo.group_id=mg.id
+         where pmg.store_id=$1 order by pmg.product_id, pmg.sort_order, mg.name, mo.name`,
+        [storeId],
+      )
       const stock = await client.query('select product_id,current_stock,updated_at from public.pos_stock where store_id = $1', [storeId])
       await client.query('commit')
       res.json({ store: store.rows[0], catalog_version: 1, checkpoint: feed.rows[0].last_position,
-        categories: categories.rows, tax_rates: taxRates.rows, products: products.rows, stock: stock.rows })
+        categories: categories.rows, tax_rates: taxRates.rows, products: products.rows, stock: stock.rows,
+        modifier_groups: shapeModifierGroups(modifiers.rows) })
     } catch (reason) { await client.query('rollback'); throw reason }
     finally { client.release() }
   } catch (reason) { sendApiError(res, reason) }
@@ -36,6 +46,92 @@ async function snapshot(req: import('express').Request, res: import('express').R
 // POST /catalog/products — owner/manager creates a new product
 // ---------------------------------------------------------------------------
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+type ModifierGroupView = { id: string; product_id: string; name: string; selection: 'single' | 'multi'; required: boolean; sort_order: number; options: { id: string; name: string; price_delta_cents: number; active: boolean }[] }
+
+function shapeModifierGroups(rows: Record<string, unknown>[]): ModifierGroupView[] {
+  const groups = new Map<string, ModifierGroupView>()
+  for (const row of rows) {
+    const groupId = String(row.id)
+    let group = groups.get(groupId)
+    if (!group) {
+      group = { id: groupId, product_id: String(row.product_id), name: String(row.name), selection: row.selection as 'single' | 'multi',
+        required: Boolean(row.required), sort_order: Number(row.sort_order), options: [] }
+      groups.set(groupId, group)
+    }
+    if (row.option_id) group.options.push({ id: String(row.option_id), name: String(row.option_name),
+      price_delta_cents: Number(row.price_delta_cents), active: Boolean(row.active) })
+  }
+  return [...groups.values()]
+}
+
+function modifierText(value: unknown, label: string): string {
+  const result = typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : ''
+  if (!result || result.length > 60) throw new ApiError(422, 'validation_failed', `${label} must be 1–60 characters.`)
+  return result
+}
+
+export function parseModifierGroups(raw: unknown) {
+  if (!Array.isArray(raw) || raw.length > 20) throw new ApiError(422, 'validation_failed', 'Modifier groups must be an array with at most 20 groups.')
+  return raw.map((value, groupIndex) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ApiError(422, 'validation_failed', `Modifier group ${groupIndex + 1} is invalid.`)
+    const group = value as Record<string, unknown>
+    if (group.selection !== 'single' && group.selection !== 'multi') throw new ApiError(422, 'validation_failed', `Modifier group ${groupIndex + 1} selection is invalid.`)
+    if (typeof group.required !== 'boolean') throw new ApiError(422, 'validation_failed', `Modifier group ${groupIndex + 1} required is invalid.`)
+    if (!Array.isArray(group.options) || group.options.length < 1 || group.options.length > 50) throw new ApiError(422, 'validation_failed', `Modifier group ${groupIndex + 1} needs 1 to 50 options.`)
+    const options = group.options.map((value, optionIndex) => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ApiError(422, 'validation_failed', `Modifier option ${optionIndex + 1} is invalid.`)
+      const option = value as Record<string, unknown>
+      if (!Number.isSafeInteger(option.price_delta_cents) || (option.price_delta_cents as number) < -1_000_000_000 || (option.price_delta_cents as number) > 1_000_000_000) {
+        throw new ApiError(422, 'validation_failed', `Modifier option ${optionIndex + 1} price is invalid.`)
+      }
+      return { name: modifierText(option.name, 'Modifier option name'), price_delta_cents: option.price_delta_cents as number,
+        active: option.active === undefined ? true : Boolean(option.active) }
+    })
+    if (new Set(options.map(option => option.name.toLocaleLowerCase())).size !== options.length) throw new ApiError(422, 'validation_failed', `Modifier group ${groupIndex + 1} has duplicate option names.`)
+    return { name: modifierText(group.name, 'Modifier group name'), selection: group.selection as 'single' | 'multi', required: group.required, options }
+  })
+}
+
+async function replaceProductModifiers(req: import('express').Request, res: import('express').Response) {
+  try {
+    const storeId = String((req.body as Record<string, unknown>)?.store_id ?? '')
+    const productId = String(req.params.productId ?? '')
+    if (!UUID_RE.test(storeId) || !UUID_RE.test(productId)) throw new ApiError(400, 'validation_failed', 'Valid store and product IDs are required.')
+    await requireStoreManager(req, storeId)
+    const groups = parseModifierGroups((req.body as Record<string, unknown>)?.groups)
+    const client = await db.connect()
+    try {
+      await client.query('begin')
+      const product = await client.query('select 1 from public.pos_products where store_id=$1 and id=$2 for update', [storeId, productId])
+      if (!product.rowCount) throw new ApiError(404, 'not_found', 'Menu item not found.')
+      const existing = await client.query<{ group_id: string }>('delete from public.product_modifier_groups where store_id=$1 and product_id=$2 returning group_id', [storeId, productId])
+      for (const row of existing.rows) await client.query('delete from public.modifier_groups where store_id=$1 and id=$2 and not exists (select 1 from public.product_modifier_groups where store_id=$1 and group_id=$2)', [storeId, row.group_id])
+      const saved: ModifierGroupView[] = []
+      for (let index = 0; index < groups.length; index += 1) {
+        const group = groups[index]
+        const insertedGroup = await client.query<{ id: string }>(
+          'insert into public.modifier_groups(store_id,name,selection,required) values ($1,$2,$3,$4) returning id',
+          [storeId, group.name, group.selection, group.required],
+        )
+        const groupId = insertedGroup.rows[0].id
+        await client.query('insert into public.product_modifier_groups(store_id,product_id,group_id,sort_order) values ($1,$2,$3,$4)', [storeId, productId, groupId, index])
+        const options: ModifierGroupView['options'] = []
+        for (const option of group.options) {
+          const inserted = await client.query<{ id: string; name: string; price_delta_cents: number; active: boolean }>(
+            'insert into public.modifier_options(store_id,group_id,name,price_delta_cents,active) values ($1,$2,$3,$4,$5) returning id,name,price_delta_cents,active',
+            [storeId, groupId, option.name, option.price_delta_cents, option.active],
+          )
+          options.push(inserted.rows[0])
+        }
+        saved.push({ id: groupId, product_id: productId, name: group.name, selection: group.selection, required: group.required, sort_order: index, options })
+      }
+      await client.query('commit')
+      res.json({ groups: saved })
+    } catch (reason) { await client.query('rollback'); throw reason }
+    finally { client.release() }
+  } catch (reason) { sendApiError(res, reason) }
+}
 
 async function createProduct(req: import('express').Request, res: import('express').Response) {
   try {
@@ -665,4 +761,5 @@ catalogRouter.delete('/products/:productId', (req, res) => void archiveProduct(r
 catalogRouter.get('/recipes', (req, res) => void listRecipeData(req, res))
 catalogRouter.post('/units', (req, res) => void createUnit(req, res))
 catalogRouter.put('/products/:productId/recipe', (req, res) => void putRecipe(req, res))
+catalogRouter.put('/products/:productId/modifiers', (req, res) => void replaceProductModifiers(req, res))
 terminalCatalogRouter.get('/snapshot', (req, res) => void snapshot(req, res, true))

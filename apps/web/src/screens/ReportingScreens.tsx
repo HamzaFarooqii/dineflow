@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { liveQuery } from 'dexie'
 import { Link } from 'react-router-dom'
 import { formatCents } from '../../../../packages/domain/src/money'
+import { formatFoodCostPercent } from '../../../../packages/domain/src/recipe-cost'
 import { posDb, type StoreConfig } from '../lib/db'
 import { resolveFinancialAccess } from '../lib/management-access'
 import {
@@ -22,8 +23,8 @@ import { currentAccess } from '../terminal-auth/cache'
 import { configuredApiUrl, loadCatalog } from '../lib/catalog'
 import { classifySyncState, type SyncState } from '../lib/order-sync-core'
 import {
-  fetchCustomerReport, fetchDailySummary, fetchInventoryReport, fetchOrdersPage, fetchOversold, fetchShifts,
-  type CustomerReport, type InventoryReport, type ServerOversoldProduct, type ShiftRow,
+  fetchCustomerReport, fetchDailySummary, fetchFoodCostReport, fetchInventoryReport, fetchKitchenPerformanceReport, fetchOrdersPage, fetchOversold, fetchShifts,
+  type CustomerReport, type FoodCostReport, type InventoryReport, type KitchenPerformanceReport, type ServerOversoldProduct, type ShiftRow,
 } from '../lib/server-reports'
 import { fetchFloorPlan, type FloorPlan } from '../lib/floor'
 import { fetchKitchenTickets, type KitchenTicket } from '../lib/kitchen'
@@ -724,7 +725,7 @@ function DailySalesReport({ tabs }: { tabs?: ReactNode }) {
   )
 }
 
-type ReportTab = 'sales' | 'guests' | 'inventory' | 'hours'
+type ReportTab = 'sales' | 'guests' | 'food-cost' | 'kitchen' | 'inventory' | 'hours'
 
 interface HoursWorkedRow {
   employeeId: string
@@ -814,6 +815,47 @@ function HoursReport({ rows }: { rows: HoursWorkedRow[] }) {
   </>
 }
 
+function durationLabel(seconds: number | null): string {
+  if (seconds === null) return '—'
+  if (seconds < 60) return `${seconds}s`
+  return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s`
+}
+
+function FoodCostReportView({ report, currency }: { report: FoodCostReport; currency: string }) {
+  return <>
+    <div className="metric-grid report-kpi-grid">
+      <MetricCard label="Net dish revenue" value={<Money cents={report.netRevenueCents} currency={currency} />} detail="After line discounts and full refunds" featured />
+      <MetricCard label="Estimated food cost" value={<Money cents={report.estimatedFoodCostCents} currency={currency} />} detail={formatFoodCostPercent(report.foodCostBps)} />
+      <MetricCard label="Gross dish profit" value={<Money cents={report.grossProfitCents} currency={currency} />} detail="Revenue less recipe cost" />
+      <MetricCard label="Recipe gaps" value={report.incompleteRecipeCount} detail="Dishes needing complete costing" className={report.incompleteRecipeCount ? 'rejected' : ''} />
+    </div>
+    <section className="dashboard-panel report-data-panel">
+      <div className="panel-header"><div><h2><Award aria-hidden="true" size={16} className="panel-icon" />Dish profitability</h2><small>Recipe cost per sold portion, using saved unit conversions</small></div></div>
+      {report.dishes.length ? <div className="table-wrapper"><table className="dashboard-table report-table"><thead><tr><th>Dish</th><th>Recipe</th><th className="num">Sold</th><th className="num">Revenue</th><th className="num">Cost / portion</th><th className="num">Food cost</th><th className="num">Gross profit</th></tr></thead><tbody>
+        {report.dishes.map(dish => <tr key={dish.productId}><td><strong>{dish.name}</strong></td><td><StatusBadge tone={dish.recipeComplete ? 'success' : 'warning'}>{dish.recipeComplete ? 'Costed' : 'Incomplete'}</StatusBadge></td><td className="num">{dish.unitsSold}</td><td className="num"><Money cents={dish.netRevenueCents} currency={currency} /></td><td className="num"><Money cents={dish.portionCostCents} currency={currency} /></td><td className="num"><strong>{formatFoodCostPercent(dish.foodCostBps)}</strong></td><td className={`num ${dish.grossProfitCents < 0 ? 'report-negative' : ''}`}><Money cents={dish.grossProfitCents} currency={currency} /></td></tr>)}
+      </tbody></table></div> : <p className="empty-panel-copy">No active dishes are available for profitability analysis.</p>}
+    </section>
+  </>
+}
+
+function KitchenPerformanceView({ report }: { report: KitchenPerformanceReport }) {
+  const completion = report.totalItems ? Math.round(report.completedItems * 100 / report.totalItems) : 0
+  return <>
+    <div className="metric-grid report-kpi-grid">
+      <MetricCard label="Kitchen items" value={report.totalItems} detail="Fired in selected range" featured />
+      <MetricCard label="Completed prep" value={report.completedItems} detail={`${completion}% reached ready`} />
+      <MetricCard label="Average prep" value={durationLabel(report.averagePrepSeconds)} detail="Fire to ready" />
+      <MetricCard label="Open now" value={report.stations.reduce((sum, station) => sum + station.openCount, 0)} detail="Queued, preparing, or ready" />
+    </div>
+    <section className="dashboard-panel report-data-panel">
+      <div className="panel-header"><div><h2><ChefHat aria-hidden="true" size={16} className="panel-icon" />Kitchen performance by station</h2><small>Prep and serve speed from actual ticket timestamps</small></div></div>
+      {report.stations.length ? <div className="table-wrapper"><table className="dashboard-table report-table"><thead><tr><th>Station</th><th className="num">Items</th><th className="num">Ready</th><th className="num">Open</th><th className="num">Avg prep</th><th className="num">Avg serve</th></tr></thead><tbody>
+        {report.stations.map(station => <tr key={station.stationId ?? 'unassigned'}><td><strong>{station.stationName}</strong></td><td className="num">{station.itemCount}</td><td className="num">{station.completedCount}</td><td className="num">{station.openCount}</td><td className="num"><strong>{durationLabel(station.averagePrepSeconds)}</strong></td><td className="num">{durationLabel(station.averageServeSeconds)}</td></tr>)}
+      </tbody></table></div> : <p className="empty-panel-copy">No kitchen tickets were fired in this date range.</p>}
+    </section>
+  </>
+}
+
 export function ReportsScreen() {
   const [tab, setTab] = useState<ReportTab>('sales')
   const [from, setFrom] = useState('')
@@ -821,6 +863,8 @@ export function ReportsScreen() {
   const { state, error } = useFinancialReport()
   const [customerReport, setCustomerReport] = useState<CustomerReport>()
   const [inventoryReport, setInventoryReport] = useState<InventoryReport>()
+  const [foodCostReport, setFoodCostReport] = useState<FoodCostReport>()
+  const [kitchenReport, setKitchenReport] = useState<KitchenPerformanceReport>()
   const [hoursRows, setHoursRows] = useState<HoursWorkedRow[]>()
   const [operationalError, setOperationalError] = useState('')
   const [operationalLoading, setOperationalLoading] = useState(false)
@@ -840,7 +884,11 @@ export function ReportsScreen() {
       ? fetchCustomerReport(state.storeId, from, to).then(result => { if (active) setCustomerReport(result) })
       : tab === 'inventory'
         ? fetchInventoryReport(state.storeId, from, to).then(result => { if (active) setInventoryReport(result) })
-        : fetchShifts(state.storeId, calendarDayBoundsUtc(from, state.config.timezone).startUtc, calendarDayBoundsUtc(to, state.config.timezone).endUtc).then(result => { if (active) setHoursRows(groupHoursWorked(result)) })
+        : tab === 'food-cost'
+          ? fetchFoodCostReport(state.storeId, from, to).then(result => { if (active) setFoodCostReport(result) })
+          : tab === 'kitchen'
+            ? fetchKitchenPerformanceReport(state.storeId, from, to).then(result => { if (active) setKitchenReport(result) })
+            : fetchShifts(state.storeId, calendarDayBoundsUtc(from, state.config.timezone).startUtc, calendarDayBoundsUtc(to, state.config.timezone).endUtc).then(result => { if (active) setHoursRows(groupHoursWorked(result)) })
     void load.catch(reason => { if (active) setOperationalError(reason instanceof Error ? reason.message : 'This report could not be loaded.') })
       .finally(() => { if (active) setOperationalLoading(false) })
     return () => { active = false }
@@ -848,6 +896,7 @@ export function ReportsScreen() {
 
   const tabs: { id: ReportTab; label: string }[] = [
     { id: 'sales', label: 'Sales' }, { id: 'guests', label: 'Guests & loyalty' },
+    { id: 'food-cost', label: 'Food cost' }, { id: 'kitchen', label: 'Kitchen' },
     { id: 'inventory', label: 'Inventory' }, { id: 'hours', label: 'Hours worked' },
   ]
   const tabControls = <div className="report-tabs" role="tablist" aria-label="Report sections">{tabs.map(item => <button key={item.id} type="button" role="tab" aria-selected={tab === item.id} className={tab === item.id ? 'active' : ''} onClick={() => setTab(item.id)}>{item.label}</button>)}</div>
@@ -862,6 +911,8 @@ export function ReportsScreen() {
     {state && operationalLoading && <div className="report-loading" role="status"><RefreshCw aria-hidden="true" size={18} />Loading report data...</div>}
     {state && tab === 'guests' && !operationalLoading && !operationalError && customerReport && <GuestReport report={customerReport} currency={state.config.currency} />}
     {state && tab === 'inventory' && !operationalLoading && !operationalError && inventoryReport && <InventoryReportView report={inventoryReport} currency={state.config.currency} />}
+    {state && tab === 'food-cost' && !operationalLoading && !operationalError && foodCostReport && <FoodCostReportView report={foodCostReport} currency={state.config.currency} />}
+    {state && tab === 'kitchen' && !operationalLoading && !operationalError && kitchenReport && <KitchenPerformanceView report={kitchenReport} />}
     {state && tab === 'hours' && !operationalLoading && !operationalError && hoursRows && <HoursReport rows={hoursRows} />}
   </section>
 }

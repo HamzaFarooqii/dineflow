@@ -22,6 +22,7 @@ import { Dialog } from '../components/Dialog'
 import { Pencil, Plus, RefreshCw, ScanLine, Search, Trash2, X } from '../components/icons'
 import { DishAvailability } from './menu/DishAvailability'
 import { RecipeEditor } from './menu/RecipeEditor'
+import { ModifierEditor } from './menu/ModifierEditor'
 import { createUnit, loadRecipeData, saveRecipe, type RecipeData } from './menu/recipe-api'
 import {
   EMPTY_RECIPE_DRAFT,
@@ -516,7 +517,8 @@ export function ProductCatalogScreen() {
       await posDb.transaction('rw', [posDb.products, posDb.server_stock, posDb.categories, posDb.tax_rates], async () => {
         if (data.category) await posDb.categories.put({ ...data.category, parent_id: null })
         if (data.taxRate) await posDb.tax_rates.put(data.taxRate)
-        await posDb.products.put({ ...data.product!, unit_price_cents: data.product!.unit_price_cents })
+        await posDb.products.put({ ...data.product!, unit_price_cents: data.product!.unit_price_cents,
+          modifier_groups: editingProduct?.modifier_groups ?? [] })
         if (data.stock) {
           await posDb.server_stock.put({
             product_id: data.stock.product_id,
@@ -1163,6 +1165,18 @@ export function ProductCatalogScreen() {
                   onCreateUnit={handleCreateUnit}
                   onCreateIngredient={handleCreateIngredient}
                 />
+              </div>
+
+              <div className="pc-group">
+                <p className="pc-group-label">Modifiers &amp; add-ons</p>
+                {editingProduct ? <ModifierEditor storeId={storeId} productId={editingProduct.id}
+                  groups={editingProduct.modifier_groups ?? []} disabled={busy}
+                  onSaved={groups => {
+                    const updated = { ...editingProduct, modifier_groups: groups }
+                    setEditingProduct(updated)
+                    void posDb.products.put(updated)
+                  }} />
+                : <p className="pc-field-hint">Save this dish first, then edit it to add sizes and add-ons.</p>}
               </div>
 
               {/* Group 4: Dish Photo */}

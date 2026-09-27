@@ -27,6 +27,7 @@ const chain = [
   '202609250001_loyalty_foundation.sql',
   '202609250003_promotions.sql',
   '202609260003_service_charge.sql',
+  '202609270001_modifiers.sql',
 ]
 
 test('order checkout awards and redeems loyalty points atomically with the sale', async t => {

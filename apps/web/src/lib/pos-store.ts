@@ -16,6 +16,14 @@ import type { LocalCustomer } from './db'
 
 export type { LineDiscount }
 
+export interface SelectedModifier {
+  groupId: string
+  optionId: string
+  groupName: string
+  optionName: string
+  priceDeltaCents: number
+}
+
 // Where a line's discount came from — a manual cashier discount has no source. A reward or
 // promotion still produces a plain LineDiscount (Day 4 checkout wiring: both flow through the
 // exact same discount/approval machinery as a manual one), but the cart needs to remember which
@@ -28,11 +36,14 @@ export type DiscountSource =
   | null
 
 export interface CartItem {
+  lineId: string
   storeId: string
   productId: string
   name: string
   sku: string
   unitPriceCents: number     // integer cents
+  basePriceCents: number
+  modifiers: SelectedModifier[]
   taxRateBps: number
   catalogVersion: number
   quantity: number
@@ -66,7 +77,8 @@ export interface ManagerApproval {
 // A stable fingerprint of every line that affects money math. Two carts with the same
 // signature produce the same totals and the same manager-approval requirement.
 export function cartSignature(items: CartItem[]): string {
-  return JSON.stringify(items.map(item => [item.productId, item.quantity, item.unitPriceCents, item.taxRateBps, item.discount]))
+  return JSON.stringify(items.map(item => [item.lineId, item.productId, item.quantity, item.unitPriceCents, item.taxRateBps, item.discount,
+    item.modifiers.map(modifier => modifier.optionId)]))
 }
 
 // Product IDs whose current discount exceeds the cashier's 20% independent authority and
@@ -76,7 +88,7 @@ export function productsRequiringApproval(items: CartItem[]): string[] {
     if (!item.discount) return false
     const line = calculateDiscountedLine(item.unitPriceCents, item.quantity, item.taxRateBps, item.discount)
     return discountNeedsManagerApproval(line.subtotalCents, line.discountAppliedCents)
-  }).map(item => item.productId)
+  }).map(item => item.lineId)
 }
 
 // True when a recorded manager approval still matches the exact cart and permission version
@@ -112,11 +124,12 @@ export interface PosStore {
   // Cart
   items: CartItem[]
   addItem: (product: Omit<CartItem, 'quantity' | 'discount'>) => void
-  removeItem: (productId: string) => void
-  incrementItem: (productId: string) => void
-  decrementItem: (productId: string) => void
+  removeItem: (lineId: string) => void
+  incrementItem: (lineId: string) => void
+  decrementItem: (lineId: string) => void
   clearCart: () => void
-  setItemNote: (productId: string, notes: string) => void
+  setItemNote: (lineId: string, notes: string) => void
+  setItemModifiers: (lineId: string, nextLineId: string, modifiers: SelectedModifier[], unitPriceCents: number) => void
   selectedCustomer: LocalCustomer | null
   selectCustomer: (customer: LocalCustomer | null) => void
 
@@ -129,9 +142,9 @@ export interface PosStore {
   // Any cart mutation above clears managerApproval; setLineDiscount does too, since it changes the signature.
   // A manual discount (setLineDiscount) always clears any reward/promotion source that line had —
   // typing a new amount over a redeemed reward means the cashier is replacing it, not stacking it.
-  setLineDiscount: (productId: string, discount: LineDiscount) => void
-  applyRewardDiscount: (productId: string, source: Extract<DiscountSource, { kind: 'reward' }>, discount: LineDiscount) => void
-  applyPromotionDiscount: (productId: string, source: Extract<DiscountSource, { kind: 'promotion' }>, discount: LineDiscount) => void
+  setLineDiscount: (lineId: string, discount: LineDiscount) => void
+  applyRewardDiscount: (lineId: string, source: Extract<DiscountSource, { kind: 'reward' }>, discount: LineDiscount) => void
+  applyPromotionDiscount: (lineId: string, source: Extract<DiscountSource, { kind: 'promotion' }>, discount: LineDiscount) => void
   managerApproval: ManagerApproval | null
   setManagerApproval: (approval: ManagerApproval) => void
   clearManagerApproval: () => void
@@ -172,11 +185,11 @@ export const usePosStore = create<PosStore>((set, get) => ({
 
   addItem: (product) =>
     set((state) => {
-      const existing = state.items.find((i) => i.productId === product.productId)
+      const existing = state.items.find((i) => i.lineId === product.lineId)
       if (existing) {
         return {
           items: state.items.map((i) =>
-            i.productId === product.productId
+            i.lineId === product.lineId
               ? { ...i, quantity: Math.min(10_000, i.quantity + 1) }
               : i,
           ),
@@ -186,27 +199,27 @@ export const usePosStore = create<PosStore>((set, get) => ({
       return { items: [...state.items, { ...product, quantity: 1, discount: null }], managerApproval: null }
     }),
 
-  removeItem: (productId) =>
-    set((state) => ({ items: state.items.filter((i) => i.productId !== productId), managerApproval: null })),
+  removeItem: (lineId) =>
+    set((state) => ({ items: state.items.filter((i) => i.lineId !== lineId), managerApproval: null })),
 
-  incrementItem: (productId) =>
+  incrementItem: (lineId) =>
     set((state) => ({
       items: state.items.map((i) =>
-        i.productId === productId ? { ...i, quantity: Math.min(10_000, i.quantity + 1) } : i,
+        i.lineId === lineId ? { ...i, quantity: Math.min(10_000, i.quantity + 1) } : i,
       ),
       managerApproval: null,
     })),
 
-  decrementItem: (productId) =>
+  decrementItem: (lineId) =>
     set((state) => {
-      const item = state.items.find((i) => i.productId === productId)
+      const item = state.items.find((i) => i.lineId === lineId)
       if (!item) return state
       if (item.quantity <= 1) {
-        return { items: state.items.filter((i) => i.productId !== productId), managerApproval: null }
+        return { items: state.items.filter((i) => i.lineId !== lineId), managerApproval: null }
       }
       return {
         items: state.items.map((i) =>
-          i.productId === productId ? { ...i, quantity: i.quantity - 1 } : i,
+          i.lineId === lineId ? { ...i, quantity: i.quantity - 1 } : i,
         ),
         managerApproval: null,
       }
@@ -216,31 +229,34 @@ export const usePosStore = create<PosStore>((set, get) => ({
 
   // Notes don't affect totals or approval — no managerApproval invalidation needed here, unlike
   // every money-affecting mutation above.
-  setItemNote: (productId, notes) =>
-    set((state) => ({ items: state.items.map((i) => i.productId === productId ? { ...i, notes } : i) })),
+  setItemNote: (lineId, notes) =>
+    set((state) => ({ items: state.items.map((i) => i.lineId === lineId ? { ...i, notes } : i) })),
 
-  setLineDiscount: (productId, discount) =>
+  setItemModifiers: (lineId, nextLineId, modifiers, unitPriceCents) =>
+    set((state) => ({ items: state.items.map((i) => i.lineId === lineId ? { ...i, lineId: nextLineId, modifiers, unitPriceCents } : i), managerApproval: null })),
+
+  setLineDiscount: (lineId, discount) =>
     set((state) => ({
-      items: state.items.map((i) => i.productId === productId ? { ...i, discount, discountSource: null } : i),
+      items: state.items.map((i) => i.lineId === lineId ? { ...i, discount, discountSource: null } : i),
       managerApproval: null,
     })),
 
-  applyRewardDiscount: (productId, source, discount) =>
+  applyRewardDiscount: (lineId, source, discount) =>
     set((state) => ({
       // Only one line may redeem a reward at a time — applying a new one anywhere first clears
       // whichever line was carrying the previous one, matching reward_rules' single-redemption-
       // per-check design (redeemedReward() above assumes at most one).
       items: state.items.map((i) => {
-        if (i.productId === productId) return { ...i, discount, discountSource: source }
+        if (i.lineId === lineId) return { ...i, discount, discountSource: source }
         if (i.discountSource?.kind === 'reward') return { ...i, discount: null, discountSource: null }
         return i
       }),
       managerApproval: null,
     })),
 
-  applyPromotionDiscount: (productId, source, discount) =>
+  applyPromotionDiscount: (lineId, source, discount) =>
     set((state) => ({
-      items: state.items.map((i) => i.productId === productId ? { ...i, discount, discountSource: source } : i),
+      items: state.items.map((i) => i.lineId === lineId ? { ...i, discount, discountSource: source } : i),
       managerApproval: null,
     })),
 

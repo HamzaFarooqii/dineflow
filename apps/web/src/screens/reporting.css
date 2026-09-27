@@ -1028,3 +1028,4 @@ h2 .panel-icon {
     padding: var(--mise-space-16);
   }
 }
+.report-negative { color: var(--mise-danger); }
