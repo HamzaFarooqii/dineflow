@@ -43,6 +43,19 @@ Hamza closeout evidence:
   976.63 kB main bundle to 108.86 kB; its largest chunk is 469.87 kB and Vite no longer warns.
 - The Ember artifact under `docs/ember-artifact/` remains unchanged. Shared tokens, compact
   layouts, dialogs/drawers, states, and operational typography remain the application standard.
+- **Manual click-through of the core POS loop (item 7), 2026-09-29:** `apps/api/test/
+  core-loop-browser-check.ts` (`npm run test:browser:core-loop`) drives real headless Chromium
+  through the actual built app end to end — seat a table, start its order, add a dish, attach a
+  guest, pay cash, mark the kitchen ticket ready and served, then bill/settle/clean the table back
+  to available — asserting on the real rendered screens at every step, with zero uncaught browser
+  errors. Screenshots in `docs/core-loop-screenshots/`. Two things this run surfaced along the way,
+  neither a defect in today's app: kitchen ticket items are created straight into `preparing`
+  rather than `queued` (already an intentional, commented choice in `orders.ts`); and replaying
+  every migration from a clean database (needed to seed this fixture) fails at
+  `202609180006_stores_country_column.sql`, because the "drifted production database" state its
+  own comment describes no longer matches `202609180002_store_business_details.sql` as currently
+  committed — worth a follow-up migration to make the fix-up idempotent, but out of scope to touch
+  today.
 
 ## Product modules
 
