@@ -8,7 +8,7 @@
 This is the living source of truth required by `RULES.md`. It separates implemented behavior
 from explicitly deferred product work; a partial module is operational, but still has named
 future capabilities below. The detailed remaining-work ownership is in
-`docs/day-plans/remaining-work-2026-09-28.md`.
+`docs/day-plans/final-application-work-split.md`.
 
 Status legend: ✅ complete for the agreed scope · 🟡 operational with explicit backlog ·
 🔴 not started/deferred · ⚠️ release/process attention
