@@ -5,7 +5,7 @@ import { pushPendingOrders } from '../lib/order-sync'
 import { ClockButton } from './ClockButton'
 import { BreakButton } from './BreakButton'
 import { roleHasCapability, type StaffCapability } from '../../../../packages/domain/src/staff-role'
-import { LayoutDashboard, ShoppingCart, UtensilsCrossed, ClipboardList, Users, Package, Settings as SettingsIcon, Store, LayoutGrid, ChefHat } from '../components/icons'
+import { LayoutDashboard, ShoppingCart, UtensilsCrossed, ClipboardList, Users, Package, Settings as SettingsIcon, Store, LayoutGrid, ChefHat, Truck } from '../components/icons'
 import './terminal-auth.css'
 import '../receipts/receipts.css'
 
@@ -17,11 +17,12 @@ import '../receipts/receipts.css'
 //
 // `capability`: gates visibility per packages/domain/src/staff-role.ts (a manager always passes).
 // Dashboard and Settings have none -- general/hardware screens every role can reasonably see.
-const navigation: { label: string; to: string; icon: typeof LayoutDashboard; capability?: StaffCapability }[] = [
+const navigation: { label: string; to: string; icon: typeof LayoutDashboard; capability?: StaffCapability; riderOnly?: boolean }[] = [
   { label: 'Dashboard', to: '/pos/dashboard', icon: LayoutDashboard },
   { label: 'Sell', to: '/pos/register', icon: ShoppingCart, capability: 'register' },
   { label: 'Floor', to: '/pos/floor', icon: LayoutGrid, capability: 'floor' },
   { label: 'Kitchen', to: '/pos/kitchen', icon: ChefHat, capability: 'kitchen' },
+  { label: 'Deliveries', to: '/pos/delivery', icon: Truck, capability: 'delivery', riderOnly: true },
   { label: 'Products', to: '/pos/products', icon: UtensilsCrossed, capability: 'register' },
   { label: 'Orders', to: '/pos/orders', icon: ClipboardList, capability: 'register' },
   { label: 'Customers', to: '/pos/customers', icon: Users, capability: 'register' },
@@ -54,7 +55,11 @@ export function CashierPosLayout({ children }: { children: ReactNode }) {
     return () => { active = false; window.removeEventListener('online', sync); window.clearInterval(interval) }
   }, [])
   const cashier = terminal?.employees.find(employee => employee.id === terminal.session?.employee_id)
-  const visibleNav = navigation.filter(item => !item.capability || !cashier || roleHasCapability(cashier.role, item.capability))
+  const visibleNav = navigation.filter(item => {
+    if (!cashier) return true
+    if (item.riderOnly && cashier.role !== 'rider') return false
+    return !item.capability || roleHasCapability(cashier.role, item.capability)
+  })
   const isActiveNavigation = (item: typeof navigation[number]) => item.label === 'Sell'
     ? ['/pos/register', '/pos/payment'].includes(pathname)
     : item.label === 'Orders'
