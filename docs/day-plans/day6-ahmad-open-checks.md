@@ -96,8 +96,7 @@ performed in this pass — flagged above, not claimed.
 
 ## A2. Split settlement, tips and refund allocation — 10 points — not started
 
-Branch: `feat/split-settlement`. Dependency: A1's contract (this document) is the approval this
-task was waiting on.
+Branch: `feat/split-settlement`. A1 commit `e5cd137` is pushed; the owner confirmed there is no PR yet. Hamza's explicit contract approval has not been verified. See `docs/qa/a2/REVIEW.md` for implementation, verification, migration status and remaining acceptance work.
 
 ## A3. Kitchen operations depth — 8 points — not started
 

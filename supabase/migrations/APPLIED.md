@@ -48,6 +48,7 @@ schema no longer matches history, and it needs manual reconciliation, not a sile
 | 202609270001_modifiers.sql | `c22d27afa488f5142da526dae806a2157593deffc4ee3acd681c98a7c8658300` | yes | all four modifier tables, RLS, and member-read policies confirmed by `verify-day5-closeout.mjs` |
 | 202609280001_inventory_terminal_tenant_fks.sql | `0152bf0c5cf6106473aef9309e3edfe7d248356d0e98d3f3c27eaee4474b7625` | yes | all four composite inventory-to-terminal-employee foreign keys confirmed by `verify-day5-closeout.mjs` |
 | 202609280002_open_checks.sql | `7ff44ad26a18bb2723224ee4c7a53aa8d280e84657ea30d9e75e8fa2d5e4fc1d` | yes | `public.open_checks`, `public.open_check_items`, `public.open_check_item_modifiers` tables and the `open_checks_one_open_per_table` partial unique index confirmed by `apps/api/scripts/verify-open-checks.mjs` |
+| 202609280003_split_settlement.sql | `a2dea0c1dc075c5448e4d966071e00bdfa0e84ff6fa220bd34e44025adebb7b3` | yes | `pos_payments.tip_cents`, `pos_payments` unique(store_id,id) in place of unique(store_id,order_id), `pos_refunds` unique(store_id,order_id) removed, and `public.pos_refund_tenders` table all confirmed by `apps/api/scripts/verify-split-settlement.mjs` |
 
 Note: `202609230002_table_waiter_assignment.sql` was renamed from `..._0001_...` (Lead
 integration fixup, PR #4) — it and Ahmed's kitchen-display migration were both authored the
@@ -59,3 +60,10 @@ No pending or applied-but-missing-from-repo migrations were found among the file
 Note: `202609210001_restaurant_foundation.sql` (Day 1) predates this row and was applied outside
 this ledger's original 2026-09-19 pass; it is not yet checked by `verify-migrations.mjs` — a
 pre-existing gap, not introduced here, left for whoever owns that migration to add.
+
+
+## Pending A2 follow-up (2026-09-28)
+
+| File | SHA-256 | Applied | Verification |
+|---|---|---|---|
+| 202609280004_refund_settlement_integrity.sql | `c397ecd6af9146f848cc3a69c662095d56814a089d56a5135d0a64fd37accdbf` | **no** | Replayed successfully in PGlite refund/report tests. Shared-database application was rejected by automatic approval review; awaiting explicit authorization. |

@@ -47,7 +47,7 @@ test('reconciles local sales, excludes cash change, and keeps unresolved sales i
   })
   assert.deepEqual(report, {
     grossSalesCents: 3000, discountCents: 100, netSalesCents: 2900, taxCents: 290,
-    cashTakingsCents: 990, cardTakingsCents: 2200, recordedTotalCents: 3190,
+    cashTakingsCents: 990, cardTakingsCents: 2200, tipsCents: 0, recordedTotalCents: 3190,
     completedOrderCount: 2, averageSaleCents: 1595, itemsSold: 5,
     pendingCount: 1, pendingAmountCents: 990, rejectedCount: 1, rejectedAmountCents: 2200,
     refundedCount: 0, refundedAmountCents: 0,

@@ -58,6 +58,9 @@ const chain = [
   '202609180001_terminal_name_uniqueness.sql',
   '202609180002_pos_orders_report_read_access.sql',
   '202609180005_refunds.sql',
+  '202609260003_service_charge.sql',
+  '202609280003_split_settlement.sql',
+  '202609280004_refund_settlement_integrity.sql',
 ]
 
 test('loadDailySummary aggregates orders, items and payments within the store timezone day', async () => {
@@ -110,8 +113,9 @@ test('loadDailySummary aggregates orders, items and payments within the store ti
     assert.equal(summary.averageSaleCents, 525)
     assert.equal(summary.refundedCount, 0)
 
-    await database.query(`insert into public.pos_refunds(store_id,order_id,amount_cents,refunded_by,created_at)
-      values ($1,$2,525,$3,'2026-09-18T11:00:00.000Z')`, [store, firstOrderId, owner])
+    await database.query(`insert into public.pos_refunds(store_id,order_id,amount_cents,refunded_by,created_at,tax_cents,merchandise_cents)
+      values ($1,$2,525,$3,'2026-09-18T11:00:00.000Z',25,500)`, [store, firstOrderId, owner])
+    await database.query(`insert into public.pos_refund_tenders(store_id,refund_id,payment_id,amount_cents) select r.store_id,r.id,p.id,525 from public.pos_refunds r join public.pos_payments p on p.order_id=r.order_id and p.store_id=r.store_id where r.order_id=$1`, [firstOrderId])
     const afterRefund = await loadDailySummary(store, '2026-09-18')
     assert.equal(afterRefund.completedOrderCount, 1)
     assert.equal(afterRefund.grossSalesCents, 500)

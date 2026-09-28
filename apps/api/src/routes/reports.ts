@@ -51,6 +51,7 @@ export interface DailySummary {
   taxCents: number
   cashTakingsCents: number
   cardTakingsCents: number
+  tipsCents?: number
   recordedTotalCents: number
   completedOrderCount: number
   averageSaleCents: number
@@ -75,19 +76,24 @@ export async function loadDailySummary(storeId: string, date: string): Promise<D
       join public.pos_orders o on o.store_id=oi.store_id and o.id=oi.order_id
       where o.store_id=$1 and o.client_generated_at >= $2 and o.client_generated_at < $3`,
       [storeId, startUtc, endUtc]),
-    db.query<{ method: string; amount: string }>(`
-      select p.method, coalesce(sum(p.amount_cents),0)::text as amount from public.pos_payments p
+    db.query<{ method: string; amount: string; tips: string }>(`
+      select p.method, coalesce(sum(p.amount_cents),0)::text as amount, coalesce(sum(p.tip_cents),0)::text as tips from public.pos_payments p
       join public.pos_orders o on o.store_id=p.store_id and o.id=p.order_id
       where o.store_id=$1 and o.client_generated_at >= $2 and o.client_generated_at < $3
       group by p.method`, [storeId, startUtc, endUtc]),
-    db.query<{ count: string; amount: string; merchandise: string; tax: string; cash: string; card: string }>(`
+    db.query<{ count: string; amount: string; merchandise: string; tax: string; cash: string; card: string; tips: string }>(`
       select count(*)::text as count, coalesce(sum(r.amount_cents),0)::text as amount,
-        coalesce(sum(o.subtotal_cents-o.discount_cents),0)::text as merchandise,
-        coalesce(sum(o.tax_cents),0)::text as tax,
-        coalesce(sum(case when p.method='cash' then r.amount_cents else 0 end),0)::text as cash,
-        coalesce(sum(case when p.method='card' then r.amount_cents else 0 end),0)::text as card
+        coalesce(sum(r.merchandise_cents),0)::text as merchandise,
+        coalesce(sum(r.tax_cents),0)::text as tax, coalesce(sum(r.tip_cents),0)::text as tips,
+        coalesce(sum(t.cash),0)::text as cash,
+        coalesce(sum(t.card),0)::text as card
       from public.pos_refunds r join public.pos_orders o on o.store_id=r.store_id and o.id=r.order_id
-      left join public.pos_payments p on p.store_id=o.store_id and p.order_id=o.id
+      left join lateral (
+        select sum(case when p.method='cash' then rt.amount_cents else 0 end) as cash,
+               sum(case when p.method='card' then rt.amount_cents else 0 end) as card
+        from public.pos_refund_tenders rt join public.pos_payments p on p.store_id=rt.store_id and p.id=rt.payment_id
+        where rt.store_id=r.store_id and rt.refund_id=r.id
+      ) t on true
       where r.store_id=$1 and r.created_at >= $2 and r.created_at < $3`,
       [storeId, startUtc, endUtc]),
   ])
@@ -104,7 +110,7 @@ export async function loadDailySummary(storeId: string, date: string): Promise<D
   return { grossSalesCents, discountCents,
     netSalesCents: grossSalesCents - discountCents - Number(refunds.rows[0]?.merchandise ?? '0'),
     taxCents: taxCents - Number(refunds.rows[0]?.tax ?? '0'),
-    cashTakingsCents, cardTakingsCents, recordedTotalCents, completedOrderCount, averageSaleCents,
+    cashTakingsCents, cardTakingsCents, tipsCents: payments.rows.reduce((sum, payment) => sum + Number(payment.tips), 0) - Number(refunds.rows[0]?.tips ?? 0), recordedTotalCents, completedOrderCount, averageSaleCents,
     itemsSold: Number(items.rows[0]?.qty ?? '0'),
     refundedCount: Number(refunds.rows[0]?.count ?? '0'), refundedAmountCents }
 }
@@ -124,7 +130,7 @@ export interface ReportOrderSummary {
   receiptNumber: string
   time: string
   totalCents: number
-  paymentMethod: 'cash' | 'card' | 'unknown'
+  paymentMethod: 'cash' | 'card' | 'split' | 'unknown'
   itemCount: number
   syncStatus: 'synced'
   employeeId: string | null
@@ -168,7 +174,7 @@ export async function loadOrdersPage(storeId: string, date: string, cursor: Orde
       o.employee_id, e.name as cashier_name,
       exists (select 1 from public.pos_refunds r where r.store_id=o.store_id and r.order_id=o.id) as refunded
     from public.pos_orders o
-    left join public.pos_payments p on p.store_id = o.store_id and p.order_id = o.id
+    left join (select store_id, order_id, case when count(*)>1 then 'split' else min(method) end as method from public.pos_payments group by store_id, order_id) p on p.store_id = o.store_id and p.order_id = o.id
     left join (select order_id, sum(quantity) as qty from public.pos_order_items where store_id=$1 group by order_id) oi
       on oi.order_id = o.id
     left join public.terminal_employees e on e.store_id = o.store_id and e.id = o.employee_id
@@ -181,7 +187,7 @@ export async function loadOrdersPage(storeId: string, date: string, cursor: Orde
   return {
     orders: page.map(row => ({
       id: row.id, receiptNumber: row.receipt_number, time: row.client_generated_at,
-      totalCents: Number(row.total_cents), paymentMethod: (row.payment_method as 'cash' | 'card' | null) ?? 'unknown',
+      totalCents: Number(row.total_cents), paymentMethod: (row.payment_method as 'cash' | 'card' | 'split' | null) ?? 'unknown',
       itemCount: Number(row.item_count), syncStatus: 'synced',
       employeeId: row.employee_id, cashierName: row.cashier_name, refunded: row.refunded,
     })),

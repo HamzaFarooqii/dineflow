@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { calculateServiceCharge, formatCents, parseCents } from '../../../../packages/domain/src/money'
-import { completeLocalSale } from '../lib/checkout'
+import { completeLocalSale, type SettlementTender } from '../lib/checkout'
 import { posDb } from '../lib/db'
 import { pushPendingOrders } from '../lib/order-sync'
 import { usePosStore } from '../lib/pos-store'
 import { closeOpenCheckAndRecordSale, saveOpenCheck, OpenCheckConflictError, type SaveCheckItem } from '../lib/open-checks'
+import { SplitSettlement } from './SplitSettlement'
 import { readTerminal } from '../terminal-auth/cache'
 
 export function PaymentScreen({ terminal = false }: { terminal?: boolean }) {
@@ -28,7 +29,10 @@ export function PaymentScreen({ terminal = false }: { terminal?: boolean }) {
   const [currency, setCurrency] = useState('USD')
   const [serviceChargeBps, setServiceChargeBps] = useState(0)
   const [catalogVersion, setCatalogVersion] = useState(1)
-  const [splitCount, setSplitCount] = useState(1)
+  const [split, setSplit] = useState(false)
+  const [splitPayments, setSplitPayments] = useState<SettlementTender[] | null>(null)
+  const [tip, setTip] = useState('')
+  const paymentId = useRef(crypto.randomUUID())
   const [employeeId, setEmployeeId] = useState<string | null>(null)
   const [employeeLoaded, setEmployeeLoaded] = useState(!terminal)
   useEffect(() => { if (storeId) void posDb.store_config.get(storeId).then(config => { if (config) { setCurrency(config.currency); setServiceChargeBps(config.service_charge_bps ?? 0); setCatalogVersion(config.catalog_version) } }) }, [storeId])
@@ -45,17 +49,18 @@ export function PaymentScreen({ terminal = false }: { terminal?: boolean }) {
   // itself from the store's live service-charge rate and will reject a tender that falls short of
   // it, so this screen must never show or accept less than what completeLocalSale will require.
   const total = lineTotal + serviceChargeCents
+  let tipCents = 0
+  try { tipCents = tip.trim() ? parseCents(tip) : 0 } catch { amountError = 'Enter a valid tip in whole cents.' }
+  const payable = total + tipCents
   let tender = 0
-  if (method === 'card') tender = total
+  if (method === 'card') tender = payable
   else if (received.trim()) { try { tender = parseCents(received) } catch (reason) { amountError = reason instanceof Error ? reason.message : 'Invalid cash amount.' } }
-  const change = tender >= total ? tender - total : 0
-  // Split bill (equal N-way): a payment-collection aid only -- the sale is still recorded as one
-  // payment for the full total, same as a card machine splitting a physical bill across several
-  // cards while charging one merchant transaction. An itemized/per-seat split would need multiple
-  // payment rows against one order, a bigger structural change out of scope for this pass.
-  const perGuestCents = splitCount > 1 ? Math.ceil(total / splitCount) : 0
+  const change = split ? (splitPayments ?? []).reduce((sum, payment) => sum + payment.change_cents, 0) : Math.max(0, tender - payable)
   const canComplete = items.length > 0 && Boolean(storeId) && !amountError && !busy && employeeLoaded &&
-    (method === 'cash' ? tender >= total : cardConfirmed)
+    (split ? Boolean(splitPayments) : method === 'cash' ? tender >= payable : cardConfirmed)
+  const settlement: SettlementTender[] | undefined = split ? splitPayments ?? undefined : tipCents > 0 ? [{
+    id: paymentId.current, method, amount_cents: total, tendered_cents: tender, change_cents: change, tip_cents: tipCents, reference: reference.trim() || null,
+  }] : undefined
   const submit = async () => {
     if (!canComplete || inProgress.current) return
     inProgress.current = true
@@ -74,11 +79,12 @@ export function PaymentScreen({ terminal = false }: { terminal?: boolean }) {
           quantity: item.quantity, discount: item.discount,
           modifiers: item.modifiers.map(modifier => ({ optionId: modifier.optionId, groupName: modifier.groupName, optionName: modifier.optionName, priceDeltaCents: modifier.priceDeltaCents })),
         }))
-        const saved = await saveOpenCheck(storeId, activeCheckId, activeCheckVersion, saveItems, serviceChargeBps, { customerId: selectedCustomer?.id ?? null }, terminal)
-        result = await closeOpenCheckAndRecordSale(storeId, activeCheckId, saved.check.version, method, tender, reference.trim() || null, serviceChargeBps, catalogVersion, terminal)
+        const saved = await saveOpenCheck(storeId, activeCheckId, activeCheckVersion, saveItems, serviceChargeBps, { customerId: selectedCustomer?.id ?? null, managerId: managerApproval?.managerId ?? null, managerApprovedAt: managerApproval?.approvedAt ?? null }, terminal)
+        usePosStore.setState({ activeCheckVersion: saved.check.version })
+        result = await closeOpenCheckAndRecordSale(storeId, activeCheckId, saved.check.version, method, tender, reference.trim() || null, serviceChargeBps, catalogVersion, terminal, settlement)
       } else {
         const approval = managerApproval ? { managerId: managerApproval.managerId, approvedAt: managerApproval.approvedAt } : null
-        result = await completeLocalSale(items, storeId, method, tender, reference.trim() || null, selectedCustomer?.id ?? null, employeeId, approval, terminal)
+        result = await completeLocalSale(items, storeId, method, tender, reference.trim() || null, selectedCustomer?.id ?? null, employeeId, approval, terminal, settlement)
         void pushPendingOrders(storeId, terminal).catch(() => undefined)
       }
       clearCart()
@@ -86,30 +92,29 @@ export function PaymentScreen({ terminal = false }: { terminal?: boolean }) {
     } catch (reason) {
       const failure = reason instanceof OpenCheckConflictError ? `${reason.message} Reload this check from Open Checks before trying again.`
         : reason instanceof Error ? reason.message : 'The check could not be saved.'
-      setError(method === 'card' && cardConfirmed
+      setError((method === 'card' && cardConfirmed) || settlement?.some(payment => payment.method === 'card')
         ? `${failure} The external card payment may have been approved. Record reference ${reference.trim() || '(none entered)'} and reconcile it before charging again.`
-        : `${failure} No receipt was issued.`)
+        : `${failure} Check Orders before retrying if the connection was lost.`)
     }
     finally { inProgress.current = false; setBusy(false) }
   }
   return <section className="payment-page"><div className="pay-main"><Link to={terminal ? '/pos/register' : '/register'}>← Back to the check</Link><p className="kicker">PAYMENT</p>
     <h1>Payment</h1>{selectedCustomer && <p className="screen-note">Customer: {selectedCustomer.name} · {selectedCustomer.phone_normalized ? `+${selectedCustomer.phone_normalized}` : 'No phone'}</p>}{!items.length && <p className="form-notice error">This check is empty. Add menu items before taking payment.</p>}
+    <label className="card-confirm"><input type="checkbox" checked={split} disabled={busy} onChange={event => setSplit(event.target.checked)} />Split payment</label>
+    {split ? <SplitSettlement total={total} items={items} currency={currency} disabled={busy} onChange={setSplitPayments} /> : <>
     <fieldset className="methods"><legend>Select payment method</legend>
       <button type="button" className={method === 'cash' ? 'selected' : ''} onClick={() => setMethod('cash')}>Cash</button>
       <button type="button" className={method === 'card' ? 'selected' : ''} onClick={() => setMethod('card')}>Card (external)</button>
     </fieldset>
-    <label className="split-bill">Split bill between
-      <input type="number" min={1} max={20} step={1} inputMode="numeric" value={splitCount}
-        onChange={event => setSplitCount(Math.min(20, Math.max(1, Math.round(Number(event.target.value)) || 1)))} /> guest{splitCount === 1 ? '' : 's'}
-      {splitCount > 1 && <span className="split-bill-hint">{formatCents(perGuestCents, currency)} each (still recorded as one payment for the full total)</span>}
-    </label>
+    <label>Tip (optional)<input inputMode="decimal" value={tip} onChange={event => { setTip(event.target.value); setCardConfirmed(false) }} placeholder="0.00" /></label>
     {method === 'cash' ? <label>Amount received<input className="money-input" type="text" inputMode="decimal" value={received}
       onChange={event => setReceived(event.target.value)} placeholder="0.00" autoComplete="off" /><span className="quick-tender" aria-label="Quick cash amounts">
-        <button type="button" onClick={() => setReceived((total / 100).toFixed(2))}>Exact amount</button>
+        <button type="button" onClick={() => setReceived((payable / 100).toFixed(2))}>Exact amount</button>
         {[2000, 5000, 10000].map(amount => <button type="button" key={amount} onClick={() => setReceived((amount / 100).toFixed(2))}>{formatCents(amount, currency)}</button>)}
       </span></label> : <>
       <label>External payment reference (optional)<input type="text" maxLength={120} value={reference} onChange={event => setReference(event.target.value)} /></label>
       <label className="card-confirm"><input type="checkbox" checked={cardConfirmed} onChange={event => setCardConfirmed(event.target.checked)} /> I confirm the external card payment was approved.</label>
+    </>}
     </>}
     {amountError && <p className="form-notice error" role="alert">{amountError}</p>}
     {error && <p className="form-notice error" role="alert">{error}</p>}
@@ -120,7 +125,8 @@ export function PaymentScreen({ terminal = false }: { terminal?: boolean }) {
         <span>Service charge <b>{formatCents(serviceChargeCents, currency)}</b></span>
       </>}
       <strong>Amount to record <b>{formatCents(total, currency)}</b></strong>
+      <span>Tips <b>{formatCents(split ? (splitPayments ?? []).reduce((sum, payment) => sum + (payment.tip_cents ?? 0), 0) : tipCents, currency)}</b></span>
     </div>
     <button className="cta" type="button" disabled={!canComplete} onClick={() => void submit()}>{busy ? 'Closing check…' : 'Close check'}</button>
-    <p className="screen-note">The receipt is saved locally before sync begins.</p></aside></section>
+    <p className="screen-note">{activeCheckId ? 'This held check closes online.' : 'The receipt is saved locally before sync begins.'}</p></aside></section>
 }
