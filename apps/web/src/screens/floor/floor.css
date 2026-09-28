@@ -14,6 +14,26 @@
 .floor-area-delete:hover{background:var(--mise-danger)!important;color:var(--mise-ink-inverse)!important}
 
 .floor-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px}
+.floor-bookings{margin:18px 0;padding:16px;border:1px solid var(--mise-border-hairline);border-radius:var(--mise-r3);background:var(--mise-surface)}
+.floor-bookings-head,.floor-booking-actions,.floor-booking-columns,.floor-booking-card,.floor-booking-card-actions{display:flex;gap:12px}
+.floor-bookings-head{align-items:flex-end;justify-content:space-between;margin-bottom:12px}
+.floor-bookings-head h2,.floor-booking-list h3{margin:0}
+.floor-booking-actions{align-items:flex-end;flex-wrap:wrap}
+.floor-booking-columns{align-items:stretch}
+.floor-booking-list{flex:1 1 0;min-width:0}
+.floor-booking-list header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.floor-booking-list header span{min-width:28px;min-height:28px;display:inline-grid;place-items:center;border-radius:999px;background:var(--mise-surface-sunken);color:var(--mise-ink-muted);font-size:.85rem;font-weight:700}
+.floor-booking-card{align-items:flex-start;justify-content:space-between;padding:12px 0;border-top:1px solid var(--mise-border-hairline)}
+.floor-booking-main{min-width:0}
+.floor-booking-main strong,.floor-booking-main span,.floor-booking-main small{display:block}
+.floor-booking-main small{color:var(--mise-ink-muted);margin-top:2px}
+.floor-booking-main p{margin:6px 0 0;color:var(--mise-ink-muted)}
+.floor-booking-card-actions{justify-content:flex-end;flex-wrap:wrap}
+.floor-booking-warnings{margin:0 0 12px;padding-left:20px;color:var(--mise-warning)}
+.floor-booking-form{display:grid;gap:12px}
+.floor-booking-form label{display:grid;gap:6px;color:var(--mise-ink-secondary);font-size:12px;font-weight:700}
+.floor-booking-form input,.floor-booking-form textarea{width:100%;min-height:42px;padding:0 11px;border:1px solid var(--mise-border-strong);border-radius:var(--mise-r2);background:var(--mise-surface);color:var(--mise-ink)}
+.floor-booking-form textarea{min-height:88px;padding-top:10px;resize:vertical}
 .floor-add-table-card{min-height:116px;padding:16px;border:1px dashed var(--mise-border-strong);border-radius:var(--mise-r3);background:transparent;color:var(--mise-ink-muted);font:600 13px 'Inter',sans-serif;display:grid;place-items:center;transition:background .15s ease,border-color .15s ease,color .15s ease}
 .floor-add-table-card:hover{background:var(--mise-surface);border-color:var(--mise-ink);color:var(--mise-ink)}
 
@@ -183,6 +203,9 @@
 .floor-manager-table-code{display:grid;place-items:center;width:42px;height:38px;border-radius:var(--mise-r2);background:var(--mise-service-base);color:white;font:700 12px var(--mise-font-mono)}
 
 @media(max-width:800px){
+  .floor-bookings-head,.floor-booking-columns,.floor-booking-card{flex-direction:column}
+  .floor-booking-actions{align-items:stretch}
+  .floor-booking-actions .select-field,.floor-booking-actions button{width:100%}
   .dialog-panel.floor-manager-dialog{width:100%;height:100%;max-height:100vh;border-radius:0}
   .floor-manager-dialog .dialog-body{max-height:calc(100vh - 78px);padding:0 14px 24px}
   .floor-manager-grid{grid-template-columns:1fr}

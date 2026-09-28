@@ -24,7 +24,8 @@ import { configuredApiUrl, loadCatalog } from '../lib/catalog'
 import { classifySyncState, type SyncState } from '../lib/order-sync-core'
 import {
   fetchCustomerReport, fetchDailySummary, fetchFoodCostReport, fetchInventoryReport, fetchKitchenPerformanceReport, fetchOrdersPage, fetchOversold, fetchShifts,
-  type CustomerReport, type FoodCostReport, type InventoryReport, type KitchenPerformanceReport, type ServerOversoldProduct, type ShiftRow,
+  fetchBreaks, downloadTimekeepingCsv, correctShift, correctBreak,
+  type CustomerReport, type FoodCostReport, type InventoryReport, type KitchenPerformanceReport, type ServerOversoldProduct, type ShiftRow, type BreakRow,
 } from '../lib/server-reports'
 import { fetchFloorPlan, type FloorPlan } from '../lib/floor'
 import { fetchKitchenTickets, type KitchenTicket } from '../lib/kitchen'
@@ -32,6 +33,7 @@ import { buildCsv, downloadCsv } from '../lib/csv'
 import { PageHeader } from '../components/PageHeader'
 import { MetricCard } from '../components/MetricCard'
 import { StatusBadge } from '../components/StatusBadge'
+import { Dialog } from '../components/Dialog'
 import { TABLE_STATUS_LABELS, TABLE_STATUS_TONE } from '../../../../packages/domain/src/table-status'
 import { KITCHEN_TICKET_STATUS_LABELS, KITCHEN_TICKET_STATUS_TONE } from '../../../../packages/domain/src/kitchen-ticket-status'
 import { Wallet, RefreshCw, Award, AlertTriangle, CircleAlert, Receipt, ShoppingCart, Users, LayoutGrid, ChefHat, Clock, Package, Calendar } from '../components/icons'
@@ -734,20 +736,37 @@ interface HoursWorkedRow {
   totalMs: number
   closedShifts: number
   openShift: ShiftRow | null
+  paidBreakMs: number
+  unpaidBreakMs: number
+  openBreak: BreakRow | null
 }
 
-function groupHoursWorked(shifts: ShiftRow[]): HoursWorkedRow[] {
+// Break minutes are grouped the same way as shifts: an open break (ended_at === null) is shown
+// separately from closed totals rather than folded in, so an in-progress break never silently
+// depresses the "hours worked" number while it's still running.
+function groupHoursWorked(shifts: ShiftRow[], breaks: BreakRow[]): HoursWorkedRow[] {
   const rows = new Map<string, HoursWorkedRow>()
-  for (const shift of shifts) {
-    const row = rows.get(shift.employee_id) ?? {
-      employeeId: shift.employee_id, name: shift.employee_name, role: shift.employee_role,
-      totalMs: 0, closedShifts: 0, openShift: null,
+  function rowFor(employeeId: string, name: string, role: string): HoursWorkedRow {
+    return rows.get(employeeId) ?? {
+      employeeId, name, role,
+      totalMs: 0, closedShifts: 0, openShift: null, paidBreakMs: 0, unpaidBreakMs: 0, openBreak: null,
     }
+  }
+  for (const shift of shifts) {
+    const row = rowFor(shift.employee_id, shift.employee_name, shift.employee_role)
     if (shift.clocked_out_at) {
       row.totalMs += Math.max(0, Date.parse(shift.clocked_out_at) - Date.parse(shift.clocked_in_at))
       row.closedShifts += 1
     } else row.openShift = shift
     rows.set(shift.employee_id, row)
+  }
+  for (const brk of breaks) {
+    const row = rows.get(brk.employee_id)
+    if (!row) continue
+    if (brk.ended_at) {
+      const ms = Math.max(0, Date.parse(brk.ended_at) - Date.parse(brk.started_at))
+      if (brk.paid) row.paidBreakMs += ms; else row.unpaidBreakMs += ms
+    } else row.openBreak = brk
   }
   return Array.from(rows.values()).sort((a, b) => Number(Boolean(b.openShift)) - Number(Boolean(a.openShift)) || b.totalMs - a.totalMs || a.name.localeCompare(b.name))
 }
@@ -799,8 +818,78 @@ function InventoryReportView({ report, currency }: { report: InventoryReport; cu
   </>
 }
 
-function HoursReport({ rows }: { rows: HoursWorkedRow[] }) {
+// Manager correction to a single shift or break field. Always requires a reason (1-500 chars);
+// the server writes it to an immutable audit row alongside the correction (timekeeping_corrections)
+// — this form never claims to "delete" or "undo" history, only to add a corrected value on top.
+function CorrectionDialog({ storeId, record, onClose, onSaved }: {
+  storeId: string
+  record: { type: 'shift'; row: ShiftRow } | { type: 'break'; row: BreakRow }
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const fieldOptions = record.type === 'shift'
+    ? [{ value: 'clocked_in_at', label: 'Clock-in time' }, { value: 'clocked_out_at', label: 'Clock-out time' }]
+    : [{ value: 'started_at', label: 'Break start time' }, { value: 'ended_at', label: 'Break end time' }]
+  const [field, setField] = useState(fieldOptions[0].value)
+  const currentValue = record.type === 'shift'
+    ? (field === 'clocked_in_at' ? record.row.clocked_in_at : record.row.clocked_out_at)
+    : (field === 'started_at' ? record.row.started_at : record.row.ended_at)
+  const [newValue, setNewValue] = useState(currentValue ? currentValue.slice(0, 16) : '')
+  const [reason, setReason] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  async function submit() {
+    if (!newValue) { setError('A new value is required.'); return }
+    if (reason.trim().length < 1) { setError('A reason is required for every correction.'); return }
+    setSaving(true); setError('')
+    try {
+      const iso = new Date(newValue).toISOString()
+      if (record.type === 'shift') await correctShift(storeId, record.row.id, field as 'clocked_in_at' | 'clocked_out_at', iso, reason.trim())
+      else await correctBreak(storeId, record.row.id, field as 'started_at' | 'ended_at', iso, reason.trim())
+      onSaved()
+    } catch (reason_) {
+      setError(reason_ instanceof Error ? reason_.message : 'Could not save this correction.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return <Dialog kicker="MANAGER CORRECTION" title={`Correct ${record.type === 'shift' ? 'shift' : 'break'} record`} onClose={() => { if (!saving) onClose() }}>
+    <form className="inventory-create-form" onSubmit={event => { event.preventDefault(); void submit() }}>
+      <label>Field
+        <select value={field} onChange={event => setField(event.target.value)} disabled={saving}>
+          {fieldOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </select>
+      </label>
+      <label>New value
+        <input autoFocus type="datetime-local" value={newValue} onChange={event => setNewValue(event.target.value)} disabled={saving} />
+      </label>
+      <label>Reason <small>Required — kept in the audit log</small>
+        <textarea value={reason} onChange={event => setReason(event.target.value)} maxLength={500} rows={3} placeholder="Why is this correction being made?" disabled={saving} />
+      </label>
+      {error && <p className="form-notice error" role="alert">{error}</p>}
+      <div className="inventory-create-actions">
+        <button type="button" className="secondary-cta" onClick={onClose} disabled={saving}>Cancel</button>
+        <button type="submit" className="cta" disabled={saving || !newValue || !reason.trim()}>{saving ? 'Saving…' : 'Save correction'}</button>
+      </div>
+    </form>
+  </Dialog>
+}
+
+function HoursReport({ rows, storeId, from, to, onCorrected }: { rows: HoursWorkedRow[]; storeId: string; from: string; to: string; onCorrected: () => void }) {
   const totalMs = rows.reduce((sum, row) => sum + row.totalMs, 0)
+  const [correcting, setCorrecting] = useState<{ type: 'shift'; row: ShiftRow } | { type: 'break'; row: BreakRow } | null>(null)
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState('')
+
+  async function exportCsv() {
+    setExporting(true); setExportError('')
+    try { await downloadTimekeepingCsv(storeId, from, to) }
+    catch (reason) { setExportError(reason instanceof Error ? reason.message : 'Export failed.') }
+    finally { setExporting(false) }
+  }
+
   return <>
     <div className="metric-grid report-kpi-grid">
       <MetricCard label="Closed hours" value={hoursLabel(totalMs)} detail="Completed shifts in range" featured />
@@ -809,9 +898,29 @@ function HoursReport({ rows }: { rows: HoursWorkedRow[] }) {
       <MetricCard label="Closed shifts" value={rows.reduce((sum, row) => sum + row.closedShifts, 0)} detail="Clocked out successfully" />
     </div>
     <section className="dashboard-panel report-data-panel">
-      <div className="panel-header"><div><h2><Clock aria-hidden="true" size={16} className="panel-icon" />Hours worked</h2><small>Closed-shift totals grouped by employee</small></div></div>
-      {rows.length ? <div className="table-wrapper"><table className="dashboard-table report-table"><thead><tr><th>Employee</th><th>Role</th><th>Status</th><th className="num">Closed shifts</th><th className="num">Hours</th></tr></thead><tbody>{rows.map(row => <tr key={row.employeeId}><td><strong>{row.name}</strong></td><td className="report-role">{row.role.replaceAll('_', ' ')}</td><td>{row.openShift ? <StatusBadge tone="success">On shift now</StatusBadge> : <StatusBadge tone="muted">Off shift</StatusBadge>}</td><td className="num">{row.closedShifts}</td><td className="num"><strong>{hoursLabel(row.totalMs)}</strong></td></tr>)}</tbody></table></div> : <p className="empty-panel-copy">No shifts started in this date range.</p>}
+      <div className="panel-header">
+        <div><h2><Clock aria-hidden="true" size={16} className="panel-icon" />Hours worked</h2><small>Closed-shift totals grouped by employee, net of unpaid breaks</small></div>
+        <button type="button" className="secondary-cta" onClick={() => void exportCsv()} disabled={exporting} aria-label="Export payroll-ready CSV for this date range">{exporting ? 'Preparing…' : 'Export payroll CSV'}</button>
+      </div>
+      {exportError && <p className="form-notice error" role="alert">{exportError}</p>}
+      {rows.length ? <div className="table-wrapper"><table className="dashboard-table report-table"><thead><tr>
+        <th>Employee</th><th>Role</th><th>Status</th><th className="num">Closed shifts</th><th className="num">Hours</th>
+        <th className="num">Paid break</th><th className="num">Unpaid break</th><th>Correct</th>
+      </tr></thead><tbody>{rows.map(row => <tr key={row.employeeId}>
+        <td><strong>{row.name}</strong></td>
+        <td className="report-role">{row.role.replaceAll('_', ' ')}</td>
+        <td>{row.openShift ? <StatusBadge tone="success">On shift now</StatusBadge> : <StatusBadge tone="muted">Off shift</StatusBadge>}{row.openBreak && <StatusBadge tone="warning">{row.openBreak.paid ? 'Paid' : 'Unpaid'} break in progress</StatusBadge>}</td>
+        <td className="num">{row.closedShifts}</td>
+        <td className="num"><strong>{hoursLabel(row.totalMs)}</strong></td>
+        <td className="num">{hoursLabel(row.paidBreakMs)}</td>
+        <td className="num">{hoursLabel(row.unpaidBreakMs)}</td>
+        <td>{row.openShift
+          ? <button type="button" className="secondary-cta" onClick={() => setCorrecting({ type: 'shift', row: row.openShift as ShiftRow })} aria-label={`Correct ${row.name}'s open shift`}>Correct…</button>
+          : <span className="empty-panel-copy">—</span>}
+        </td>
+      </tr>)}</tbody></table></div> : <p className="empty-panel-copy">No shifts started in this date range.</p>}
     </section>
+    {correcting && <CorrectionDialog storeId={storeId} record={correcting} onClose={() => setCorrecting(null)} onSaved={() => { setCorrecting(null); onCorrected() }} />}
   </>
 }
 
@@ -889,7 +998,10 @@ export function ReportsScreen() {
           ? fetchFoodCostReport(state.storeId, from, to).then(result => { if (active) setFoodCostReport(result) })
           : tab === 'kitchen'
             ? fetchKitchenPerformanceReport(state.storeId, from, to).then(result => { if (active) setKitchenReport(result) })
-            : fetchShifts(state.storeId, calendarDayBoundsUtc(from, state.config.timezone).startUtc, calendarDayBoundsUtc(to, state.config.timezone).endUtc).then(result => { if (active) setHoursRows(groupHoursWorked(result)) })
+            : Promise.all([
+                fetchShifts(state.storeId, calendarDayBoundsUtc(from, state.config.timezone).startUtc, calendarDayBoundsUtc(to, state.config.timezone).endUtc),
+                fetchBreaks(state.storeId, calendarDayBoundsUtc(from, state.config.timezone).startUtc, calendarDayBoundsUtc(to, state.config.timezone).endUtc),
+              ]).then(([shifts, breaks]) => { if (active) setHoursRows(groupHoursWorked(shifts, breaks)) })
     void load.catch(reason => { if (active) setOperationalError(reason instanceof Error ? reason.message : 'This report could not be loaded.') })
       .finally(() => { if (active) setOperationalLoading(false) })
     return () => { active = false }
@@ -924,7 +1036,7 @@ export function ReportsScreen() {
     {state && tab === 'inventory' && !operationalLoading && !operationalError && inventoryReport && <InventoryReportView report={inventoryReport} currency={state.config.currency} />}
     {state && tab === 'food-cost' && !operationalLoading && !operationalError && foodCostReport && <FoodCostReportView report={foodCostReport} currency={state.config.currency} />}
     {state && tab === 'kitchen' && !operationalLoading && !operationalError && kitchenReport && <KitchenPerformanceView report={kitchenReport} />}
-    {state && tab === 'hours' && !operationalLoading && !operationalError && hoursRows && <HoursReport rows={hoursRows} />}
+    {state && tab === 'hours' && !operationalLoading && !operationalError && hoursRows && <HoursReport rows={hoursRows} storeId={state.storeId} from={from} to={to} onCorrected={() => setOperationalReload(value => value + 1)} />}
   </section>
 }
 

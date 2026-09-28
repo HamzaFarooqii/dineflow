@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from 'express'
+import type { PoolClient } from 'pg'
 import { db } from '../db.js'
 import { requireStoreMember, requireStoreManager, sendApiError, ApiError } from './auth.js'
 import { requireCashierTerminal } from '../terminal-auth/routes.js'
@@ -166,8 +167,10 @@ export interface TableStatusRow {
 // who's signed in, unlike the manager's manual override above. Returns null (never throws) when
 // the row wasn't at expectedStatus or doesn't exist/isn't active — callers decide whether that's
 // an error (the HTTP handler does) or an ignorable no-op (the kitchen hook does).
-export async function applyTableStatusTransition(storeId: string, tableId: string, expectedStatus: TableStatus, status: TableStatus, assignedWaiterId: string | null = null): Promise<TableStatusRow | null> {
-  const result = await db.query<TableStatusRow>(
+type Queryable = Pick<typeof db, 'query'> | PoolClient
+
+export async function applyTableStatusTransition(storeId: string, tableId: string, expectedStatus: TableStatus, status: TableStatus, assignedWaiterId: string | null = null, queryable: Queryable = db): Promise<TableStatusRow | null> {
+  const result = await queryable.query<TableStatusRow>(
     `update public.restaurant_tables
      set
        status = $1,
