@@ -34,12 +34,12 @@ Lives inside the existing Floor screen, not a separate page — owner/manager at
    active list (don't expect a "cancelled" list view — just confirm it's gone and doesn't
    reappear on refresh).
 6. Create a third entry and click **Cancel** → same check.
-7. **Known automated-test gap (flagged in the current plan, not yet closed):** there is no
-   HTTP-level test that seats a booking twice with the same idempotency key, or from a different
-   store's session, even though the code path (`seat()` → `applyTableStatusTransition`, row-locked,
-   replay-safe by inspection) looks correct. Worth doing once by hand: seat the same booking twice
-   in a row (double-click, or retry after a slow network) and confirm the table doesn't end up in
-   a broken state or double-decrement anything.
+7. The idempotency/cross-store gap this section used to flag is now closed —
+   `apps/api/src/routes/reservations-seat.test.ts` proves `seat()`'s real HTTP path replays a
+   duplicate `operation_id` instead of double-seating, rejects a stale retry with a different
+   operation id, and can't seat another store's booking even with a well-formed request. Still
+   worth a manual sanity check once: seat the same booking twice in a row (double-click, or retry
+   after a slow network) and confirm the table doesn't end up in a broken state.
 
 ## 2. Staff timekeeping — breaks and payroll
 
@@ -176,6 +176,6 @@ Once you have at least one delivery order to work with:
 Anything already listed as explicitly deferred in `docs/MODULE_STATUS.md` — true open
 tabs/hold-resume, split-tender settlement, tips, kitchen SLA/course-firing, combos — since none of
 that shipped this weekend and isn't part of Bisma's merged scope. If everything above checks out,
-the honest remaining risk in her slice is the delivery-checkout gap in Section 5 and the
-reservations `seat()` idempotency test gap noted in Section 1 — both are already tracked, not new
-surprises.
+the one honest remaining risk in her slice is the delivery-checkout gap in Section 5 — already
+tracked, not a new surprise. The reservations `seat()` test gap noted in Section 1 has since been
+closed with a real test.

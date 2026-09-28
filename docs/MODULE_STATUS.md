@@ -49,7 +49,7 @@ Hamza closeout evidence:
 | Module | Status | Done now | Explicitly left |
 |---|---|---|---|
 | **A. POS / Register** | 🟡 | Dine-in/takeaway/delivery, cart and notes, guest requirement, inventory warning, discounts, rewards, promotions, service charge, manager approval, modifiers, offline checkout, receipts, refund flow, equal-split calculator. **Discount-stacking is a decided policy, not an open gap**: a line carries exactly one discount source (manual/reward/promotion), whichever was applied last — documented as a permanent invariant next to `LineDiscount` in `packages/domain/src/money.ts`, confirmed by audit to already hold structurally (every write site replaces the field, none accumulate) | Hold/resume; true multiple-payment/itemized/per-seat split settlement; tips |
-| **B. Front of House / Tables** | 🟡 | Areas/tables CRUD in an Ember dialog, Seat/Add order/Bill/Settle/Clean, Transfer/Merge, waiter terminal mode, atomic status transitions, reservation/waitlist drawer with conflict warnings and seat-once table assignment. Audited 2026-09-29: `seat()` correctly reuses the shared atomic `applyTableStatusTransition` inside a transaction with a row lock and replays idempotently on a duplicate `operation_id` — sound by code inspection, but `reservations.test.ts` doesn't yet exercise that HTTP path's idempotency/cross-store rejection directly (only 2 tests, neither hits `seat()` over HTTP) | True running/open table tabs rather than last-completed-order context; a dedicated `seat()` idempotency/tenant-isolation test |
+| **B. Front of House / Tables** | ✅ | Areas/tables CRUD in an Ember dialog, Seat/Add order/Bill/Settle/Clean, Transfer/Merge, waiter terminal mode, atomic status transitions, reservation/waitlist drawer with conflict warnings and seat-once table assignment. Audited 2026-09-29: `seat()` correctly reuses the shared atomic `applyTableStatusTransition` inside a transaction with a row lock and replays idempotently on a duplicate `operation_id`. **Gap closed 2026-09-29** (`apps/api/src/routes/reservations-seat.test.ts`): the HTTP path itself is now proven, not just the underlying function — duplicate-`operation_id` replay, an already-seated booking rejecting a different operation id, a cross-store booking id returning `not_found` rather than acting on another store's row, and a session claiming a different store's `store_id` outright rejected with `cross_store_reference` | True running/open table tabs rather than last-completed-order context |
 | **C. Menu** | 🟡 | Product/category CRUD, availability, kitchen routing, recipe builder, unit conversion, food cost, ingredient creation dialog, modifier group/option CRUD and checkout/KDS/receipt snapshots | Sellable bundles/combos; a dedicated variant matrix beyond modifier-based sizes |
 | **D. Kitchen / KDS** | 🟡 | Order-derived tickets, station grouping, preparing/ready/served lifecycle, Chef terminal mode, modifiers, recipe consumption, table synchronization, performance reporting | Delay/SLA alerts; course-based firing; ticket history view. Standalone ticket creation remains intentionally excluded |
 | **E. Recipes** | ✅ | Recipe CRUD, yields, units, conversion-aware costing, searchable ingredient selector, inline ingredient creation | No committed gap |
@@ -62,12 +62,13 @@ Hamza closeout evidence:
 | **L. Reports** | ✅ | Sales, orders, refunds, customer/loyalty, inventory/wastage/expiry, hours, food cost/dish profitability, kitchen performance, dashboard floor/kitchen pulse | No committed report gap; new modules must add their own reporting slices |
 | **M. Restaurant Intelligence** | 🔴 | — | Forecasting, anomaly detection, demand planning and recommendation surfaces; start only after sufficient production data exists |
 
-Current count: **6 complete modules, 6 operational/partial modules, 1 deliberately deferred
+Current count: **7 complete modules, 5 operational/partial modules, 1 deliberately deferred
 module**. The five-day scope is complete; the partial/missing items above are the next product
 backlog, not hidden failures. Purchasing & Vendors moved from 🔴 to 🟡 and Customers/CRM moved
 from 🟡 to ✅ this same day (2026-09-29), alongside Staff picking up breaks/payroll and the Rider
 workspace — see the header note above for what was independently audited/fixed before trusting
-these.
+these. Front of House / Tables moved 🟡 to ✅ the same day once the `seat()` HTTP idempotency and
+cross-store gap the audit found was closed with a real test.
 
 ## Cross-cutting foundation
 
