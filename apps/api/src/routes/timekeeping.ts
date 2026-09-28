@@ -27,11 +27,20 @@ function idParam(req: Request, name: string): string {
 
 interface BreakRow { id: string; shift_id: string; employee_id: string; paid: boolean; started_at: string; ended_at: string | null }
 
+function isUniqueViolation(reason: unknown): boolean {
+  return Boolean(reason && typeof reason === 'object' && 'code' in reason && (reason as { code?: string }).code === '23505')
+}
+
 // POST /pos/shifts/breaks/start — starts a paid or unpaid break against the caller's own open
 // shift. The DB trigger (shift_breaks_require_open_shift) is the real guard against starting a
 // break on a shift that isn't open; the partial unique index (shift_breaks_one_open_per_shift)
 // is the real guard against overlapping breaks. Both are enforced at the database level, not
-// just here — this check exists only to turn a constraint violation into a clear message.
+// just the pre-check below, which is a plain select-then-insert and cannot by itself prevent two
+// concurrent "start break" requests from both passing it before either insert commits — the
+// insert's own unique-violation catch (not the pre-check) is what actually closes that race, and
+// without it the race loser fell through to sendApiError's generic 23505 branch, which is
+// hard-coded checkout copy ("A sale already uses this receipt...") having nothing to do with a
+// break. Same reasoning as the pre-check: turn the real constraint violation into a clear message.
 async function startBreak(req: Request, res: Response) {
   try {
     const storeId = storeIdParam(req)
@@ -45,11 +54,17 @@ async function startBreak(req: Request, res: Response) {
     if (!shift.rowCount) throw new ApiError(409, 'no_open_shift', 'Clock in before starting a break.')
     const openBreak = await db.query('select 1 from public.shift_breaks where store_id=$1 and shift_id=$2 and ended_at is null', [storeId, shift.rows[0].id])
     if (openBreak.rowCount) throw new ApiError(409, 'break_already_open', 'A break is already in progress.')
-    const result = await db.query<BreakRow>(
-      `insert into public.shift_breaks (store_id, shift_id, employee_id, paid) values ($1,$2,$3,$4)
-       returning id, shift_id, employee_id, paid, started_at::text as started_at, ended_at::text as ended_at`,
-      [storeId, shift.rows[0].id, session.employeeId, paid],
-    )
+    let result
+    try {
+      result = await db.query<BreakRow>(
+        `insert into public.shift_breaks (store_id, shift_id, employee_id, paid) values ($1,$2,$3,$4)
+         returning id, shift_id, employee_id, paid, started_at::text as started_at, ended_at::text as ended_at`,
+        [storeId, shift.rows[0].id, session.employeeId, paid],
+      )
+    } catch (insertReason) {
+      if (isUniqueViolation(insertReason)) throw new ApiError(409, 'break_already_open', 'A break is already in progress.')
+      throw insertReason
+    }
     res.status(201).json({ break: result.rows[0] })
   } catch (reason) { sendApiError(res, reason) }
 }
