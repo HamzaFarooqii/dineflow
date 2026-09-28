@@ -56,8 +56,6 @@ type NavItem = readonly [LucideIcon, string, string]
 const navGroups: readonly { label: string | null; items: readonly NavItem[] }[] = [
   { label: null, items: [[LayoutDashboard, 'Dashboard', '/dashboard']] },
   { label: 'Operate', items: [[ShoppingCart, 'Sell', '/register'], [ClipboardList, 'Orders', '/orders'], [LayoutGrid, 'Floor & Tables', '/floor'], [ChefHat, 'Kitchen', '/kitchen'], [Truck, 'Dispatch', '/delivery']] },
-  { label: 'Manage', items: [[UtensilsCrossed, 'Menu', '/products'], [Package, 'Inventory', '/inventory'], [Users, 'Guests', '/customers'], [Tag, 'Promotions', '/promotions']] },
-  { label: 'Operate', items: [[ShoppingCart, 'Sell', '/register'], [ClipboardList, 'Orders', '/orders'], [LayoutGrid, 'Floor & Tables', '/floor'], [ChefHat, 'Kitchen', '/kitchen']] },
   { label: 'Manage', items: [[UtensilsCrossed, 'Menu', '/products'], [Package, 'Inventory', '/inventory'], [Truck, 'Purchasing', '/purchasing'], [Users, 'Guests', '/customers'], [Tag, 'Promotions', '/promotions']] },
   { label: 'Insights', items: [[BarChart3, 'Reports', '/reports']] },
 ]
