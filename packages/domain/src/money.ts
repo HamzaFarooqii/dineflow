@@ -25,8 +25,17 @@ export function sumLines(lines: ReturnType<typeof calculateLine>[]) {
   }), { subtotalCents: 0, taxCents: 0, totalCents: 0 })
 }
 
-// A line may carry at most one discount in Phase 1 (docs/05_product_requirements.md section 3):
-// a percentage in basis points (rounded half up) or a fixed integer-cent amount bounded by the line subtotal.
+// Discount-stacking policy (docs/day-plans/final-application-work-split.md H1, decided rather
+// than left open): a cart line carries AT MOST ONE discount, ever -- a manual percent/fixed
+// discount, a redeemed loyalty reward, or an applied promotion, never a combination. This is a
+// permanent design decision, not a Phase 1 placeholder pending a future "stacking" feature.
+// Every write site (RegisterScreen.tsx's discount editor, pos-store.ts's setLineDiscount/
+// applyRewardDiscount/applyPromotionDiscount) REPLACES this field wholesale; none of them ever
+// read the current value to add to it. Whichever the cashier applies last simply wins -- that's
+// the entire precedence rule, and it needs no runtime enforcement beyond this field staying a
+// single nullable value rather than a list, because a list is the only shape that could stack.
+// If a future requirement genuinely needs combinable discounts, that's a new type and a new
+// decision, not a loosening of this one.
 export type LineDiscount = { kind: 'percent'; bps: number } | { kind: 'fixed'; cents: number } | null
 
 // Cashiers may apply a discount up to this share of the line subtotal without manager approval (FEAT-AUTH-02).
