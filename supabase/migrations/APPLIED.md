@@ -47,6 +47,7 @@ schema no longer matches history, and it needs manual reconciliation, not a sile
 | 202609260003_service_charge.sql | `a8268107e9942418d7f36274ca375690553fad62f3f3c9b66a4cc1e842d34371` | yes | `stores.service_charge_bps` and `pos_orders.service_charge_cents` columns exist |
 | 202609270001_modifiers.sql | `c22d27afa488f5142da526dae806a2157593deffc4ee3acd681c98a7c8658300` | yes | all four modifier tables, RLS, and member-read policies confirmed by `verify-day5-closeout.mjs` |
 | 202609280001_inventory_terminal_tenant_fks.sql | `0152bf0c5cf6106473aef9309e3edfe7d248356d0e98d3f3c27eaee4474b7625` | yes | all four composite inventory-to-terminal-employee foreign keys confirmed by `verify-day5-closeout.mjs` |
+| 202609280002_open_checks.sql | `7ff44ad26a18bb2723224ee4c7a53aa8d280e84657ea30d9e75e8fa2d5e4fc1d` | yes | `public.open_checks`, `public.open_check_items`, `public.open_check_item_modifiers` tables and the `open_checks_one_open_per_table` partial unique index confirmed by `apps/api/scripts/verify-open-checks.mjs` |
 
 Note: `202609230002_table_waiter_assignment.sql` was renamed from `..._0001_...` (Lead
 integration fixup, PR #4) — it and Ahmed's kitchen-display migration were both authored the

@@ -10,6 +10,7 @@ import { pushPendingOrders } from '../lib/order-sync'
 import { approvalIsCurrent, cartSignature, productsRequiringApproval, usePosStore, type CartItem, type LineDiscount, type SelectedModifier } from '../lib/pos-store'
 import { fetchLoyaltyAccount, fetchRewardRules, type LoyaltyAccount, type RewardRule } from '../lib/loyalty'
 import { fetchActivePromotions, type Promotion } from '../lib/promotions'
+import { createOpenCheck, saveOpenCheck, OpenCheckConflictError, type SaveCheckItem } from '../lib/open-checks'
 import { currentAccess, type TerminalCache } from '../terminal-auth/cache'
 import { ManagerApprovalModal } from '../terminal-auth/ManagerApprovalModal'
 import { requireSupabase } from '../lib/supabase'
@@ -53,6 +54,9 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
   const [approvalReason, setApprovalReason] = useState('')
   const [oversoldAcknowledged, setOversoldAcknowledged] = useState(false)
   const [modifierPicker, setModifierPicker] = useState<{ product: LocalProduct; lineId?: string; initial: SelectedModifier[] } | null>(null)
+  const [employeeId, setEmployeeId] = useState<string | null>(null)
+  const [holdBusy, setHoldBusy] = useState(false)
+  const [holdError, setHoldError] = useState('')
   const searchRef = useRef<HTMLInputElement>(null)
   const cart = usePosStore(state => state.items)
   const addItem = usePosStore(state => state.addItem)
@@ -74,6 +78,10 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
   const setStoreContext = usePosStore(state => state.setStoreContext)
   const setCatalogStatus = usePosStore(state => state.setCatalogStatus)
   const totals = usePosStore(state => state.totals)
+  const activeTableId = usePosStore(state => state.activeTableId)
+  const activeCheckId = usePosStore(state => state.activeCheckId)
+  const activeCheckVersion = usePosStore(state => state.activeCheckVersion)
+  const setActiveCheck = usePosStore(state => state.setActiveCheck)
   useEffect(() => {
     if (!storeId) return
     const subscription = liveQuery(() => posDb.outbox.where('store_id').equals(storeId).toArray()).subscribe(entries => {
@@ -134,7 +142,7 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
         if (!active) return
         setStoreId(id)
         setStoreContext(id, '')
-        if (terminal && terminalAccess) { setTerminalCache(terminalAccess.cache); setPermissionVersion(terminalAccess.employee?.permission_version ?? 0) }
+        if (terminal && terminalAccess) { setTerminalCache(terminalAccess.cache); setPermissionVersion(terminalAccess.employee?.permission_version ?? 0); setEmployeeId(terminalAccess.employee?.id ?? null) }
         if (!terminal && navigator.onLine) {
           try {
             const client = requireSupabase()
@@ -314,6 +322,36 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
   const needsCustomer = customerAuthorized && !selectedCustomer
   const proceedBlocked = !cart.length || Boolean(cartError) || !storeId || needsApproval || needsOversoldAcknowledgement || needsCustomer
 
+  // Hold: saves the current cart to the server as a durable, resumable open check (lib/open-checks.ts)
+  // instead of completing a sale -- an online-only call (see that file's header comment), since a
+  // held check exists specifically to be resumable from a *different* terminal. A dine-in check
+  // needs a table (set by Floor's "Add order"); takeaway/delivery can be held without one.
+  const holdBlocked = !cart.length || Boolean(cartError) || !storeId || needsApproval || needsOversoldAcknowledgement || needsCustomer ||
+    (orderType === 'dine_in' && !activeTableId) || holdBusy
+  async function handleHold() {
+    if (holdBlocked) return
+    setHoldBusy(true); setHoldError('')
+    try {
+      const items: SaveCheckItem[] = cart.map(item => ({
+        id: item.lineId, productId: item.productId, snapshotName: item.name, snapshotSku: item.sku,
+        snapshotPriceCents: item.unitPriceCents, snapshotTaxBps: item.taxRateBps, catalogVersion: item.catalogVersion,
+        quantity: item.quantity, discount: item.discount,
+        modifiers: item.modifiers.map(modifier => ({ optionId: modifier.optionId, groupName: modifier.groupName, optionName: modifier.optionName, priceDeltaCents: modifier.priceDeltaCents })),
+      }))
+      const tableId = orderType === 'dine_in' ? activeTableId : null
+      const checkId = activeCheckId ?? (await createOpenCheck(storeId, { orderType, tableId, customerId: selectedCustomer?.id ?? null, employeeId }, terminal)).check.id
+      const startVersion = activeCheckId ? activeCheckVersion! : 1
+      const saved = await saveOpenCheck(storeId, checkId, startVersion, items, serviceChargeBps, { customerId: selectedCustomer?.id ?? null }, terminal)
+      setActiveCheck(saved.check.id, saved.check.version)
+      clear()
+      setNotice(`Check held for table service. Resume it from Open Checks when the guest is ready to pay.`)
+    } catch (reason) {
+      setHoldError(reason instanceof OpenCheckConflictError
+        ? 'This check was changed elsewhere since it was last loaded. Reload it from Open Checks and try again.'
+        : reason instanceof Error ? reason.message : 'Could not hold this check.')
+    } finally { setHoldBusy(false) }
+  }
+
   return <section className="register-page" aria-label="Register">
     <div className="catalog">
       <div className="catalog-tools"><MenuSearch value={query} onChange={setQuery} onSubmit={handleScan} inputRef={searchRef} />
@@ -332,7 +370,11 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
         disabled={Boolean(product.tax_rate_id && taxRates[product.tax_rate_id] === undefined)}
         onSelect={() => addProductToCart(product)} />)}</div>
     </div>
-    <aside className="sale-cart"><div className="cart-title"><h2>Open check</h2><button className="text-action" type="button" onClick={() => { if (window.confirm('Void this check and clear it? This cannot be undone.')) clear() }} disabled={!cart.length}>Void check</button></div>
+    <aside className="sale-cart"><div className="cart-title"><h2>Open check</h2>
+        <Link className="text-action" to={terminal ? '/pos/open-checks' : '/open-checks'}>Resume a held check</Link>
+        <button className="text-action" type="button" onClick={() => void handleHold()} disabled={holdBlocked} title={orderType === 'dine_in' && !activeTableId ? 'Select a table from Floor before holding a dine-in check.' : undefined}>{holdBusy ? 'Holding…' : 'Hold'}</button>
+        <button className="text-action" type="button" onClick={() => { if (window.confirm('Void this check and clear it? This cannot be undone.')) clear() }} disabled={!cart.length}>Void check</button></div>
+      {holdError && <p className="form-notice error" role="alert">{holdError}</p>}
       <div className="order-type-selector" role="radiogroup" aria-label="Order type">
         {ORDER_TYPES.map(type => <button key={type} type="button" role="radio" aria-checked={orderType === type}
           className={orderType === type ? 'active' : ''} onClick={() => setOrderType(type)}>{ORDER_TYPE_LABELS[type]}</button>)}

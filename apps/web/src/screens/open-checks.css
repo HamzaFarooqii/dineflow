@@ -1,0 +1,35 @@
+/* MISE: Open Checks. Tokens come from :root in styles.css — nothing new is defined here. */
+
+.open-checks-page {
+  max-width: 1120px;
+  padding: var(--mise-space-32) var(--mise-space-24) 64px;
+  min-width: 0;
+  align-self: start;
+  font-family: 'Inter', sans-serif;
+  color: var(--mise-ink);
+}
+
+.open-checks-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--mise-space-16);
+  margin-top: var(--mise-space-24);
+}
+
+.open-check-card {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  text-align: left;
+  padding: 16px;
+  border: 1px solid var(--mise-border-hairline);
+  border-radius: var(--mise-r3);
+  background: var(--mise-surface);
+  transition: background .15s ease, border-color .15s ease;
+}
+.open-check-card:hover { background: var(--mise-canvas); border-color: var(--mise-border-strong); }
+.open-check-card-head { display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 8px; }
+.open-check-card-head strong { font: 600 18px 'Inter', sans-serif; color: var(--mise-ink); }
+.open-check-card-meta { font-size: 12px; color: var(--mise-ink-secondary); font-family: 'JetBrains Mono', monospace; }
+.open-check-card b { font: 600 20px 'JetBrains Mono', monospace; color: var(--mise-ink); }
+.open-check-card-actions { display: flex; gap: 8px; margin-top: 4px; }

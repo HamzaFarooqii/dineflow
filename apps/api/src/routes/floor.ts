@@ -21,12 +21,12 @@ export function storeIdParam(req: Request): string {
 // browser grants — see 202609150001_terminal_employee_access.sql).
 //
 // current_order_total_cents/current_order_id (Day 3, closing a Day 2 gap): the most recent
-// non-refunded order placed against this table. This is honestly labeled "last order," not a
-// live running tab — pos_orders rows are only created at checkout, after payment, because
-// there is no in-progress/open-ticket concept in this codebase yet (docs/09 flags this
-// explicitly). A table sitting at 'ordering' has no order row at all until the register
-// checkout completes; this column is null until then. Building a true pre-payment running
-// total is a bigger feature (an open-ticket layer) than this fixup, not a Day 3 task.
+// non-refunded order placed against this table -- still "last order," not a live tab, since
+// pos_orders rows are only created at checkout. open_check_id/open_check_total_cents (Ahmad's
+// open-checks work, see open-checks.ts) is the actual pre-payment running tab: at most one open
+// check per table (the partial unique index on open_checks enforces it), null until a check is
+// opened against the table, updated live on every edit. A table sitting at 'ordering' with an
+// open check now shows a real running total here instead of nothing.
 async function getFloorPlan(req: Request, res: Response, terminal = false) {
   try {
     const storeId = storeIdParam(req)
@@ -45,7 +45,8 @@ async function getFloorPlan(req: Request, res: Response, terminal = false) {
       ),
       db.query(
         `select t.id, t.store_id, t.floor_area_id, t.label, t.seats, t.status, t.assigned_waiter_id,
-                e.name as assigned_waiter_name, o.id as current_order_id, o.total_cents::text as current_order_total_cents
+                e.name as assigned_waiter_name, o.id as current_order_id, o.total_cents::text as current_order_total_cents,
+                c.id as open_check_id, c.total_cents::text as open_check_total_cents, c.item_count as open_check_item_count
          from public.restaurant_tables t
          left join public.terminal_employees e on e.id = t.assigned_waiter_id and e.store_id = t.store_id
          left join lateral (
@@ -56,6 +57,11 @@ async function getFloorPlan(req: Request, res: Response, terminal = false) {
            order by po.client_generated_at desc
            limit 1
          ) o on true
+         left join lateral (
+           select oc.id, oc.total_cents, (select count(*) from public.open_check_items i where i.store_id = oc.store_id and i.check_id = oc.id) as item_count
+           from public.open_checks oc
+           where oc.store_id = t.store_id and oc.table_id = t.id and oc.status = 'open'
+         ) c on true
          where t.store_id = $1 and t.active = true
          order by t.label`,
         [storeId],

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigationType, useParams } from 'react-router-dom'
 import { liveQuery } from 'dexie'
 import { formatCents } from '../../../../packages/domain/src/money'
-import { readReceipt, syncLabel, type SavedReceipt } from './data'
+import { fetchRemoteReceipt, readReceipt, syncLabel, type SavedReceipt } from './data'
 import { ReceiptOutput } from './ReceiptOutput'
 import { useReceiptStore } from './useReceiptStore'
 import { accessToken, configuredApiUrl } from '../lib/catalog'
@@ -20,13 +20,29 @@ export function ReceiptScreen({ terminal = false }: { terminal?: boolean }) {
   const [receipt, setReceipt] = useState<SavedReceipt | null>()
   const [error, setError] = useState('')
   const [attempt, setAttempt] = useState(0)
+  const [remoteReceipt, setRemoteReceipt] = useState<SavedReceipt | null>()
+  const [remoteError, setRemoteError] = useState('')
   useEffect(() => {
-    setReceipt(undefined); setError('')
+    setReceipt(undefined); setError(''); setRemoteReceipt(undefined); setRemoteError('')
     if (!scope.storeId) return
     const subscription = liveQuery(() => readReceipt(scope.storeId, orderId)).subscribe({ next: setReceipt,
       error: reason => setError(reason instanceof Error ? reason.message : 'Unable to read this check.') })
     return () => subscription.unsubscribe()
   }, [scope.storeId, orderId, attempt])
+  // Cross-device fallback: only once the local read has definitively come back empty, and only
+  // when online -- never races the local liveQuery, and a later local write (this same check
+  // syncing in) still wins since the liveQuery above keeps re-running independently.
+  useEffect(() => {
+    if (receipt !== null || !scope.storeId || !navigator.onLine) return
+    let active = true
+    fetchRemoteReceipt(scope.storeId, orderId, terminal)
+      .then(result => { if (active) setRemoteReceipt(result) })
+      .catch(reason => { if (active) setRemoteError(reason instanceof Error ? reason.message : 'Unable to load this check from the server.') })
+    return () => { active = false }
+  }, [receipt, scope.storeId, orderId, terminal, attempt])
+  const stillLoading = receipt === undefined || (receipt === null && remoteReceipt === undefined && navigator.onLine)
+  const notFound = receipt === null && !stillLoading && (remoteReceipt === null || remoteReceipt === undefined)
+  const effectiveReceipt = receipt ?? remoteReceipt ?? null
   const failure = scope.error || error
 
   // Refund is an owner/manager-only, web-session action (never on a cashier terminal) — resolve
@@ -97,11 +113,12 @@ export function ReceiptScreen({ terminal = false }: { terminal?: boolean }) {
       </>}
     />
     {failure ? <div role="alert"><p>{failure}</p><button type="button" onClick={() => { scope.retry(); setAttempt(value => value + 1) }}>Try again</button></div>
-      : receipt === undefined ? <p role="status">Loading saved check…</p>
-      : receipt === null ? <div role="status"><h2>Check not found</h2><p>This check is not saved for this restaurant in this browser. Look under Orders on the terminal that closed it.</p></div>
-      : <><p role="status">{fresh ? 'Check closed and saved in this browser. ' : ''}{syncLabel(receipt.order)}{receipt.order.failure_reason ? ` — ${receipt.order.failure_reason}` : ''}</p>
-        <ReceiptOutput key={receipt.order.id} receipt={receipt} fresh={fresh} />
-        {canRefund && receipt.order.sync_status === 'synced' && <div className="refund-action">
+      : stillLoading ? <p role="status">Loading saved check…</p>
+      : notFound || !effectiveReceipt
+        ? <div role="status"><h2>Check not found</h2><p>{remoteError || (!navigator.onLine ? 'This check is not saved for this restaurant in this browser. Reconnect to check the server, or look under Orders on the terminal that closed it.' : 'This check is not saved for this restaurant in this browser, and could not be found on the server. Look under Orders on the terminal that closed it.')}</p></div>
+      : <><p role="status">{fresh ? 'Check closed and saved in this browser. ' : !receipt ? 'Loaded from the server — this check was closed on a different device. ' : ''}{syncLabel(effectiveReceipt.order)}{effectiveReceipt.order.failure_reason ? ` — ${effectiveReceipt.order.failure_reason}` : ''}</p>
+        <ReceiptOutput key={effectiveReceipt.order.id} receipt={effectiveReceipt} fresh={fresh} />
+        {canRefund && receipt && receipt.order.sync_status === 'synced' && <div className="refund-action">
           {receipt.order.refunded_at
             ? <p role="status">Refunded {formatCents(receipt.order.refunded_amount_cents ?? receipt.order.total_cents, receipt.order.currency)} on {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(receipt.order.refunded_at))}.</p>
             : <><button type="button" className="cta" onClick={() => void submitRefund()} disabled={refunding}>{refunding ? 'Refunding…' : 'Refund this check'}</button>

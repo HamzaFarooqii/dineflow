@@ -39,8 +39,8 @@ Hamza closeout evidence:
 
 | Module | Status | Done now | Explicitly left |
 |---|---|---|---|
-| **A. POS / Register** | 🟡 | Dine-in/takeaway/delivery, cart and notes, guest requirement, inventory warning, discounts, rewards, promotions, service charge, manager approval, modifiers, offline checkout, receipts, refund flow, equal-split calculator | Hold/resume; true multiple-payment/itemized/per-seat split settlement |
-| **B. Front of House / Tables** | 🟡 | Areas/tables CRUD in an Ember dialog, Seat/Add order/Bill/Settle/Clean, Transfer/Merge, waiter terminal mode, atomic status transitions | Reservations and waitlist; true running/open table tabs rather than last-completed-order context |
+| **A. POS / Register** | 🟡 | Dine-in/takeaway/delivery, cart and notes, guest requirement, inventory warning, discounts, rewards, promotions, service charge, manager approval, modifiers, offline checkout, receipts, refund flow, equal-split calculator, **open checks: durable versioned create/hold/resume/edit/void, cross-device server-backed receipt detail (`feat/open-checks`, Ahmad)** | True multiple-payment/itemized/per-seat split settlement (A2); an open check's own create/edit/void/close calls are online-only by design (see `apps/web/src/lib/open-checks.ts`), not queued through the offline outbox like a completed sale |
+| **B. Front of House / Tables** | 🟡 | Areas/tables CRUD in an Ember dialog, Seat/Add order/Bill/Settle/Clean, Transfer/Merge, waiter terminal mode, atomic status transitions, **a table's open check shows a real live running total on the Floor screen, not just its last completed order (`feat/open-checks`, Ahmad)** | Reservations and waitlist |
 | **C. Menu** | 🟡 | Product/category CRUD, availability, kitchen routing, recipe builder, unit conversion, food cost, ingredient creation dialog, modifier group/option CRUD and checkout/KDS/receipt snapshots | Sellable bundles/combos; a dedicated variant matrix beyond modifier-based sizes |
 | **D. Kitchen / KDS** | 🟡 | Order-derived tickets, station grouping, preparing/ready/served lifecycle, Chef terminal mode, modifiers, recipe consumption, table synchronization, performance reporting | Delay/SLA alerts; course-based firing; ticket history view. Standalone ticket creation remains intentionally excluded |
 | **E. Recipes** | ✅ | Recipe CRUD, yields, units, conversion-aware costing, searchable ingredient selector, inline ingredient creation | No committed gap |
@@ -74,8 +74,9 @@ backlog, not hidden Day 5 failures.
 
 The next work is intentionally prioritized rather than treated as one unsafe mega-change:
 
-1. **Operational depth:** open checks/hold-resume, reservations/waitlist, combos, kitchen SLA and
-   course firing, favorites, discount-stacking policy.
+1. **Operational depth:** reservations/waitlist, combos, kitchen SLA and course firing, favorites,
+   discount-stacking policy. (Open checks/hold-resume shipped -- see Module A/B above and
+   `docs/day-plans/day6-ahmad-open-checks.md`.)
 2. **Commercial depth:** true split tender, tips, delivery/rider workflow, purchasing/vendors.
 3. **Scale hardening:** make browser E2E a CI gate, then add performance budgets and monitoring.
 4. **Data-dependent future:** Restaurant Intelligence only after real operational history exists.
