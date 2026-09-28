@@ -230,7 +230,11 @@ async function setPoStatus(req: Request, res: Response, status: 'sent' | 'cancel
            where id=$1 and store_id=$2 and status <> 'cancelled' returning id`,
       [poId, storeId],
     )
-    if (!result.rows[0]) throw new ApiError(409, 'invalid_transition', 'Purchase order is not in a valid state for this action.')
+    if (!result.rows[0]) {
+      const exists = await db.query('select 1 from public.purchase_orders where id=$1 and store_id=$2', [poId, storeId])
+      if (!exists.rowCount) throw new ApiError(404, 'not_found', 'Purchase order not found.')
+      throw new ApiError(409, 'invalid_transition', 'Purchase order is not in a valid state for this action.')
+    }
     res.json(await fetchPo(storeId, poId))
   } catch (reason) { sendApiError(res, reason) }
 }
@@ -250,23 +254,33 @@ async function recomputePoStatus(client: PoolClient, storeId: string, poId: stri
 
 export async function receivePurchaseOrderCore(client: PoolClient, storeId: string, poId: string, input: Record<string, unknown>) {
   const operationId = input.operation_id ? uuidValue(input.operation_id, 'operation_id') : randomUUID()
-  const replay = await client.query<{ id: string }>('select id from public.purchase_receipts where store_id=$1 and operation_id=$2', [storeId, operationId])
-  if (replay.rows[0]) return { receiptId: replay.rows[0].id, replayed: true }
   const rawLines = Array.isArray(input.lines) ? input.lines : []
   if (!rawLines.length) throw new ApiError(422, 'validation_failed', 'At least one received line is required.')
   const managerApproved = Boolean(input.manager_approved)
   const approvalReason = optionalText(input.manager_approval_reason, 'Manager approval reason', 500)
   const updateIngredientCosts = Boolean(input.update_ingredient_costs)
   if ((managerApproved || updateIngredientCosts) && !approvalReason) throw new ApiError(422, 'validation_failed', 'Manager-approved receiving requires a reason.')
+  const receivedAt = isoOrNow(input.received_at)
+  const invoiceReference = optionalText(input.invoice_reference, 'Invoice reference', 160)
 
   const po = await client.query<{ status: string }>('select status from public.purchase_orders where id=$1 and store_id=$2 for update', [poId, storeId])
   if (!po.rows[0]) throw new ApiError(404, 'not_found', 'Purchase order not found.')
   if (po.rows[0].status === 'cancelled') throw new ApiError(409, 'po_cancelled', 'A cancelled purchase order cannot receive more stock.')
+  // ON CONFLICT DO NOTHING makes the (store_id, operation_id) idempotency check atomic with the
+  // insert itself -- a plain SELECT-then-INSERT would leave a window where two concurrent
+  // requests with the same operation_id (e.g. a double-submitted receive) could both pass the
+  // check and race on the insert's unique constraint.
   const receipt = await client.query<{ id: string }>(
     `insert into public.purchase_receipts(store_id,purchase_order_id,operation_id,invoice_reference,received_at,manager_approved,manager_approval_reason)
-     values ($1,$2,$3,$4,$5,$6,$7) returning id`,
-    [storeId, poId, operationId, optionalText(input.invoice_reference, 'Invoice reference', 160), isoOrNow(input.received_at), managerApproved, approvalReason],
+     values ($1,$2,$3,$4,$5,$6,$7)
+     on conflict (store_id, operation_id) do nothing
+     returning id`,
+    [storeId, poId, operationId, invoiceReference, receivedAt, managerApproved, approvalReason],
   )
+  if (!receipt.rows[0]) {
+    const existing = await client.query<{ id: string }>('select id from public.purchase_receipts where store_id=$1 and operation_id=$2', [storeId, operationId])
+    return { receiptId: existing.rows[0].id, replayed: true }
+  }
   for (const raw of rawLines) {
     const lineInput = raw as Record<string, unknown>
     const lineId = uuidValue(lineInput.purchase_order_line_id, 'purchase_order_line_id')
@@ -288,7 +302,7 @@ export async function receivePurchaseOrderCore(client: PoolClient, storeId: stri
     const batch = await client.query<{ id: string }>(
       `insert into public.ingredient_batches(store_id,ingredient_id,quantity,remaining_quantity,cost_per_unit_cents,received_at,reference)
        values ($1,$2,$3,$3,$4,$5,$6) returning id`,
-      [storeId, row.ingredient_id, receivedQuantity, cost, isoOrNow(input.received_at), optionalText(input.invoice_reference, 'Invoice reference', 160)],
+      [storeId, row.ingredient_id, receivedQuantity, cost, receivedAt, invoiceReference],
     )
     const movement = await client.query<{ id: string }>(
       `insert into public.stock_movements(store_id,ingredient_id,batch_id,delta,reason,note)
