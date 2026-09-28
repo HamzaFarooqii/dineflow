@@ -45,9 +45,14 @@ export async function completeLocalSale(items: CartItem[], storeId: string, meth
       const prefixRow = await posDb.sync_metadata.get(`receipt_prefix:${storeId}`)
       const prefix = prefixRow?.value ?? `LOCAL-${crypto.randomUUID().toUpperCase()}-`
       const sequenceKey = `receipt_seq:${storeId}`
-      const sequence = Number((await posDb.sync_metadata.get(sequenceKey))?.value ?? '0') + 1
-      if (!Number.isSafeInteger(sequence)) throw new Error('Receipt sequence is exhausted.')
-      receiptNumber = `${prefix}${String(sequence).padStart(6, '0')}`
+      let sequence = Number((await posDb.sync_metadata.get(sequenceKey))?.value ?? '0')
+      // Older/local browser state can retain an order after its sequence metadata was lost or
+      // reset. Keep the unique receipt constraint and advance to the first unused number.
+      do {
+        sequence += 1
+        if (!Number.isSafeInteger(sequence)) throw new Error('Receipt sequence is exhausted.')
+        receiptNumber = `${prefix}${String(sequence).padStart(6, '0')}`
+      } while (await posDb.orders.where('receipt_number').equals(receiptNumber).count())
       const order: LocalOrder = { id: operationId, store_id: storeId, receipt_number: receiptNumber,
         subtotal_cents: totals.subtotalCents, discount_cents: totals.discountCents, tax_cents: totals.taxCents,
         service_charge_bps: serviceChargeBps, service_charge_cents: serviceChargeCents, total_cents: grandTotalCents,
@@ -85,8 +90,15 @@ export async function completeLocalSale(items: CartItem[], storeId: string, meth
       await posDb.orders.add(order)
       await posDb.order_items.bulkAdd(orderItems)
       await posDb.payments.add(payment)
-      for (const item of items) await posDb.stock_adjustments.add({ operation_id: operationId,
-        product_id: item.productId, delta: -item.quantity, accepted_checkpoint: null })
+      // Stock adjustments are keyed by [operation_id+product_id]. The cart may contain the same
+      // product on multiple lines (different modifiers, notes, or discounts), so writing one row
+      // per cart line would attempt to insert the same IndexedDB key twice and abort checkout.
+      // Collapse those lines into the single per-product stock movement represented by this store.
+      const quantitiesByProduct = new Map<string, number>()
+      for (const item of items) quantitiesByProduct.set(item.productId,
+        (quantitiesByProduct.get(item.productId) ?? 0) + item.quantity)
+      for (const [productId, quantity] of quantitiesByProduct) await posDb.stock_adjustments.add({
+        operation_id: operationId, product_id: productId, delta: -quantity, accepted_checkpoint: null })
       await posDb.outbox.add(outbox)
     })
   return { operationId, receiptNumber, totalCents: grandTotalCents }

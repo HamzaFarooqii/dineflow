@@ -33,6 +33,48 @@ test('cash checkout commits the receipt, sale, payment, stock overlay and outbox
   assert.equal((await posDb.sync_metadata.get(`receipt_seq:${storeId}`))?.value, '1')
   await posDb.delete()
 })
+test('checkout aggregates stock when the same product appears on separate cart lines', async () => {
+  await posDb.delete()
+  await posDb.open()
+  await posDb.store_config.put({ id: storeId, store_id: storeId, name: 'Test store', timezone: 'UTC',
+    currency: 'USD', catalog_version: 1, service_charge_bps: 0 })
+  const separateLines: CartItem[] = [
+    { ...cart[0], lineId: `${productId}:regular`, quantity: 2 },
+    { ...cart[0], lineId: `${productId}:extra`, quantity: 3,
+      modifiers: [{ groupId: 'size', optionId: 'large', groupName: 'Size', optionName: 'Large', priceDeltaCents: 0 }] },
+  ]
+
+  const sale = await completeLocalSale(separateLines, storeId, 'cash', 2_000, null)
+
+  assert.equal((await posDb.order_items.where('order_id').equals(sale.operationId).toArray()).length, 2)
+  assert.equal((await posDb.stock_adjustments.get([sale.operationId, productId]))?.delta, -5)
+  assert.equal(await posDb.stock_adjustments.where('operation_id').equals(sale.operationId).count(), 1)
+  assert.equal((await posDb.outbox.where('operation_id').equals(sale.operationId).first())?.status, 'pending')
+  await posDb.delete()
+})
+
+test('checkout advances past an existing receipt when local sequence metadata is stale', async () => {
+  await posDb.delete()
+  await posDb.open()
+  await posDb.store_config.put({ id: storeId, store_id: storeId, name: 'Test store', timezone: 'UTC',
+    currency: 'USD', catalog_version: 1, service_charge_bps: 0 })
+  await posDb.sync_metadata.put({ key: `receipt_prefix:${storeId}`, value: 'TEST-' })
+  await posDb.orders.add({ id: crypto.randomUUID(), store_id: storeId, receipt_number: 'TEST-000001',
+    subtotal_cents: 100, discount_cents: 0, tax_cents: 0, service_charge_bps: 0,
+    service_charge_cents: 0, total_cents: 100, catalog_version: 1,
+    client_generated_at: '2026-09-28T00:00:00.000Z', sync_status: 'synced', currency: 'USD',
+    store_name_snapshot: 'Test store', timezone_snapshot: 'UTC', accepted_checkpoint: '1',
+    failure_reason: null, customer_id: null, employee_id: null, manager_id: null,
+    manager_approved_at: null, order_type: 'dine_in', table_id: null })
+
+  const sale = await completeLocalSale(cart, storeId, 'cash', 500, null)
+
+  assert.equal(sale.receiptNumber, 'TEST-000002')
+  assert.equal((await posDb.sync_metadata.get(`receipt_seq:${storeId}`))?.value, '2')
+  assert.equal(await posDb.orders.count(), 2)
+  await posDb.delete()
+})
+
 
 test('a store with a configured service charge adds it on top of the line total, and tender must cover it', async () => {
   await posDb.delete(); await posDb.open()
