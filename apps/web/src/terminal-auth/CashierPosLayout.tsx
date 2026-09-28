@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { currentAccess, readTerminal, type TerminalCache } from './cache'
 import { pushPendingOrders } from '../lib/order-sync'
 import { ClockButton } from './ClockButton'
+import { BreakButton } from './BreakButton'
 import { roleHasCapability, type StaffCapability } from '../../../../packages/domain/src/staff-role'
 import { LayoutDashboard, ShoppingCart, UtensilsCrossed, ClipboardList, Users, Package, Settings as SettingsIcon, Store, LayoutGrid, ChefHat } from '../components/icons'
 import './terminal-auth.css'
@@ -72,7 +73,7 @@ export function CashierPosLayout({ children }: { children: ReactNode }) {
       <footer><span className="cashier-online-dot" />Terminal ready<br /><small>{terminal?.device.name ?? 'Cashier terminal'}</small></footer>
     </aside>
     <main className="cashier-pos-main">
-      <header className="cashier-pos-topbar"><span className="cashier-online"><i />{navigator.onLine ? 'Online' : 'Offline'}</span><span><Store aria-hidden="true" size={14} /> {terminal?.device.name ?? 'Terminal'}</span><span>{terminal?.device.receipt_prefix ?? 'Receipt prefix unavailable'}</span>{terminal?.device.store_id && <ClockButton storeId={terminal.device.store_id} />}<span className="cashier-profile">{cashier?.name ?? 'Cashier'}<small>{cashier?.role ?? 'Cashier'}</small></span></header>
+      <header className="cashier-pos-topbar"><span className="cashier-online"><i />{navigator.onLine ? 'Online' : 'Offline'}</span><span><Store aria-hidden="true" size={14} /> {terminal?.device.name ?? 'Terminal'}</span><span>{terminal?.device.receipt_prefix ?? 'Receipt prefix unavailable'}</span>{terminal?.device.store_id && <ClockButton storeId={terminal.device.store_id} />}{terminal?.device.store_id && <BreakButton storeId={terminal.device.store_id} />}<span className="cashier-profile">{cashier?.name ?? 'Cashier'}<small>{cashier?.role ?? 'Cashier'}</small></span></header>
       {children}
       <footer className="cashier-pos-status"><span><i /> {navigator.onLine ? 'Connected' : 'Offline'}</span><span>{terminal?.device.name ?? 'Terminal'}</span><span>Receipt prefix: {terminal?.device.receipt_prefix ?? '—'}</span></footer>
     </main>
