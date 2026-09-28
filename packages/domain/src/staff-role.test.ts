@@ -22,7 +22,8 @@ test('each non-manager role has exactly its assigned capabilities', () => {
   assert.equal(roleHasCapability('inventory_manager', 'register'), false)
 })
 
-test('rider has no capability yet -- no dedicated screen exists', () => {
+test('rider has exactly the delivery capability -- its own dedicated terminal, nothing else', () => {
+  assert.equal(roleHasCapability('rider', 'delivery'), true)
   for (const capability of ['register', 'floor', 'kitchen', 'inventory', 'staff'] as const) {
     assert.equal(roleHasCapability('rider', capability), false)
   }
