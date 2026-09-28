@@ -12,6 +12,7 @@ import { inventoryRouter, terminalInventoryRouter } from './routes/inventory.js'
 import { promotionsRouter, terminalPromotionsRouter } from './routes/promotions.js'
 import { loyaltyRouter, terminalLoyaltyRouter } from './routes/loyalty.js'
 import { shiftsRouter, terminalShiftsRouter } from './routes/shifts.js'
+import { reservationsRouter, terminalReservationsRouter } from './routes/reservations.js'
 import { timekeepingRouter, terminalTimekeepingRouter } from './routes/timekeeping.js'
 import { terminalAuthRouter, type TerminalAuthOptions } from './terminal-auth/routes.js'
 
@@ -33,6 +34,9 @@ export function createApp(options: TerminalAuthOptions) {
   app.use('/promotions', promotionsRouter)
   app.use('/loyalty', loyaltyRouter)
   app.use('/shifts', shiftsRouter)
+
+  app.use('/reservations', reservationsRouter)
+
   app.use('/shifts', timekeepingRouter)
   app.use(auditRouter)
   app.use('/pos/catalog', terminalCatalogRouter)
@@ -45,6 +49,7 @@ export function createApp(options: TerminalAuthOptions) {
   app.use('/pos/loyalty', terminalLoyaltyRouter)
   app.use('/pos/promotions', terminalPromotionsRouter)
   app.use('/pos/shifts', terminalShiftsRouter)
+  app.use('/pos/reservations', terminalReservationsRouter)
   app.use('/pos/shifts', terminalTimekeepingRouter)
   return app
 }
