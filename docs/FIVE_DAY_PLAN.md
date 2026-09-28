@@ -109,6 +109,14 @@ visit/spend history and their loyalty tier wherever they're attached.
 
 ## Day 5 — Reporting, Integration, Hardening, and a Gap-Filling Pass
 
+> **Completion update (2026-09-28): Day 5 is complete.** Ahmed's four deliverables and
+> Bisma's three deliverables are integrated into `develop`. Hamza's lifecycle acceptance test,
+> live RLS/tenant audit, final inventory composite-FK migration, migration ledger, route/vendor
+> code splitting, Ember consistency pass and status documentation are complete. The executable
+> acceptance proof is `apps/api/test/day5-e2e.test.ts`; the repeatable live database audit is
+> `apps/api/scripts/verify-day5-closeout.mjs`. All remaining product scope is explicitly assigned
+> in `docs/day-plans/remaining-work-2026-09-28.md`.
+
 Per `RULES.md` §13: not 100% new feature work. Real capacity to integration, bug-fixing,
 security review, polish. Before this day started, Hamza ran a gap-filling pass over the whole
 sprint (unit conversion, ingredient edit/deactivate, real staff roles + shifts, service charge,

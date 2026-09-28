@@ -1,5 +1,10 @@
 # Day 5 — Bisma's Work (Hand-off)
 
+> **Completion update (2026-09-28):** All three hand-off items are implemented and integrated
+> into `develop`: owner/customer/inventory/hours reporting, Floor terminal mode, and the enhanced
+> operational dashboard. API/web builds and targeted integration tests pass. The historical
+> hand-off below is retained as implementation context.
+
 Written by Hamza for Bisma to execute independently. `FIVE_DAY_PLAN.md`'s original Day 5 sketch
 already gave you the single largest scope of the sprint for one person (owner dashboard + customer
 reporting + inventory reporting) and flagged that explicitly as the most likely place the plan

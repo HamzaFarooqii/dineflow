@@ -74,7 +74,12 @@ let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined
 try {
   const build = spawn(process.execPath, [root + 'apps/web/node_modules/vite/bin/vite.js', 'build'], { cwd: root + 'apps/web', env: { ...process.env, VITE_SUPABASE_URL: 'http://127.0.0.1:3179', VITE_SUPABASE_PUBLISHABLE_KEY: 'test-publishable' }, stdio: 'inherit', windowsHide: true })
   assert.equal(await new Promise<number | null>(resolve => build.on('exit', resolve)), 0)
-  browser = await chromium.launch({ headless: true })
+  try {
+    browser = await chromium.launch({ headless: true })
+  } catch (reason) {
+    if (process.platform !== 'win32') throw reason
+    browser = await chromium.launch({ headless: true, channel: 'chrome' })
+  }
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
   // Keep this local test independent of external font/CDN availability.
   await context.route('https://fonts.googleapis.com/**', route => route.fulfill({ contentType: 'text/css', body: '' }))
@@ -91,7 +96,7 @@ try {
   // see the FINDING comment below for why the real "Lock terminal" button can't be used instead.
   async function simulateLock(target: typeof page) {
     await target.evaluate(async () => {
-      const request = indexedDB.open('counterline-terminal-access')
+      const request = indexedDB.open('dineflow-terminal-access')
       const database = await new Promise<IDBDatabase>((resolve, reject) => { request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error) })
       const transaction = database.transaction('access', 'readwrite')
       const store = transaction.objectStore('access')
@@ -106,12 +111,12 @@ try {
     await target.goto('http://127.0.0.1:3178/pos/login', { waitUntil: 'domcontentloaded' })
   }
   await page.goto('http://127.0.0.1:3178/settings/employees', { waitUntil: 'domcontentloaded' })
-  await expect(page.getByRole('heading', { name: 'Cashier employees' })).toBeVisible()
-  await expect(page.getByLabel('Cashier name')).toBeEnabled({ timeout: 30_000 })
+  await expect(page.getByRole('heading', { name: 'Service staff', exact: true }).first()).toBeVisible()
+  await expect(page.getByLabel('Staff name')).toBeEnabled({ timeout: 30_000 })
   const pin = String(100000 + Math.floor(Math.random() * 900000))
-  await page.getByLabel('Cashier name').fill('Alex Rivera')
+  await page.getByLabel('Staff name').fill('Alex Rivera')
   await page.getByLabel('PIN', { exact: true }).fill(pin)
-  await page.getByRole('button', { name: 'Create employee' }).click()
+  await page.getByRole('button', { name: 'Add staff member' }).click()
   await expect(page.getByRole('listitem').filter({ hasText: 'Alex Rivera' }).getByRole('button', { name: 'Edit' })).toBeVisible()
   const screenshots = root + 'docs/terminal-access/screenshots/'
   await mkdir(screenshots, { recursive: true })
@@ -133,8 +138,8 @@ try {
     if (width === 1440 || width === 390) await page.screenshot({ path: `${screenshots}terminals-${width}.png`, fullPage: true })
   }
   await page.getByRole('link', { name: 'Cashier sign in' }).click()
-  await expect(page.getByRole('combobox', { name: 'Select employee', exact: true })).toBeEnabled()
-  await page.getByRole('combobox', { name: 'Select employee', exact: true }).selectOption({ index: 1 })
+  await expect(page.getByRole('combobox', { name: 'Select staff member', exact: true })).toBeEnabled()
+  await page.getByRole('combobox', { name: 'Select staff member', exact: true }).selectOption({ index: 1 })
   for (const width of [1440, 390, 375, 768]) {
     await page.setViewportSize({ width, height: 1000 })
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
@@ -142,7 +147,7 @@ try {
   }
   await page.setViewportSize({ width: 390, height: 1000 })
   await page.getByLabel('PIN', { exact: true }).fill(pin)
-  await page.getByRole('button', { name: 'Unlock POS' }).click()
+  await page.getByRole('button', { name: 'Unlock terminal' }).click()
   // CashierLogin's own useEffect now navigates straight to /pos/register the instant cache.session
   // is valid, so the "PIN access granted" success view this test used to assert on here never
   // actually stays on screen long enough to see in normal use — check the resulting navigation
@@ -160,51 +165,51 @@ try {
   // directly against IndexedDB so the PIN-lockout/clock-rollback/deactivation coverage below can
   // still reach a fresh PIN-entry screen.
   await simulateLock(page)
-  await expect(page.getByRole('combobox', { name: 'Select employee', exact: true })).toBeEnabled()
-  await page.getByRole('combobox', { name: 'Select employee', exact: true }).selectOption({ index: 1 })
+  await expect(page.getByRole('combobox', { name: 'Select staff member', exact: true })).toBeEnabled()
+  await page.getByRole('combobox', { name: 'Select staff member', exact: true }).selectOption({ index: 1 })
   const wrongPin = String((Number(pin) + 1) % 1000000).padStart(6, '0')
   for (let attempt = 0; attempt < 5; attempt++) {
     await page.getByLabel('PIN', { exact: true }).fill(wrongPin)
-    await page.getByRole('button', { name: 'Unlock POS' }).click()
+    await page.getByRole('button', { name: 'Unlock terminal' }).click()
     await expect(page.getByRole('alert')).toContainText('PIN not accepted')
     // unlock() now clears the PIN field on failure (forcing re-entry), so the button is briefly
     // disabled again until the next fill() above re-populates it — no longer meaningful to assert
     // "re-enabled" here on its own.
   }
   await page.reload()
-  await page.getByRole('combobox', { name: 'Select employee', exact: true }).selectOption({ index: 1 })
+  await page.getByRole('combobox', { name: 'Select staff member', exact: true }).selectOption({ index: 1 })
   await page.getByLabel('PIN', { exact: true }).fill(pin)
-  await page.getByRole('button', { name: 'Unlock POS' }).click()
+  await page.getByRole('button', { name: 'Unlock terminal' }).click()
   await expect(page.getByRole('alert')).toContainText('PIN access is locked')
   await page.screenshot({ path: `${screenshots}offline-lockout-390.png`, fullPage: true })
   // Advance the test clock past lockout, preserving the authorization window.
   await page.clock.install({ time: Date.now() + 61_000 })
   await page.getByLabel('PIN', { exact: true }).fill(pin)
-  await page.getByRole('button', { name: 'Unlock POS' }).click()
+  await page.getByRole('button', { name: 'Unlock terminal' }).click()
   await expect(page).toHaveURL('http://127.0.0.1:3178/pos/register')
   await simulateLock(page)
   await page.clock.setSystemTime(Date.now() - 60_000)
   await page.clock.runFor(6000)
-  await expect(page.getByRole('combobox', { name: 'Select employee', exact: true })).toBeVisible()
-  await page.getByRole('combobox', { name: 'Select employee', exact: true }).selectOption({ index: 1 })
+  await expect(page.getByRole('combobox', { name: 'Select staff member', exact: true })).toBeVisible()
+  await page.getByRole('combobox', { name: 'Select staff member', exact: true }).selectOption({ index: 1 })
   await page.getByLabel('PIN', { exact: true }).fill(pin)
-  await page.getByRole('button', { name: 'Unlock POS' }).click()
+  await page.getByRole('button', { name: 'Unlock terminal' }).click()
   await expect(page.getByRole('alert')).toContainText('clock moved backwards')
   await page.clock.setSystemTime(Date.now())
   await context.setOffline(false)
   await expect(page.getByRole('button', { name: 'Refresh terminal access' })).toBeEnabled()
   await page.getByRole('button', { name: 'Refresh terminal access' }).click()
-  await expect(page.getByRole('combobox', { name: 'Select employee', exact: true })).toBeEnabled()
-  await page.getByRole('combobox', { name: 'Select employee', exact: true }).selectOption({ index: 1 })
+  await expect(page.getByRole('combobox', { name: 'Select staff member', exact: true })).toBeEnabled()
+  await page.getByRole('combobox', { name: 'Select staff member', exact: true }).selectOption({ index: 1 })
   await page.getByLabel('PIN', { exact: true }).fill(pin)
-  await page.getByRole('button', { name: 'Unlock POS' }).click()
+  await page.getByRole('button', { name: 'Unlock terminal' }).click()
   await expect(page).toHaveURL('http://127.0.0.1:3178/pos/register')
   await simulateLock(page)
   const employee = await db.query<{ id: string }>('select id from public.terminal_employees where store_id=$1', [store])
   const changed = await context.request.post('http://127.0.0.1:3178/api/terminal-auth/employees', { headers: { Origin: 'http://127.0.0.1:3178', Authorization: `Bearer ${accessToken}` }, data: { id: employee.rows[0].id, store_id: store, name: 'Alex Rivera', role: 'cashier', active: false } })
   assert.equal(changed.status(), 200)
   await page.getByRole('button', { name: 'Refresh terminal access' }).click()
-  await expect(page.getByText('No cached employees are available.', { exact: false })).toBeVisible()
+  await expect(page.getByText('No staff are saved on this terminal.', { exact: false })).toBeVisible()
   await expect(page.getByText('PIN access granted', { exact: false })).toHaveCount(0)
   assert.deepEqual(errors, [])
   console.log('PASS: manager employee setup, provisioning, online PIN login, all new screens at 375/390/768/1440, offline reload/unlock, persisted lockout, clock rollback, no session resurrection after local lock, connected deactivation. Screenshots saved.')

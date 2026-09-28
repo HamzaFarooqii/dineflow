@@ -105,7 +105,7 @@ const INGREDIENT_SELECT = `
   from public.ingredients i
   left join public.profiles p on p.id = i.created_by_user_id
   left join public.store_memberships sm on sm.store_id = i.store_id and sm.user_id = i.created_by_user_id
-  left join public.terminal_employees mgr on mgr.id = i.manager_id
+  left join public.terminal_employees mgr on mgr.store_id = i.store_id and mgr.id = i.manager_id
   left join lateral (
     select count(*)::int as active_batch_count, min(b.expires_at) as nearest_expiry
     from public.ingredient_batches b
@@ -268,7 +268,7 @@ const BATCH_SELECT = `
   left join public.stock_movements m on m.store_id = b.store_id and m.batch_id = b.id and m.reason = 'purchase'
   left join public.profiles p on p.id = m.created_by_user_id
   left join public.store_memberships sm on sm.store_id = m.store_id and sm.user_id = m.created_by_user_id
-  left join public.terminal_employees mgr on mgr.id = m.manager_id`
+  left join public.terminal_employees mgr on mgr.store_id = m.store_id and mgr.id = m.manager_id`
 interface StockMovementRow {
   id: string; store_id: string; ingredient_id: string; batch_id: string | null; delta: string; reason: string
   note: string | null; kitchen_ticket_item_id: string | null; created_at: string
@@ -286,7 +286,7 @@ const MOVEMENT_SELECT = `
   from public.stock_movements m
   left join public.profiles p on p.id = m.created_by_user_id
   left join public.store_memberships sm on sm.store_id = m.store_id and sm.user_id = m.created_by_user_id
-  left join public.terminal_employees mgr on mgr.id = m.manager_id`
+  left join public.terminal_employees mgr on mgr.store_id = m.store_id and mgr.id = m.manager_id`
 
 async function fetchMovementById(storeId: string, movementId: string): Promise<StockMovementRow> {
   const result = await db.query<StockMovementRow>(`select ${MOVEMENT_SELECT} where m.store_id = $1 and m.id = $2`, [storeId, movementId])

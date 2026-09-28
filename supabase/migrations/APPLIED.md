@@ -45,6 +45,8 @@ schema no longer matches history, and it needs manual reconciliation, not a sile
 | 202609260001_unit_conversion.sql | `806ebcf2f1950b543d657a5dcb199874fd92c10a25db03449eba20631faf3a93` | yes | `units.factor_to_base` column exists |
 | 202609260002_staff_roles_and_shifts.sql | `6e5f8c4fee9ce2e8ec170bf4f4d54ad9fa72f472c5d42a998beb9f292bf1b5c8` | yes | `terminal_employees_role_check` constraint definition includes `rider`; `public.shifts` table exists |
 | 202609260003_service_charge.sql | `a8268107e9942418d7f36274ca375690553fad62f3f3c9b66a4cc1e842d34371` | yes | `stores.service_charge_bps` and `pos_orders.service_charge_cents` columns exist |
+| 202609270001_modifiers.sql | `c22d27afa488f5142da526dae806a2157593deffc4ee3acd681c98a7c8658300` | yes | all four modifier tables, RLS, and member-read policies confirmed by `verify-day5-closeout.mjs` |
+| 202609280001_inventory_terminal_tenant_fks.sql | `0152bf0c5cf6106473aef9309e3edfe7d248356d0e98d3f3c27eaee4474b7625` | yes | all four composite inventory-to-terminal-employee foreign keys confirmed by `verify-day5-closeout.mjs` |
 
 Note: `202609230002_table_waiter_assignment.sql` was renamed from `..._0001_...` (Lead
 integration fixup, PR #4) — it and Ahmed's kitchen-display migration were both authored the

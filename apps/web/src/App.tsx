@@ -3,43 +3,45 @@ import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from
 import type { Session } from '@supabase/supabase-js'
 import { PasswordField } from './components/PasswordField'
 import { isSupabaseConfigured, requireSupabase, supabase } from './lib/supabase'
-import { ReceiptScreen } from './receipts/ReceiptScreen'
-import { OrderHistoryScreen } from './screens/OrderHistoryScreen'
-import { PaymentScreen } from './screens/PaymentScreen'
-import { RegisterScreen } from './screens/RegisterScreen'
-import { CustomerScreen } from './screens/CustomerScreen'
-import { PromotionsScreen } from './screens/PromotionsScreen'
 import { usePosStore } from './lib/pos-store'
-import { SettingsOverview } from './terminal-auth/SettingsOverview'
 import { useTerminalStatus } from './terminal-auth/TerminalStatus'
 import { CashierTerminalRoute } from './terminal-auth/CashierTerminalRoute'
 import { CashierPosLayout } from './terminal-auth/CashierPosLayout'
-import { CashierDashboardScreen, OwnerDashboardScreen, ReportsScreen } from './screens/ReportingScreens'
-import { ActivityScreen } from './screens/ActivityScreen'
 import { resolveFinancialAccess } from './lib/management-access'
 import { posDb } from './lib/db'
 import { ConnectionAndSync } from './components/ConnectionAndSync'
 import { StoreSwitcher } from './components/StoreSwitcher'
-import { ProductCatalogScreen } from './screens/ProductCatalogScreen'
-import { FloorScreen } from './screens/floor/FloorScreen'
-import { KitchenScreen } from './screens/kitchen/KitchenScreen'
-import { InventoryScreen } from './screens/inventory/InventoryScreen'
-import { SyncCenterScreen } from './screens/SyncCenterScreen'
-import { CashierHardwareSettings } from './screens/CashierHardwareSettings'
-import { CashierProductsScreen } from './screens/CashierProductsScreen'
-import { OnboardingWizard } from './onboarding/OnboardingWizard'
 import { activeStoreId, loadCatalog } from './lib/catalog'
 import {
   LayoutDashboard, ShoppingCart, UtensilsCrossed, ClipboardList, Users, BarChart3,
   LayoutGrid, ChefHat, Package, Settings as SettingsIcon, LogOut, CircleUser, Tag,
 } from './components/icons'
-import { Landing } from './screens/Landing'
 import { Brand, Button, Mark } from './components/Brand'
 import type { LucideIcon } from 'lucide-react'
 
 const CashierLogin = lazy(() => import('./terminal-auth/CashierLogin').then(module => ({ default: module.CashierLogin })))
 const ManagerSetup = lazy(() => import('./terminal-auth/ManagerSetup').then(module => ({ default: module.ManagerSetup })))
 const StoreDetails = lazy(() => import('./screens/StoreDetails').then(module => ({ default: module.StoreDetails })))
+const ReceiptScreen = lazy(() => import('./receipts/ReceiptScreen').then(module => ({ default: module.ReceiptScreen })))
+const OrderHistoryScreen = lazy(() => import('./screens/OrderHistoryScreen').then(module => ({ default: module.OrderHistoryScreen })))
+const PaymentScreen = lazy(() => import('./screens/PaymentScreen').then(module => ({ default: module.PaymentScreen })))
+const RegisterScreen = lazy(() => import('./screens/RegisterScreen').then(module => ({ default: module.RegisterScreen })))
+const CustomerScreen = lazy(() => import('./screens/CustomerScreen').then(module => ({ default: module.CustomerScreen })))
+const PromotionsScreen = lazy(() => import('./screens/PromotionsScreen').then(module => ({ default: module.PromotionsScreen })))
+const SettingsOverview = lazy(() => import('./terminal-auth/SettingsOverview').then(module => ({ default: module.SettingsOverview })))
+const CashierDashboardScreen = lazy(() => import('./screens/ReportingScreens').then(module => ({ default: module.CashierDashboardScreen })))
+const OwnerDashboardScreen = lazy(() => import('./screens/ReportingScreens').then(module => ({ default: module.OwnerDashboardScreen })))
+const ReportsScreen = lazy(() => import('./screens/ReportingScreens').then(module => ({ default: module.ReportsScreen })))
+const ActivityScreen = lazy(() => import('./screens/ActivityScreen').then(module => ({ default: module.ActivityScreen })))
+const ProductCatalogScreen = lazy(() => import('./screens/ProductCatalogScreen').then(module => ({ default: module.ProductCatalogScreen })))
+const FloorScreen = lazy(() => import('./screens/floor/FloorScreen').then(module => ({ default: module.FloorScreen })))
+const KitchenScreen = lazy(() => import('./screens/kitchen/KitchenScreen').then(module => ({ default: module.KitchenScreen })))
+const InventoryScreen = lazy(() => import('./screens/inventory/InventoryScreen').then(module => ({ default: module.InventoryScreen })))
+const SyncCenterScreen = lazy(() => import('./screens/SyncCenterScreen').then(module => ({ default: module.SyncCenterScreen })))
+const CashierHardwareSettings = lazy(() => import('./screens/CashierHardwareSettings').then(module => ({ default: module.CashierHardwareSettings })))
+const CashierProductsScreen = lazy(() => import('./screens/CashierProductsScreen').then(module => ({ default: module.CashierProductsScreen })))
+const OnboardingWizard = lazy(() => import('./onboarding/OnboardingWizard').then(module => ({ default: module.OnboardingWizard })))
+const Landing = lazy(() => import('./screens/Landing').then(module => ({ default: module.Landing })))
 
 // Grouped by how a restaurant actually thinks about these screens, not an alphabetical or
 // flat admin-sidebar list: a home item, then the moment-to-moment "Operate" screens, the
@@ -105,7 +107,7 @@ function SessionProvider({ children }: { children: ReactNode }) {
   // The wizard calls this right after the completion RPC succeeds, so ProtectedRoute
   // stops redirecting to /onboarding without waiting on a re-fetch of store state.
   const markOnboardingComplete = () => setNeedsOnboarding(false)
-  return <SessionCtx.Provider value={{ loading, session, needsOnboarding, onboardingLoading, markOnboardingComplete }}>{children}</SessionCtx.Provider>
+  return <SessionCtx.Provider value={{ loading, session, needsOnboarding, onboardingLoading, markOnboardingComplete }}><Suspense fallback={<AuthPending />}>{children}</Suspense></SessionCtx.Provider>
 }
 export function useSession() { return useContext(SessionCtx) }
 function AuthPending() { return <main className="route-pending" role="status">Loading…</main> }

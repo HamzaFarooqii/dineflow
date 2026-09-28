@@ -4,8 +4,8 @@
 > `feature/ahmed/day5-loyalty-modifiers-reports`: loyalty tier create/edit, real modifier
 > groups carried through catalog/register/checkout/KDS/receipts, terminal Kitchen access, and
 > food-cost plus kitchen-performance reporting. API/web builds and targeted integration tests
-> pass. This branch is ready for PR review; the historical execution note below is retained to
-> explain the original Day A/Day B split.
+> pass. The branch is integrated into `develop`; the historical execution note below is retained
+> to explain the original Day A/Day B split.
 
 Written by Hamza for Ahmed to execute independently. This replaces `FIVE_DAY_PLAN.md`'s original
 Day 5 sketch for you (kitchen + food-cost reports) — it's still in here, plus three items that came
