@@ -4,7 +4,7 @@ import type { PoolClient } from 'pg'
 import { db } from '../db.js'
 import { ApiError, requireStoreManager, requireStoreMember, sendApiError } from './auth.js'
 import { requireCashierTerminal } from '../terminal-auth/routes.js'
-import { roleHasCapability, type StaffRole } from '../../../../packages/domain/src/staff-role.js'
+import type { StaffRole } from '../../../../packages/domain/src/staff-role.js'
 
 export const deliveryRouter = Router()
 export const terminalDeliveryRouter = Router()
@@ -27,6 +27,10 @@ export type DeliveryStatus = 'pending' | 'accepted' | 'picked_up' | 'out_for_del
 export const DELIVERY_STATUSES: readonly DeliveryStatus[] = ['pending', 'accepted', 'picked_up', 'out_for_delivery', 'delivered', 'failed']
 function isDeliveryStatus(value: unknown): value is DeliveryStatus {
   return typeof value === 'string' && (DELIVERY_STATUSES as readonly string[]).includes(value)
+}
+
+export function isRiderRole(role: StaffRole): boolean {
+  return role === 'rider'
 }
 
 // Explicit edges only, same philosophy as floor.ts's TRANSITIONS -- a rider's device can only
@@ -187,7 +191,7 @@ async function assignRider(req: Request, res: Response) {
           'select role from public.terminal_employees where id=$1 and store_id=$2 and active=true',
           [riderId, storeId],
         )
-        if (!rider.rows[0] || !roleHasCapability(rider.rows[0].role, 'delivery')) {
+        if (!rider.rows[0] || !isRiderRole(rider.rows[0].role)) {
           throw new ApiError(422, 'validation_failed', 'rider_id must reference an active rider in this store.')
         }
       }
@@ -371,7 +375,7 @@ async function requireRiderTerminal(req: Request): Promise<RiderTerminalContext>
     [session.employeeId, session.storeId],
   )
   const role = employee.rows[0]?.role
-  if (!employee.rows[0]?.active || !role || !roleHasCapability(role, 'delivery')) {
+  if (!employee.rows[0]?.active || !role || !isRiderRole(role)) {
     throw new ApiError(403, 'authorization_failed', 'This terminal session does not have rider access.')
   }
   return session

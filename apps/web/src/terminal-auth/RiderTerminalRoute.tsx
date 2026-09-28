@@ -3,7 +3,6 @@ import { Navigate, useLocation } from 'react-router-dom'
 import { currentAccess } from './cache'
 import { usePosStore } from '../lib/pos-store'
 import { signedInOwnerTerminalAccess } from './ownerTerminalAccess'
-import { roleHasCapability } from '../../../../packages/domain/src/staff-role'
 
 // Same shape as CashierTerminalRoute, plus one more check: the signed-in employee must actually
 // have the 'delivery' capability (i.e. be a rider). This is a client-side convenience only — the
@@ -21,7 +20,7 @@ export function RiderTerminalRoute({ children }: { children: ReactNode }) {
       if (!active) return
       const ownerAccess = state?.cache ? await signedInOwnerTerminalAccess(state.cache.device.store_id) : 'allowed'
       if (!active) return
-      const isRider = Boolean(state?.employee && roleHasCapability(state.employee.role, 'delivery'))
+      const isRider = state?.employee?.role === 'rider'
       const valid = Boolean(state?.cache && state.employee && state.policy.valid && ownerAccess !== 'mismatch' && isRider)
       if (!valid) usePosStore.getState().clearCart()
       setAllowed(valid)

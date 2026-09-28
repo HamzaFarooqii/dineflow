@@ -11,7 +11,7 @@ import { PGlite } from '@electric-sql/pglite'
 // stale-write rejection -- lives. The thin, auth-wrapped HTTP handlers stay manual-QA-only for
 // now, matching every other route file in this codebase (docs/MODULE_STATUS.md).
 process.env.DATABASE_URL ??= 'postgresql://localhost:5432/validation_only'
-const { applyDeliveryTransition, createDeliveryOrderSnapshot, DeliveryConflictError } = await import('./delivery.js')
+const { applyDeliveryTransition, createDeliveryOrderSnapshot, DeliveryConflictError, isRiderRole } = await import('./delivery.js')
 const { roleHasCapability } = await import('../../../../packages/domain/src/staff-role.js')
 const { db } = await import('../db.js')
 
@@ -249,6 +249,9 @@ test('rider role scoping: rider has the delivery capability and nothing else, ma
   assert.equal(roleHasCapability('rider', 'delivery'), true)
   assert.equal(roleHasCapability('rider', 'register'), false)
   assert.equal(roleHasCapability('cashier', 'delivery'), false)
+  assert.equal(roleHasCapability('manager', 'delivery'), true, 'manager remains a capability superset for ordinary terminal nav')
+  assert.equal(isRiderRole('rider'), true)
+  assert.equal(isRiderRole('manager'), false, 'rider-only delivery endpoints must reject manager terminal sessions')
 })
 
 test('cross-store: a delivery id from another store is not found, never leaked as another store\'s data', async () => {
