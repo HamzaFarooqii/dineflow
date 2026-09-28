@@ -4,7 +4,7 @@ import { currentAccess, readTerminal, type TerminalCache } from './cache'
 import { pushPendingOrders } from '../lib/order-sync'
 import { ClockButton } from './ClockButton'
 import { roleHasCapability, type StaffCapability } from '../../../../packages/domain/src/staff-role'
-import { LayoutDashboard, ShoppingCart, UtensilsCrossed, ClipboardList, Users, Package, Settings as SettingsIcon, Store, LayoutGrid, ChefHat } from '../components/icons'
+import { LayoutDashboard, ShoppingCart, UtensilsCrossed, ClipboardList, Users, Package, Settings as SettingsIcon, Store, LayoutGrid, ChefHat, Truck } from '../components/icons'
 import './terminal-auth.css'
 import '../receipts/receipts.css'
 
@@ -21,6 +21,7 @@ const navigation: { label: string; to: string; icon: typeof LayoutDashboard; cap
   { label: 'Sell', to: '/pos/register', icon: ShoppingCart, capability: 'register' },
   { label: 'Floor', to: '/pos/floor', icon: LayoutGrid, capability: 'floor' },
   { label: 'Kitchen', to: '/pos/kitchen', icon: ChefHat, capability: 'kitchen' },
+  { label: 'Deliveries', to: '/pos/delivery', icon: Truck, capability: 'delivery' },
   { label: 'Products', to: '/pos/products', icon: UtensilsCrossed, capability: 'register' },
   { label: 'Orders', to: '/pos/orders', icon: ClipboardList, capability: 'register' },
   { label: 'Customers', to: '/pos/customers', icon: Users, capability: 'register' },
