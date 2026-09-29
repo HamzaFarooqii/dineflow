@@ -71,6 +71,7 @@ const chain = [
   '202609280002_open_checks.sql',
   '202609280003_split_settlement.sql',
   '202609280004_refund_settlement_integrity.sql',
+  '202609290001_kitchen_operations_depth.sql',
 ]
 
 test('open checks: full lifecycle against real Postgres semantics (PGlite)', async () => {

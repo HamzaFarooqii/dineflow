@@ -34,6 +34,7 @@ const migrations = [
   '202609280001_inventory_terminal_tenant_fks.sql',
   '202609280003_split_settlement.sql',
   '202609280004_refund_settlement_integrity.sql',
+  '202609290001_kitchen_operations_depth.sql',
 ]
 
 test('Day 5 restaurant lifecycle reaches inventory, floor, loyalty, and reports', async t => {

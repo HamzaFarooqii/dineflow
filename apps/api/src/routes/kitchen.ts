@@ -1,9 +1,11 @@
 import { Router, type Request, type Response } from 'express'
 import { db } from '../db.js'
-import { requireStoreMember, sendApiError, ApiError } from './auth.js'
+import { requireStoreMember, requireStoreManager, sendApiError, ApiError } from './auth.js'
 import { requireCashierTerminal } from '../terminal-auth/routes.js'
 import { deriveTicketStatus, KITCHEN_TICKET_ITEM_TRANSITIONS, KITCHEN_TICKET_STATUSES, type KitchenTicketStatus } from '../../../../packages/domain/src/kitchen-ticket-status.js'
 import { convertQuantity, type RecipeCostUnit } from '../../../../packages/domain/src/recipe-cost.js'
+import { COURSES, type Course } from '../../../../packages/domain/src/course.js'
+import { deriveSlaState, DEFAULT_PREP_TARGET_SECONDS, type SlaState } from '../../../../packages/domain/src/kitchen-sla.js'
 import { applyTableStatusTransition } from './floor.js'
 
 export const kitchenRouter = Router()
@@ -28,17 +30,15 @@ interface TicketItemRow {
   order_id: string; receipt_number: string; order_type: string; created_at: string
   item_id: string; order_item_id: string; station_id: string | null; station_name: string | null
   item_status: KitchenTicketStatus; fired_at: string | null; ready_at: string | null; served_at: string | null
+  course: Course | null; prep_time_target_seconds: number | null; held_at: string | null
   snapshot_name: string; quantity: number
   modifiers: { group_name: string; option_name: string }[]
 }
 
-// Active board only — a ticket disappears once every item is served (or the whole ticket is
-// cancelled). No "history" view exists yet; that's a Reports-day concern, not the KDS.
-const TICKETS_QUERY = `
-  select kt.id as ticket_id, kt.status as ticket_status, kt.table_id, rt.label as table_label,
-    kt.order_id, po.receipt_number, po.order_type, kt.created_at,
+const ITEM_COLUMNS = `
     kti.id as item_id, kti.order_item_id, kti.station_id, ks.name as station_name,
     kti.status as item_status, kti.fired_at, kti.ready_at, kti.served_at,
+    kti.course, kti.prep_time_target_seconds, kti.held_at,
     poi.snapshot_name, poi.quantity,
     coalesce((select json_agg(json_build_object('group_name', m.snapshot_group_name, 'option_name', m.snapshot_option_name) order by m.snapshot_group_name, m.snapshot_option_name)
       from public.pos_order_item_modifiers m where m.store_id=poi.store_id and m.order_item_id=poi.id), '[]'::json) as modifiers
@@ -47,30 +47,40 @@ const TICKETS_QUERY = `
   join public.kitchen_ticket_items kti on kti.store_id = kt.store_id and kti.ticket_id = kt.id
   join public.pos_order_items poi on poi.store_id = kti.store_id and poi.id = kti.order_item_id
   left join public.restaurant_tables rt on rt.store_id = kt.store_id and rt.id = kt.table_id
-  left join public.kitchen_stations ks on ks.store_id = kt.store_id and ks.id = kti.station_id
+  left join public.kitchen_stations ks on ks.store_id = kt.store_id and ks.id = kti.station_id`
+
+// Active board only — a ticket disappears once every item is served (or the whole ticket is
+// cancelled); GET /kitchen/tickets/history (below) is the paginated view of what leaves here.
+const TICKETS_QUERY = `
+  select kt.id as ticket_id, kt.status as ticket_status, kt.table_id, rt.label as table_label,
+    kt.order_id, po.receipt_number, po.order_type, kt.created_at,${ITEM_COLUMNS}
   where kt.store_id = $1 and kt.status in ('queued', 'preparing', 'ready')
   order by kt.created_at asc, poi.snapshot_name asc
 `
 
-function groupTickets(rows: TicketItemRow[]) {
+// SLA state is computed here, server-side, against the request's own clock -- never shipped to
+// the browser as raw fired_at/target and recomputed there, which would let two staff members on
+// clocks even a few seconds apart disagree about whether an item just crossed into 'late'.
+function itemShape(row: TicketItemRow, now: Date) {
+  return { id: row.item_id, order_item_id: row.order_item_id, station_id: row.station_id, station_name: row.station_name,
+    status: row.item_status, fired_at: row.fired_at, ready_at: row.ready_at, served_at: row.served_at,
+    course: row.course, held_at: row.held_at,
+    sla_state: deriveSlaState(row.fired_at ? new Date(row.fired_at) : null, row.prep_time_target_seconds ?? DEFAULT_PREP_TARGET_SECONDS, now) as SlaState,
+    snapshot_name: row.snapshot_name, quantity: row.quantity, modifiers: row.modifiers }
+}
+function groupTickets(rows: TicketItemRow[], now: Date) {
   const byId = new Map<string, ReturnType<typeof ticketShape>>()
   for (const row of rows) {
     let ticket = byId.get(row.ticket_id)
     if (!ticket) { ticket = ticketShape(row); byId.set(row.ticket_id, ticket) }
-    ticket.items.push({
-      id: row.item_id, order_item_id: row.order_item_id, station_id: row.station_id, station_name: row.station_name,
-      status: row.item_status, fired_at: row.fired_at, ready_at: row.ready_at, served_at: row.served_at,
-      snapshot_name: row.snapshot_name, quantity: row.quantity, modifiers: row.modifiers,
-    })
+    ticket.items.push(itemShape(row, now))
   }
   return [...byId.values()]
 }
 function ticketShape(row: TicketItemRow) {
   return { id: row.ticket_id, status: row.ticket_status, order_id: row.order_id, receipt_number: row.receipt_number,
     order_type: row.order_type, table_id: row.table_id, table_label: row.table_label, created_at: row.created_at,
-    items: [] as { id: string; order_item_id: string; station_id: string | null; station_name: string | null
-      status: KitchenTicketStatus; fired_at: string | null; ready_at: string | null; served_at: string | null
-      snapshot_name: string; quantity: number; modifiers: { group_name: string; option_name: string }[] }[] }
+    items: [] as ReturnType<typeof itemShape>[] }
 }
 
 // GET /kitchen/tickets and GET /pos/kitchen/tickets — active kitchen tickets for a store, one
@@ -86,7 +96,7 @@ async function getTickets(req: Request, res: Response, terminal = false) {
       await requireStoreMember(req, storeId)
     }
     const rows = await db.query<TicketItemRow>(TICKETS_QUERY, [storeId])
-    res.json({ tickets: groupTickets(rows.rows) })
+    res.json({ tickets: groupTickets(rows.rows, new Date()) })
   } catch (reason) { sendApiError(res, reason) }
 }
 
@@ -163,6 +173,187 @@ async function patchItem(req: Request, res: Response, terminal = false) {
       res.json({ ticket_id: ticketId, ticket_status: ticketStatus, item: { id: itemId, status: to } })
     } catch (reason) { await client.query('rollback'); throw reason }
     finally { client.release() }
+  } catch (reason) { sendApiError(res, reason) }
+}
+
+function courseParam(value: unknown): Course {
+  if (typeof value !== 'string' || !COURSES.includes(value as Course)) throw new ApiError(422, 'validation_failed', 'A valid course is required.')
+  return value as Course
+}
+
+// Core of POST /kitchen/tickets/:id/courses/:course/fire -- exported, req/res-free, directly
+// testable against PGlite (same shape as floor.ts's applyTableStatusTransition and
+// open-checks.ts's createOpenCheckCore). Fires every still-queued item of one course on one
+// ticket at once: 'queued' -> 'preparing', fired_at=now(), held_at cleared, and logs who fired it.
+// Idempotent: firing a course with nothing left queued (already fired, or never had that course)
+// is a no-op that still returns the ticket's current state rather than erroring -- a repeated tap
+// (a flaky connection retrying, two cooks tapping at once) can never fire the same course twice.
+export async function fireCourseCore(storeId: string, ticketId: string, course: Course, actor: { employeeId: string | null; userId: string | null }) {
+  const client = await db.connect()
+  try {
+    await client.query('begin')
+    const queued = await client.query<{ id: string }>(
+      `select id from public.kitchen_ticket_items where store_id=$1 and ticket_id=$2 and course=$3 and status='queued' for update`,
+      [storeId, ticketId, course],
+    )
+    if (queued.rowCount) {
+      const itemIds = queued.rows.map(row => row.id)
+      await client.query(
+        `update public.kitchen_ticket_items set status='preparing', fired_at=now(), held_at=null where store_id=$1 and id = any($2::uuid[])`,
+        [storeId, itemIds],
+      )
+      await client.query(
+        `insert into public.kitchen_course_fire_log(store_id, ticket_id, course, fired_by_employee_id, fired_by_user_id, fired_item_count)
+         values ($1,$2,$3,$4,$5,$6)`,
+        [storeId, ticketId, course, actor.employeeId, actor.userId, itemIds.length],
+      )
+    }
+    const siblings = await client.query<{ status: KitchenTicketStatus }>(
+      'select status from public.kitchen_ticket_items where store_id=$1 and ticket_id=$2', [storeId, ticketId],
+    )
+    if (!siblings.rowCount) throw new ApiError(404, 'not_found', 'Ticket not found.')
+    const ticketStatus = deriveTicketStatus(siblings.rows.map(row => row.status))
+    await client.query('update public.kitchen_tickets set status=$1 where store_id=$2 and id=$3', [ticketStatus, storeId, ticketId])
+    await client.query('commit')
+    return { ticket_id: ticketId, ticket_status: ticketStatus, course, fired_item_count: queued.rowCount ?? 0 }
+  } catch (reason) { await client.query('rollback'); throw reason }
+  finally { client.release() }
+}
+async function fireCourse(req: Request, res: Response, terminal = false) {
+  try {
+    const body = req.body as Record<string, unknown>
+    const storeId = uuidParam(body?.store_id, 'Store ID')
+    const ticketId = uuidParam(req.params.id, 'Ticket ID')
+    const course = courseParam(req.params.course)
+    let actor = { employeeId: null as string | null, userId: null as string | null }
+    if (terminal) {
+      const session = await requireCashierTerminal(req, db)
+      if (session.storeId !== storeId) throw new ApiError(403, 'cross_store_reference', 'This terminal belongs to a different store.')
+      actor = { employeeId: session.employeeId, userId: null }
+    } else {
+      actor = { employeeId: null, userId: await requireStoreMember(req, storeId) }
+    }
+    res.json(await fireCourseCore(storeId, ticketId, course, actor))
+  } catch (reason) { sendApiError(res, reason) }
+}
+
+// Core of POST /kitchen/tickets/:id/courses/:course/hold -- marks every still-queued item of one
+// course as explicitly held (informational only; status stays 'queued'). Idempotent for the same
+// reason as fireCourseCore: holding an already-held (or already-fired) course is a harmless no-op.
+export async function holdCourseCore(storeId: string, ticketId: string, course: Course) {
+  const result = await db.query(
+    `update public.kitchen_ticket_items set held_at=now() where store_id=$1 and ticket_id=$2 and course=$3 and status='queued' and held_at is null`,
+    [storeId, ticketId, course],
+  )
+  return { ticket_id: ticketId, course, held_item_count: result.rowCount ?? 0 }
+}
+async function holdCourse(req: Request, res: Response, terminal = false) {
+  try {
+    const body = req.body as Record<string, unknown>
+    const storeId = uuidParam(body?.store_id, 'Store ID')
+    const ticketId = uuidParam(req.params.id, 'Ticket ID')
+    const course = courseParam(req.params.course)
+    if (terminal) {
+      const session = await requireCashierTerminal(req, db)
+      if (session.storeId !== storeId) throw new ApiError(403, 'cross_store_reference', 'This terminal belongs to a different store.')
+    } else {
+      await requireStoreMember(req, storeId)
+    }
+    res.json(await holdCourseCore(storeId, ticketId, course))
+  } catch (reason) { sendApiError(res, reason) }
+}
+
+// Core of GET /kitchen/stations/summary -- per-station due/late counts among currently
+// preparing/ready items (queued items have no running SLA clock, see kitchen-sla.ts, so they're
+// excluded here the same way they're excluded from ever being 'late'). `now` is a parameter
+// (not `new Date()` inline) specifically so boundary-time tests can pin it exactly.
+export async function getStationSummaryCore(storeId: string, now: Date) {
+  const rows = await db.query<{ station_id: string | null; station_name: string | null; fired_at: string | null; prep_time_target_seconds: number | null }>(
+    `select kti.station_id, ks.name as station_name, kti.fired_at, kti.prep_time_target_seconds
+     from public.kitchen_ticket_items kti
+     join public.kitchen_tickets kt on kt.store_id=kti.store_id and kt.id=kti.ticket_id
+     left join public.kitchen_stations ks on ks.store_id=kti.store_id and ks.id=kti.station_id
+     where kti.store_id=$1 and kt.status in ('queued','preparing','ready') and kti.status in ('preparing','ready')`,
+    [storeId],
+  )
+  const byStation = new Map<string, { station_id: string | null; station_name: string | null; calm: number; warning: number; late: number }>()
+  for (const row of rows.rows) {
+    const key = row.station_id ?? 'unassigned'
+    const bucket = byStation.get(key) ?? { station_id: row.station_id, station_name: row.station_name, calm: 0, warning: 0, late: 0 }
+    const state = deriveSlaState(row.fired_at ? new Date(row.fired_at) : null, row.prep_time_target_seconds ?? DEFAULT_PREP_TARGET_SECONDS, now)
+    bucket[state] += 1
+    byStation.set(key, bucket)
+  }
+  return [...byStation.values()]
+}
+async function getStationSummary(req: Request, res: Response, terminal = false) {
+  try {
+    const storeId = storeIdParam(req)
+    if (terminal) {
+      const session = await requireCashierTerminal(req, db)
+      if (session.storeId !== storeId) throw new ApiError(403, 'cross_store_reference', 'This terminal belongs to a different store.')
+    } else {
+      await requireStoreMember(req, storeId)
+    }
+    res.json({ stations: await getStationSummaryCore(storeId, new Date()) })
+  } catch (reason) { sendApiError(res, reason) }
+}
+
+export interface TicketHistoryFilters { status: 'served' | 'cancelled' | null; date: string | null; stationId: string | null; limit: number; cursor: string | null }
+
+// Core of GET /kitchen/tickets/history -- manager-only at the HTTP layer (no terminal route:
+// ticket history is a back-of-house reporting concern, same scoping OrderHistoryScreen's remote
+// section already uses), paginated, filterable by date/station/status. Served/cancelled tickets
+// never appear on the active board (TICKETS_QUERY above); this is the only place they're readable.
+export async function getTicketHistoryCore(storeId: string, filters: TicketHistoryFilters) {
+  const { status, date, stationId, cursor } = filters
+  const limit = Math.min(100, Math.max(1, filters.limit))
+  // Paginate at the ticket level first (one row per ticket, cheap), then fetch the full
+  // item/modifier detail only for the page of ticket ids that survives -- pulling `limit+1`
+  // tickets, one more than requested, is how we know whether a next page exists without a
+  // separate count query.
+  const conditions = [`kt.store_id = $1`, `kt.status in ('served','cancelled')`]
+  const params: unknown[] = [storeId]
+  if (status) { params.push(status); conditions.push(`kt.status = $${params.length}`) }
+  if (date) { params.push(date); conditions.push(`kt.created_at::date = $${params.length}::date`) }
+  if (stationId) { params.push(stationId); conditions.push(`exists (select 1 from public.kitchen_ticket_items kti2 where kti2.store_id=kt.store_id and kti2.ticket_id=kt.id and kti2.station_id=$${params.length})`) }
+  if (cursor) { params.push(cursor); conditions.push(`kt.created_at < $${params.length}::timestamptz`) }
+  params.push(limit + 1)
+
+  const idRows = await db.query<{ id: string }>(
+    `select kt.id from public.kitchen_tickets kt where ${conditions.join(' and ')} order by kt.created_at desc limit $${params.length}`,
+    params,
+  )
+  const truncated = idRows.rowCount === limit + 1
+  const pageIds = truncated ? idRows.rows.slice(0, limit).map(row => row.id) : idRows.rows.map(row => row.id)
+  if (!pageIds.length) return { tickets: [] as ReturnType<typeof ticketShape>[], next_cursor: null as string | null }
+
+  const rows = await db.query<TicketItemRow>(
+    `select kt.id as ticket_id, kt.status as ticket_status, kt.table_id, rt.label as table_label,
+       kt.order_id, po.receipt_number, po.order_type, kt.created_at,${ITEM_COLUMNS}
+     where kt.store_id = $1 and kt.id = any($2::uuid[])
+     order by kt.created_at desc, poi.snapshot_name asc`,
+    [storeId, pageIds],
+  )
+  // Re-sort into pageIds' own order -- the `any(...)` query above doesn't guarantee row order
+  // matches the array, but groupTickets/orderBy above already sorts within a ticket; this keeps
+  // tickets themselves in the same newest-first order idRows established.
+  const byTicketId = new Map(groupTickets(rows.rows, new Date()).map(ticket => [ticket.id, ticket]))
+  const tickets = pageIds.map(id => byTicketId.get(id)).filter((ticket): ticket is NonNullable<typeof ticket> => Boolean(ticket))
+  return { tickets, next_cursor: truncated ? tickets[tickets.length - 1]?.created_at ?? null : null }
+}
+async function getTicketHistory(req: Request, res: Response) {
+  try {
+    const storeId = storeIdParam(req)
+    await requireStoreManager(req, storeId)
+    const status = req.query.status ? String(req.query.status) : null
+    if (status && !['served', 'cancelled'].includes(status)) throw new ApiError(422, 'validation_failed', 'status must be served or cancelled.')
+    const date = req.query.date ? String(req.query.date) : null
+    if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new ApiError(422, 'validation_failed', 'date must be YYYY-MM-DD.')
+    const stationId = req.query.station_id ? uuidParam(req.query.station_id, 'station_id') : null
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 50))
+    const cursor = req.query.cursor ? String(req.query.cursor) : null
+    res.json(await getTicketHistoryCore(storeId, { status: status as 'served' | 'cancelled' | null, date, stationId, limit, cursor }))
   } catch (reason) { sendApiError(res, reason) }
 }
 
@@ -256,5 +447,12 @@ export async function consumeRecipeIngredients(client: import('pg').PoolClient, 
 
 kitchenRouter.get('/tickets', (req, res) => getTickets(req, res))
 terminalKitchenRouter.get('/tickets', (req, res) => getTickets(req, res, true))
+kitchenRouter.get('/tickets/history', (req, res) => getTicketHistory(req, res))
 kitchenRouter.patch('/tickets/:id/items/:itemId', (req, res) => patchItem(req, res))
 terminalKitchenRouter.patch('/tickets/:id/items/:itemId', (req, res) => patchItem(req, res, true))
+kitchenRouter.post('/tickets/:id/courses/:course/fire', (req, res) => fireCourse(req, res))
+terminalKitchenRouter.post('/tickets/:id/courses/:course/fire', (req, res) => fireCourse(req, res, true))
+kitchenRouter.post('/tickets/:id/courses/:course/hold', (req, res) => holdCourse(req, res))
+terminalKitchenRouter.post('/tickets/:id/courses/:course/hold', (req, res) => holdCourse(req, res, true))
+kitchenRouter.get('/stations/summary', (req, res) => getStationSummary(req, res))
+terminalKitchenRouter.get('/stations/summary', (req, res) => getStationSummary(req, res, true))

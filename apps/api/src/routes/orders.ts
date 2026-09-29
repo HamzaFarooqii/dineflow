@@ -7,6 +7,9 @@ import { ORDER_TYPES, type OrderType } from '../../../../packages/domain/src/ord
 import { BASE_MULTIPLIER_BPS, pointsEarned, tierForLifetimePoints } from '../../../../packages/domain/src/loyalty.js'
 import { requireCashierTerminal, requireDeviceTerminal } from '../terminal-auth/routes.js'
 import { createDeliveryOrderSnapshot, deliveryDetailsBody } from './delivery.js'
+import { firesImmediately, type Course } from '../../../../packages/domain/src/course.js'
+import { DEFAULT_PREP_TARGET_SECONDS } from '../../../../packages/domain/src/kitchen-sla.js'
+import { deriveTicketStatus } from '../../../../packages/domain/src/kitchen-ticket-status.js'
 
 export const ordersRouter = Router()
 export const terminalOrdersRouter = Router()
@@ -234,10 +237,12 @@ export async function createPaidOrder(client: import('pg').PoolClient, operation
       const store = await client.query('select name,timezone,currency from public.stores where id=$1', [operation.storeId])
       if (!store.rows[0]) throw new ApiError(422, 'cross_store_reference', 'Store no longer exists.')
       const productIds = [...new Set(operation.items.map(item => item.product_id))]
-      const products = await client.query<{ id: string; station_id: string | null }>(
-        'select id, station_id from public.pos_products where store_id=$1 and id = any($2::uuid[])', [operation.storeId, productIds])
+      const products = await client.query<{ id: string; station_id: string | null; course: Course | null; prep_time_seconds: number | null }>(
+        'select id, station_id, course, prep_time_seconds from public.pos_products where store_id=$1 and id = any($2::uuid[])', [operation.storeId, productIds])
       if (products.rowCount !== productIds.length) throw new ApiError(422, 'cross_store_reference', 'An item refers to a product outside this store.')
       const stationByProduct = new Map(products.rows.map(row => [row.id, row.station_id]))
+      const courseByProduct = new Map(products.rows.map(row => [row.id, row.course]))
+      const prepTimeByProduct = new Map(products.rows.map(row => [row.id, row.prep_time_seconds]))
       const modifierCatalog = await client.query<{ product_id: string; group_id: string; group_name: string; selection: 'single' | 'multi'; required: boolean; option_id: string | null }>(
         `select pmg.product_id, mg.id as group_id, mg.name as group_name, mg.selection, mg.required, mo.id as option_id
          from public.product_modifier_groups pmg
@@ -333,18 +338,29 @@ export async function createPaidOrder(client: import('pg').PoolClient, operation
       // not just dine-in — takeaway and delivery still need the kitchen to prep the food; only
       // table_id is dine-in-only. (docs/09, Day 2, Ahmed section 3.)
       //
-      // Items fire straight to 'preparing' (fired_at = now()) rather than sitting in 'queued' —
-      // a completed, paid order is definitionally ready for the kitchen to start on immediately,
-      // so a manual "Fire" click for every brand-new ticket was pure friction, not a real queueing
-      // step. 'queued' stays a valid state in KITCHEN_TICKET_ITEM_TRANSITIONS for any future
-      // hold-before-firing workflow; it's just never the initial one.
+      // Course-based firing (A3): an item whose product has no course set fires straight to
+      // 'preparing' exactly as every item always has -- a completed, paid order is definitionally
+      // ready for the kitchen to start on immediately, so this is unchanged for the entire existing
+      // population of products with no course configured. Only appetizer/side/beverage keep firing
+      // immediately when a course *is* set; main/dessert start 'queued', held for an explicit
+      // "fire this course" action (kitchen.ts's fireCourse) once the rest of the table is ready for
+      // them. Each item snapshots its course and preparation-time target at creation time (never a
+      // live re-join to pos_products), so a later recipe/menu edit can't rewrite an in-flight
+      // ticket's SLA clock or which course it belongs to.
       const ticketId = randomUUID()
-      await client.query(`insert into public.kitchen_tickets(id,store_id,order_id,table_id,status) values ($1,$2,$3,$4,'preparing')`,
-        [ticketId, operation.storeId, operation.operationId, operation.order.table_id])
-      for (const item of operation.items) {
-        await client.query(`insert into public.kitchen_ticket_items(id,store_id,ticket_id,order_item_id,station_id,status,fired_at)
-          values ($1,$2,$3,$4,$5,'preparing',now())`,
-          [randomUUID(), operation.storeId, ticketId, item.id, stationByProduct.get(item.product_id) ?? null])
+      const itemInitialState = operation.items.map(item => {
+        const course = courseByProduct.get(item.product_id) ?? null
+        const immediate = firesImmediately(course)
+        return { item, course, prepTarget: prepTimeByProduct.get(item.product_id) ?? DEFAULT_PREP_TARGET_SECONDS, immediate }
+      })
+      const ticketStatus = deriveTicketStatus(itemInitialState.map(entry => entry.immediate ? 'preparing' : 'queued'))
+      await client.query(`insert into public.kitchen_tickets(id,store_id,order_id,table_id,status) values ($1,$2,$3,$4,$5)`,
+        [ticketId, operation.storeId, operation.operationId, operation.order.table_id, ticketStatus])
+      for (const entry of itemInitialState) {
+        await client.query(`insert into public.kitchen_ticket_items(id,store_id,ticket_id,order_item_id,station_id,status,fired_at,course,prep_time_target_seconds)
+          values ($1,$2,$3,$4,$5,$6,${entry.immediate ? 'now()' : 'null'},$7,$8)`,
+          [randomUUID(), operation.storeId, ticketId, entry.item.id, stationByProduct.get(entry.item.product_id) ?? null,
+            entry.immediate ? 'preparing' : 'queued', entry.course, entry.prepTarget])
       }
       // A2: one row per tender (cash+card split, itemized, per-seat, or simply the one payment a
       // non-splitting sale has always had) -- every tender shares this order's client_generated_at
