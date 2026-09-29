@@ -5,6 +5,7 @@ import { completeLocalSale } from '../lib/checkout'
 import { posDb } from '../lib/db'
 import { pushPendingOrders } from '../lib/order-sync'
 import { usePosStore } from '../lib/pos-store'
+import { closeOpenCheckAndRecordSale, saveOpenCheck, OpenCheckConflictError, type SaveCheckItem } from '../lib/open-checks'
 import { readTerminal } from '../terminal-auth/cache'
 
 export function PaymentScreen({ terminal = false }: { terminal?: boolean }) {
@@ -16,6 +17,8 @@ export function PaymentScreen({ terminal = false }: { terminal?: boolean }) {
   const selectedCustomer = usePosStore(state => state.selectedCustomer)
   const managerApproval = usePosStore(state => state.managerApproval)
   const totals = usePosStore(state => state.totals)
+  const activeCheckId = usePosStore(state => state.activeCheckId)
+  const activeCheckVersion = usePosStore(state => state.activeCheckVersion)
   const [method, setMethod] = useState<'cash' | 'card'>('cash')
   const [received, setReceived] = useState('')
   const [reference, setReference] = useState('')
@@ -24,10 +27,11 @@ export function PaymentScreen({ terminal = false }: { terminal?: boolean }) {
   const [error, setError] = useState('')
   const [currency, setCurrency] = useState('USD')
   const [serviceChargeBps, setServiceChargeBps] = useState(0)
+  const [catalogVersion, setCatalogVersion] = useState(1)
   const [splitCount, setSplitCount] = useState(1)
   const [employeeId, setEmployeeId] = useState<string | null>(null)
   const [employeeLoaded, setEmployeeLoaded] = useState(!terminal)
-  useEffect(() => { if (storeId) void posDb.store_config.get(storeId).then(config => { if (config) { setCurrency(config.currency); setServiceChargeBps(config.service_charge_bps ?? 0) } }) }, [storeId])
+  useEffect(() => { if (storeId) void posDb.store_config.get(storeId).then(config => { if (config) { setCurrency(config.currency); setServiceChargeBps(config.service_charge_bps ?? 0); setCatalogVersion(config.catalog_version) } }) }, [storeId])
   useEffect(() => { if (terminal) void readTerminal().then(cache => { setEmployeeId(cache?.session?.employee_id ?? null); setEmployeeLoaded(true) }) }, [terminal])
   let lineTotal = 0
   let serviceChargeCents = 0
@@ -57,13 +61,31 @@ export function PaymentScreen({ terminal = false }: { terminal?: boolean }) {
     inProgress.current = true
     setBusy(true); setError('')
     try {
-      const approval = managerApproval ? { managerId: managerApproval.managerId, approvedAt: managerApproval.approvedAt } : null
-      const result = await completeLocalSale(items, storeId, method, tender, reference.trim() || null, selectedCustomer?.id ?? null, employeeId, approval, terminal)
+      let result: { operationId: string }
+      if (activeCheckId && activeCheckVersion) {
+        // This cart is a resumed/held open check (lib/open-checks.ts) -- save the current cart to
+        // it first (the cashier may have edited items since it was resumed) so the server-stored
+        // check is what actually gets closed, then close it into a real order the exact same way
+        // push() creates one, online (see open-checks.ts's header comment on why this path isn't
+        // outboxed like completeLocalSale below).
+        const saveItems: SaveCheckItem[] = items.map(item => ({
+          id: item.lineId, productId: item.productId, snapshotName: item.name, snapshotSku: item.sku,
+          snapshotPriceCents: item.unitPriceCents, snapshotTaxBps: item.taxRateBps, catalogVersion: item.catalogVersion,
+          quantity: item.quantity, discount: item.discount,
+          modifiers: item.modifiers.map(modifier => ({ optionId: modifier.optionId, groupName: modifier.groupName, optionName: modifier.optionName, priceDeltaCents: modifier.priceDeltaCents })),
+        }))
+        const saved = await saveOpenCheck(storeId, activeCheckId, activeCheckVersion, saveItems, serviceChargeBps, { customerId: selectedCustomer?.id ?? null }, terminal)
+        result = await closeOpenCheckAndRecordSale(storeId, activeCheckId, saved.check.version, method, tender, reference.trim() || null, serviceChargeBps, catalogVersion, terminal)
+      } else {
+        const approval = managerApproval ? { managerId: managerApproval.managerId, approvedAt: managerApproval.approvedAt } : null
+        result = await completeLocalSale(items, storeId, method, tender, reference.trim() || null, selectedCustomer?.id ?? null, employeeId, approval, terminal)
+        void pushPendingOrders(storeId, terminal).catch(() => undefined)
+      }
       clearCart()
-      void pushPendingOrders(storeId, terminal).catch(() => undefined)
       navigate(`${terminal ? '/pos/orders' : '/orders'}/${encodeURIComponent(result.operationId)}`, { replace: true, state: { committedOrderId: result.operationId } })
     } catch (reason) {
-      const failure = reason instanceof Error ? reason.message : 'The check could not be saved.'
+      const failure = reason instanceof OpenCheckConflictError ? `${reason.message} Reload this check from Open Checks before trying again.`
+        : reason instanceof Error ? reason.message : 'The check could not be saved.'
       setError(method === 'card' && cardConfirmed
         ? `${failure} The external card payment may have been approved. Record reference ${reference.trim() || '(none entered)'} and reconcile it before charging again.`
         : `${failure} No receipt was issued.`)

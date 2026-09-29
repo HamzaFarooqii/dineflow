@@ -152,7 +152,7 @@ export function OrderHistoryScreen({ terminal = false }: { terminal?: boolean })
         {remoteOrders?.length === 0 && <p>No checks were closed on other terminals for this date either.</p>}
         {Boolean(remoteOrders?.length) && currency && (
           <>
-            <p className="screen-note">This browser has no saved copy of these checks, so only a summary is shown — the full check isn't available here.
+            <p className="screen-note">This browser has no saved copy of these checks — "View check" loads the full receipt directly from the server.
               {remoteTruncated && ' Showing the first 200 checks for this date; more exist.'}</p>
             <div className="history-list">{remoteOrders!.map(order => (
               <article key={order.id}>
@@ -160,6 +160,7 @@ export function OrderHistoryScreen({ terminal = false }: { terminal?: boolean })
                 <b>{formatCents(order.totalCents, currency)}</b>
                 <StatusBadge tone="success">Synced</StatusBadge>
                 <small>{order.itemCount} item{order.itemCount === 1 ? '' : 's'} | {order.paymentMethod}</small>
+                <Link className="receipt-detail-link" to={`${terminal ? '/pos/orders' : '/orders'}/${encodeURIComponent(order.id)}`}>View check / print</Link>
               </article>
             ))}</div>
           </>

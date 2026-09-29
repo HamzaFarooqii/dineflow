@@ -188,32 +188,18 @@ export function validateOperation(raw: unknown) {
       reference: payment.reference === null || payment.reference === undefined ? null : text(payment.reference, 'Card reference', 120) } }
 }
 
-async function push(req: import('express').Request, res: import('express').Response, terminal = false) {
-  try {
-    const operation = validateOperation(req.body)
-    if (terminal) {
-      const session = await requireDeviceTerminal(req, db)
-      if (session.storeId !== operation.storeId) throw new ApiError(403, 'cross_store_reference', 'This terminal belongs to a different store.')
-      // Prefer the currently authenticated cashier's identity over whatever the client sent, so a
-      // sale can't be attributed to a different employee than the one actually unlocked on this
-      // device. A device-only session (queued sale synced after logout) has no cashier to check
-      // against, so it falls back to the client-sent value's best-effort existence check below.
-      try { operation.order.employee_id = (await requireCashierTerminal(req, db)).employeeId }
-      catch { /* no active cashier session on this device right now */ }
-    } else await requireStoreMember(req, operation.storeId)
-    const hash = createHash('sha256').update(JSON.stringify(req.body)).digest('hex')
-    const client = await db.connect()
-    try {
-      await client.query('begin')
-      await client.query('insert into public.pos_sync_feed_state(store_id) values ($1) on conflict do nothing', [operation.storeId])
-      await client.query('select last_position from public.pos_sync_feed_state where store_id = $1 for update', [operation.storeId])
-      const replay = await client.query('select payload_hash,result_json from public.pos_operation_ledger where store_id=$1 and operation_id=$2', [operation.storeId, operation.operationId])
-      if (replay.rows[0]) {
-        if (replay.rows[0].payload_hash !== hash) throw new ApiError(409, 'operation_id_conflict', 'This operation ID was used for another sale.')
-        await client.query('commit')
-        res.json(replay.rows[0].result_json)
-        return
-      }
+export type ValidatedOperation = ReturnType<typeof validateOperation>
+
+// The core "turn a validated operation into a real paid sale" transaction body: order + items +
+// modifiers, kitchen ticket (fired straight to preparing), payment, loyalty redeem/earn, stock
+// decrement, change feed, and the operation-ledger row that makes replays idempotent. Shared by
+// push() (a client-built cart, items supplied in the request) and open-checks.ts's close endpoint
+// (an already-durable, server-stored check, items read from open_check_items) so both paths create
+// a sale through exactly the same code -- an open check becomes a real order the same way a normal
+// register sale always has, never a parallel, only-partially-equivalent implementation of it.
+// Caller is responsible for the operation-ledger replay check (see push() below) and for holding
+// this all inside a single `client` transaction that it begins/commits/rolls back itself.
+export async function createPaidOrder(client: import('pg').PoolClient, operation: ValidatedOperation, payloadHash: string) {
       const store = await client.query('select name,timezone,currency from public.stores where id=$1', [operation.storeId])
       if (!store.rows[0]) throw new ApiError(422, 'cross_store_reference', 'Store no longer exists.')
       const productIds = [...new Set(operation.items.map(item => item.product_id))]
@@ -402,7 +388,37 @@ async function push(req: import('express').Request, res: import('express').Respo
       await client.query('update public.pos_sync_feed_state set last_position=$2 where store_id=$1', [operation.storeId, position.toString()])
       const result = { status: 'accepted', operation_id: operation.operationId, accepted_checkpoint: position.toString() }
       await client.query(`insert into public.pos_operation_ledger(store_id,operation_id,payload_hash,status,result_json,accepted_checkpoint)
-        values ($1,$2,$3,'accepted',$4,$5)`, [operation.storeId, operation.operationId, hash, result, position.toString()])
+        values ($1,$2,$3,'accepted',$4,$5)`, [operation.storeId, operation.operationId, payloadHash, result, position.toString()])
+      return result
+}
+
+async function push(req: import('express').Request, res: import('express').Response, terminal = false) {
+  try {
+    const operation = validateOperation(req.body)
+    if (terminal) {
+      const session = await requireDeviceTerminal(req, db)
+      if (session.storeId !== operation.storeId) throw new ApiError(403, 'cross_store_reference', 'This terminal belongs to a different store.')
+      // Prefer the currently authenticated cashier's identity over whatever the client sent, so a
+      // sale can't be attributed to a different employee than the one actually unlocked on this
+      // device. A device-only session (queued sale synced after logout) has no cashier to check
+      // against, so it falls back to the client-sent value's best-effort existence check below.
+      try { operation.order.employee_id = (await requireCashierTerminal(req, db)).employeeId }
+      catch { /* no active cashier session on this device right now */ }
+    } else await requireStoreMember(req, operation.storeId)
+    const hash = createHash('sha256').update(JSON.stringify(req.body)).digest('hex')
+    const client = await db.connect()
+    try {
+      await client.query('begin')
+      await client.query('insert into public.pos_sync_feed_state(store_id) values ($1) on conflict do nothing', [operation.storeId])
+      await client.query('select last_position from public.pos_sync_feed_state where store_id = $1 for update', [operation.storeId])
+      const replay = await client.query('select payload_hash,result_json from public.pos_operation_ledger where store_id=$1 and operation_id=$2', [operation.storeId, operation.operationId])
+      if (replay.rows[0]) {
+        if (replay.rows[0].payload_hash !== hash) throw new ApiError(409, 'operation_id_conflict', 'This operation ID was used for another sale.')
+        await client.query('commit')
+        res.json(replay.rows[0].result_json)
+        return
+      }
+      const result = await createPaidOrder(client, operation, hash)
       await client.query('commit')
       res.json(result)
     } catch (reason) { await client.query('rollback'); throw reason }
@@ -504,6 +520,81 @@ async function refund(req: import('express').Request, res: import('express').Res
   }
 }
 
+// ---------------------------------------------------------------------------
+// GET /orders/:id — server-backed order/receipt detail, so a manager (or, on the terminal
+// router, any unlocked cashier terminal in this store) can view or reprint a check that was
+// closed on a *different* device. Every historical sale already exists server-side (push()
+// above wrote it); the local Dexie receipt reader was previously the only way to view one,
+// which meant a receipt was only visible on the exact device that rang it up. Reads only the
+// snapshot fields captured at checkout time -- never the live catalog -- same "never
+// reconstruct a historical sale" rule receipts/data.ts documents for the local read path.
+// ---------------------------------------------------------------------------
+async function orderDetail(req: import('express').Request, res: import('express').Response, terminal = false) {
+  try {
+    const orderId = id(req.params.id, 'Order ID')
+    const storeId = id(String(req.query.store_id ?? ''), 'Store ID')
+    if (terminal) {
+      const session = await requireCashierTerminal(req, db)
+      if (session.storeId !== storeId) throw new ApiError(403, 'cross_store_reference', 'This terminal belongs to a different store.')
+    } else {
+      await requireStoreManager(req, storeId)
+    }
+    const orderRes = await db.query(
+      `select id, store_id, receipt_number, subtotal_cents::text, discount_cents::text, tax_cents::text,
+              service_charge_cents::text, total_cents::text, catalog_version, client_generated_at,
+              currency, store_name_snapshot, timezone_snapshot, customer_id, employee_id, manager_id,
+              manager_approved_at, order_type, table_id
+       from public.pos_orders where store_id=$1 and id=$2`,
+      [storeId, orderId],
+    )
+    const order = orderRes.rows[0]
+    if (!order) throw new ApiError(404, 'not_found', 'Order not found in this store.')
+    const [items, modifiers, paymentRes, customerRes] = await Promise.all([
+      db.query(
+        `select id, product_id, snapshot_name, snapshot_sku, snapshot_price_cents::text, snapshot_tax_bps,
+                catalog_version, quantity, discount_kind, discount_value, subtotal_cents::text,
+                discount_applied_cents::text, taxable_cents::text, tax_cents::text, total_cents::text
+         from public.pos_order_items where store_id=$1 and order_id=$2 order by id`,
+        [storeId, orderId],
+      ),
+      db.query(
+        `select oim.order_item_id, oim.snapshot_group_name, oim.snapshot_option_name, oim.price_delta_cents
+         from public.pos_order_item_modifiers oim
+         join public.pos_order_items oi on oi.store_id=oim.store_id and oi.id=oim.order_item_id
+         where oim.store_id=$1 and oi.order_id=$2`,
+        [storeId, orderId],
+      ),
+      db.query(
+        `select id, method, amount_cents::text, tendered_cents::text, change_cents::text, reference
+         from public.pos_payments where store_id=$1 and order_id=$2`,
+        [storeId, orderId],
+      ),
+      order.customer_id
+        ? db.query('select id, name, phone_normalized from public.pos_customers where store_id=$1 and id=$2', [storeId, order.customer_id])
+        : Promise.resolve({ rows: [] as unknown[] }),
+    ])
+    const modifiersByItem = new Map<string, unknown[]>()
+    for (const modifier of modifiers.rows as { order_item_id: string; snapshot_group_name: string; snapshot_option_name: string; price_delta_cents: number }[]) {
+      const list = modifiersByItem.get(modifier.order_item_id) ?? []
+      list.push({ group_name: modifier.snapshot_group_name, option_name: modifier.snapshot_option_name, price_delta_cents: modifier.price_delta_cents })
+      modifiersByItem.set(modifier.order_item_id, list)
+    }
+    res.json({
+      order: { ...order, subtotal_cents: Number(order.subtotal_cents), discount_cents: Number(order.discount_cents),
+        tax_cents: Number(order.tax_cents), service_charge_cents: Number(order.service_charge_cents), total_cents: Number(order.total_cents) },
+      items: (items.rows as Record<string, unknown>[]).map(item => ({ ...item,
+        snapshot_price_cents: Number(item.snapshot_price_cents), subtotal_cents: Number(item.subtotal_cents),
+        discount_applied_cents: Number(item.discount_applied_cents), taxable_cents: Number(item.taxable_cents),
+        tax_cents: Number(item.tax_cents), total_cents: Number(item.total_cents), modifiers: modifiersByItem.get(item.id as string) ?? [] })),
+      payment: paymentRes.rows[0] ? { ...paymentRes.rows[0], amount_cents: Number(paymentRes.rows[0].amount_cents),
+        tendered_cents: Number(paymentRes.rows[0].tendered_cents), change_cents: Number(paymentRes.rows[0].change_cents) } : null,
+      customer: customerRes.rows[0] ?? null,
+    })
+  } catch (reason) { sendApiError(res, reason) }
+}
+
 ordersRouter.post('/push', (req, res) => void push(req, res))
 terminalOrdersRouter.post('/push', (req, res) => void push(req, res, true))
 ordersRouter.post('/:id/refund', (req, res) => void refund(req, res))
+ordersRouter.get('/:id', (req, res) => void orderDetail(req, res))
+terminalOrdersRouter.get('/:id', (req, res) => void orderDetail(req, res, true))
