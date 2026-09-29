@@ -13,6 +13,20 @@
 > function. The other four merged PRs were individually audited (composite-FK tenant isolation,
 > transactional idempotency, real vs. happy-path tests) and found solid, with one cosmetic bug
 > fixed (a break-start race returned checkout's error copy instead of its own — see row K).
+> **A second same-day wave merged Ahmed's four remaining PRs** (`feat/open-checks`,
+> `feat/split-settlement`, `feat/kitchen-operations`, `feat/menu-combos-variants` — A1-A4 of
+> `docs/day-plans/final-application-work-split.md`), each cut before the first wave above and so
+> each needing a real conflict-resolution merge back onto `develop`, not just a fast-forward. The
+> same class of bug as the App.tsx one recurred at every step (two branches each extending a
+> shared `orders.ts`/`App.tsx`/`MODULE_STATUS.md`/`APPLIED.md`) and was hand-merged rather than
+> auto-resolved blindly; a real regression was also found and fixed each time a branch's
+> `orders.ts` changes met the other three PRs' PGlite test fixtures, whose hardcoded migration
+> chains didn't yet include the new migration each branch introduced. Two genuine, narrow
+> integration gaps between features built in parallel were found and documented rather than
+> silently patched (see rows A and D): combo components don't yet carry their own kitchen
+> course/prep-time target, and an open check can't yet hold a combo line. All four PRs are green
+> against the full test suite post-merge (127 API route tests, 48 integration tests, 53 web
+> tests, both typechecks, both builds).
 
 This is the living source of truth required by `RULES.md`. It separates implemented behavior
 from explicitly deferred product work; a partial module is operational, but still has named
@@ -61,9 +75,9 @@ Hamza closeout evidence:
 
 | Module | Status | Done now | Explicitly left |
 |---|---|---|---|
-| **A. POS / Register** | 🟡 | Dine-in/takeaway/delivery, cart and notes, guest requirement, inventory warning, discounts, rewards, promotions, service charge, manager approval, modifiers, offline checkout, receipts, refund flow, equal-split calculator, **open checks: durable versioned create/hold/resume/edit/void, cross-device server-backed receipt detail (`feat/open-checks`, Ahmad)**. **Discount-stacking is a decided policy, not an open gap**: a line carries exactly one discount source (manual/reward/promotion), whichever was applied last — documented as a permanent invariant next to `LineDiscount` in `packages/domain/src/money.ts`, confirmed by audit to already hold structurally (every write site replaces the field, none accumulate) | True multiple-payment/itemized/per-seat split settlement (A2); an open check's own create/edit/void/close calls are online-only by design (see `apps/web/src/lib/open-checks.ts`), not queued through the offline outbox like a completed sale. **Integration note (2026-09-29):** open checks (A1) and sellable combos (A4) were built in parallel and were never integrated — a combo product can't yet be added as an open-check line (`apps/api/src/routes/open-checks.ts` always writes `combo_selection: null`); combos only currently work through the direct register-cart checkout path |
+| **A. POS / Register** | 🟡 | Dine-in/takeaway/delivery, cart and notes, guest requirement, inventory warning, discounts, rewards, promotions, service charge, manager approval, modifiers, offline checkout, receipts, refund flow, equal-split calculator, **open checks: durable versioned create/hold/resume/edit/void, cross-device server-backed receipt detail (`feat/open-checks`, Ahmad's A1)**, **split settlement and tips: equal/itemized/per-seat/custom cash+card allocation, tips on both the single- and split-payment paths (`feat/split-settlement`, Ahmad's A2)**, **sellable combos: added to the cart and checkout through the same flow as any product (`feat/menu-combos-variants`, Ahmad's A4)**. **Discount-stacking is a decided policy, not an open gap**: a line carries exactly one discount source (manual/reward/promotion), whichever was applied last — documented as a permanent invariant next to `LineDiscount` in `packages/domain/src/money.ts`, confirmed by audit to already hold structurally (every write site replaces the field, none accumulate) | An open check's own create/edit/void/close calls are online-only by design (see `apps/web/src/lib/open-checks.ts`), not queued through the offline outbox like a completed sale. **Integration note (2026-09-29):** open checks (A1) and sellable combos (A4) were built in parallel and were never integrated — a combo product can't yet be added as an open-check line (`apps/api/src/routes/open-checks.ts` always writes `combo_selection: null`); combos only currently work through the direct register-cart checkout path |
 | **B. Front of House / Tables** | ✅ | Areas/tables CRUD in an Ember dialog, Seat/Add order/Bill/Settle/Clean, Transfer/Merge, waiter terminal mode, atomic status transitions, reservation/waitlist drawer with conflict warnings and seat-once table assignment, **a table's open check shows a real live running total on the Floor screen, not just its last completed order (`feat/open-checks`, Ahmad)**. Audited 2026-09-29: `seat()` correctly reuses the shared atomic `applyTableStatusTransition` inside a transaction with a row lock and replays idempotently on a duplicate `operation_id`. **Gap closed 2026-09-29** (`apps/api/src/routes/reservations-seat.test.ts`): the HTTP path itself is now proven, not just the underlying function — duplicate-`operation_id` replay, an already-seated booking rejecting a different operation id, a cross-store booking id returning `not_found` rather than acting on another store's row, and a session claiming a different store's `store_id` outright rejected with `cross_store_reference` | No committed gap |
-| **C. Menu** | 🟡 | Product/category CRUD, availability, kitchen routing, recipe builder, unit conversion, food cost, ingredient creation dialog, modifier group/option CRUD and checkout/KDS/receipt snapshots, **sellable combos: store-scoped fixed/derived-price bundles built from other real, already-sellable products, with per-component stock consumption and KDS routing and self-reference/inactive/nested-combo rejection (`feat/menu-combos-variants`, Ahmad's A4)** | No dedicated variant model was built: modifier-based sizes already cover a price-only variant (e.g. Regular/Large) sharing one stock count, and a stock-distinct variant (e.g. Can vs. Bottle) is already just two separate products — a genuinely new variant structure would duplicate one of those two existing mechanisms under a different name, which A4 explicitly warned against. Revisit only if a real request needs neither shape |
+| **C. Menu** | ✅ | Product/category CRUD, availability, kitchen routing, recipe builder, unit conversion, food cost, ingredient creation dialog, modifier group/option CRUD and checkout/KDS/receipt snapshots, **sellable combos: store-scoped fixed/derived-price bundles built from other real, already-sellable products, with per-component stock consumption and KDS routing and self-reference/inactive/nested-combo rejection (`feat/menu-combos-variants`, Ahmad's A4)** | No dedicated variant model was built: modifier-based sizes already cover a price-only variant (e.g. Regular/Large) sharing one stock count, and a stock-distinct variant (e.g. Can vs. Bottle) is already just two separate products — a genuinely new variant structure would duplicate one of those two existing mechanisms under a different name, which A4 explicitly warned against. Revisit only if a real request needs neither shape |
 | **D. Kitchen / KDS** | 🟡 | Order-derived tickets, station grouping, preparing/ready/served lifecycle, Chef terminal mode, modifiers, recipe consumption, table synchronization, performance reporting, **SLA calm/warning/late states from a snapshotted prep-time target, per-station due/late summary, manager ticket history (date/station/status filters, paginated), course-based firing (appetizer/side/beverage fire immediately, main/dessert held for an explicit fire) with hold/fire controls and an audit log of who fired each course (`feat/kitchen-operations`, Ahmad's A3)**. **Integration note (2026-09-29):** a combo's real dish components don't yet carry their own course/prep-time target when fired to the kitchen (only the top-level product catalog query feeds `courseByProduct`/`prepTimeByProduct` in `apps/api/src/routes/orders.ts`) — they safely fall back to no-course/default-prep-time (fire immediately) rather than erroring, but a component that should hold for course-firing won't yet. Needs a product decision (use the component's own course, or the parent combo's) before it's a real gap rather than a safe default | Standalone ticket creation remains intentionally excluded |
 | **E. Recipes** | ✅ | Recipe CRUD, yields, units, conversion-aware costing, searchable ingredient selector, inline ingredient creation | No committed gap |
 | **F. Restaurant Inventory** | ✅ | Ingredient/batch CRUD, receipt/wastage/adjustment/consumption ledger, expiry and low/out-of-stock states, terminal manager approval, edit/deactivate/reactivate, tenant-composite attribution | No committed gap; purchasing is tracked separately in Module G |
@@ -71,17 +85,21 @@ Hamza closeout evidence:
 | **H. Customers / CRM** | ✅ | Guest CRUD/search/profile, visit and lifetime-spend aggregation, loyalty enrollment/balance/tier, guest edit, safe deactivate/reactivate, manager-controlled merge (row-locked, ledger-based loyalty transfer, idempotent retry, never silently merges by phone, audit-immutable), favorites and structured/free-text preferences with author attribution, compact summary in the register guest picker | No committed gap |
 | **I. Loyalty** | ✅ | Account enrollment, tiers CRUD, reward rules, earning/redemption, immutable ledger, terminal and web paths | No committed gap |
 | **J. Promotions** | ✅ | Manager CRUD, scheduling/activation, terminal availability and line-discount application | Product decision for stacking priority; current last-applied discount wins and remains data-safe |
-| **K. Staff** | 🟡 | Owner/manager web access; Cashier/Manager/Waiter/Chef/Inventory Manager/Rider terminal roles; capability navigation; employees; clock-in/out and hours report; paid/unpaid breaks (DB-enforced no-overlap via a partial unique index plus a `before insert` trigger, immutable manager corrections) and payroll-ready CSV export; Rider terminal route and dispatch/delivery workspace (state-machine-enforced transitions, rider-scoped authorization — a `cc793ee` fixup closed a real gap where any capability-superset role, not just `rider`, could pass the terminal gate). **Found 2026-09-29, not yet fixed:** the Register's "Delivery" order-type option cannot actually complete checkout — `apps/web/src/lib/checkout.ts` never collects or sends the recipient name/phone/address the API requires (`apps/api/src/routes/orders.ts` rejects with `validation_failed` whenever `order_type` is `delivery` and no `delivery` object is attached), and no address-capture dialog exists anywhere in the Register flow. Dispatch and the Rider terminal screen are otherwise solid against rows that already exist; today a delivery order can only be created by calling the API directly, not through the shipped UI. Fixed 2026-09-29: a break-start race returning checkout's `receipt_number_conflict` copy instead of `break_already_open` — the pre-check was select-then-insert and couldn't catch a concurrent second request; the insert's own unique-violation now maps to the right error, regression test added (`apps/api/test/timekeeping-breaks.test.ts`, two genuinely concurrent requests) | Tips (blocked on split-settlement/A2 landing first) |
+| **K. Staff** | 🟡 | Owner/manager web access; Cashier/Manager/Waiter/Chef/Inventory Manager/Rider terminal roles; capability navigation; employees; clock-in/out and hours report; paid/unpaid breaks (DB-enforced no-overlap via a partial unique index plus a `before insert` trigger, immutable manager corrections) and payroll-ready CSV export; Rider terminal route and dispatch/delivery workspace (state-machine-enforced transitions, rider-scoped authorization — a `cc793ee` fixup closed a real gap where any capability-superset role, not just `rider`, could pass the terminal gate). **Found 2026-09-29, not yet fixed:** the Register's "Delivery" order-type option cannot actually complete checkout — `apps/web/src/lib/checkout.ts` never collects or sends the recipient name/phone/address the API requires (`apps/api/src/routes/orders.ts` rejects with `validation_failed` whenever `order_type` is `delivery` and no `delivery` object is attached), and no address-capture dialog exists anywhere in the Register flow. Dispatch and the Rider terminal screen are otherwise solid against rows that already exist; today a delivery order can only be created by calling the API directly, not through the shipped UI. Fixed 2026-09-29: a break-start race returning checkout's `receipt_number_conflict` copy instead of `break_already_open` — the pre-check was select-then-insert and couldn't catch a concurrent second request; the insert's own unique-violation now maps to the right error, regression test added (`apps/api/test/timekeeping-breaks.test.ts`, two genuinely concurrent requests) | Per-employee tip reporting on the Hours report — tips are now captured and reported store-wide (Ahmad's A2), but not yet joined to which employee rang up the sale |
 | **L. Reports** | ✅ | Sales, orders, refunds, customer/loyalty, inventory/wastage/expiry, hours, food cost/dish profitability, kitchen performance, dashboard floor/kitchen pulse | No committed report gap; new modules must add their own reporting slices |
 | **M. Restaurant Intelligence** | 🔴 | — | Forecasting, anomaly detection, demand planning and recommendation surfaces; start only after sufficient production data exists |
 
-Current count: **7 complete modules, 5 operational/partial modules, 1 deliberately deferred
+Current count: **8 complete modules, 4 operational/partial modules, 1 deliberately deferred
 module**. The five-day scope is complete; the partial/missing items above are the next product
 backlog, not hidden failures. Purchasing & Vendors moved from 🔴 to 🟡 and Customers/CRM moved
 from 🟡 to ✅ this same day (2026-09-29), alongside Staff picking up breaks/payroll and the Rider
 workspace — see the header note above for what was independently audited/fixed before trusting
 these. Front of House / Tables moved 🟡 to ✅ the same day once the `seat()` HTTP idempotency and
-cross-store gap the audit found was closed with a real test.
+cross-store gap the audit found was closed with a real test. Menu moved 🟡 to ✅ once sellable
+combos landed (Ahmad's A4) — the "no dedicated variant model" note in its row is a deliberate scope
+decision (modifier-based sizes and separate products already cover both variant shapes a new model
+would duplicate), not outstanding backlog, the same framing Promotions' stacking-priority note
+already used.
 
 ## Cross-cutting foundation
 
@@ -99,24 +117,27 @@ cross-store gap the audit found was closed with a real test.
 ## What remains
 
 The next work is intentionally prioritized rather than treated as one unsafe mega-change.
-Reservations/waitlist, favorites, discount-stacking, delivery/rider, and purchasing/vendors moved
-out of this list on 2026-09-29 (now rows B/H/G/K above) — they are not multi-day features that got
-half-shipped; each was independently audited for tenant isolation, transactional idempotency, and
-real test coverage before being trusted here.
+Reservations/waitlist, favorites, discount-stacking, delivery/rider, purchasing/vendors, open
+checks/hold-resume, split settlement/tips, kitchen SLA/course-firing/ticket-history, and sellable
+combos all moved out of this list across 2026-09-29 (now rows A/B/C/D/G/H/K above) — none were
+multi-day features that got half-shipped; each was independently audited or verified against this
+codebase's own invariants (tenant isolation, transactional idempotency, real test coverage) before
+being trusted here.
 
-1. **Operational depth:** sellable combos/variants. (Open checks/hold-resume shipped — see Module
-   A/B above and `docs/day-plans/day6-ahmad-open-checks.md`; kitchen SLA classification, course
-   firing, and ticket history/pagination shipped — see Module D above and `feat/kitchen-operations`.)
-   Separately, a small but real gap found during manual-test-workflow authoring: wire a
-   recipient/address dialog into the Register's Delivery order type so checkout can actually send
-   the `delivery` details the API already requires — right now Dispatch/Rider work correctly on
-   rows created directly via the API, but the UI has no way to create one.
-2. **Commercial depth:** true multi-payment/split-tender/itemized-per-seat settlement, tips
-   (blocks Staff's tip reporting).
-3. **Scale hardening:** make browser E2E a CI gate, then add performance budgets and monitoring.
-4. **Data-dependent future:** Restaurant Intelligence only after real operational history exists.
+1. **Two narrow, real integration gaps** between Ahmed's four features (A1/A2/A3/A4), each built in
+   parallel without knowledge of the others, found and documented rather than silently patched: a
+   combo's dish components don't carry their own kitchen course/prep-time target (row D), and an
+   open check can't yet hold a combo line (row A). Neither errors or corrupts data; both default
+   safely. Closing them is a product decision (whose course/prep-time should a combo component use;
+   should open checks support combo lines at all) before it's implementation work.
+2. **A small, real gap found during manual-test-workflow authoring:** wire a recipient/address
+   dialog into the Register's Delivery order type so checkout can actually send the `delivery`
+   details the API already requires — right now Dispatch/Rider work correctly on rows created
+   directly via the API, but the UI has no way to create one.
+3. **Per-employee tip reporting** on the Hours report (row K) — tips are captured and reported
+   store-wide, just not yet joined to which employee rang up the sale.
+4. **Scale hardening:** make browser E2E a CI gate, then add performance budgets and monitoring.
+5. **Data-dependent future:** Restaurant Intelligence only after real operational history exists.
 
-A same-day (not multi-day) slice of item 1 — Kitchen SLA classification only (calm/warning/late
-per ticket, station due/late summary, boundary-time tests) — is scoped as a genuinely completable
-one-day unit in `docs/day-plans/final-application-work-split.md`'s tomorrow-executable assignment;
-the rest of item 1 and all of item 2 are correctly multi-day and not attempted in one sitting.
+Items 1-3 are each a small, bounded fix, not a multi-day feature; item 4 is correctly multi-day and
+not attempted in one sitting.
