@@ -47,6 +47,17 @@ schema no longer matches history, and it needs manual reconciliation, not a sile
 | 202609260003_service_charge.sql | `a8268107e9942418d7f36274ca375690553fad62f3f3c9b66a4cc1e842d34371` | yes | `stores.service_charge_bps` and `pos_orders.service_charge_cents` columns exist |
 | 202609270001_modifiers.sql | `c22d27afa488f5142da526dae806a2157593deffc4ee3acd681c98a7c8658300` | yes | all four modifier tables, RLS, and member-read policies confirmed by `verify-day5-closeout.mjs` |
 | 202609280001_inventory_terminal_tenant_fks.sql | `0152bf0c5cf6106473aef9309e3edfe7d248356d0e98d3f3c27eaee4474b7625` | yes | all four composite inventory-to-terminal-employee foreign keys confirmed by `verify-day5-closeout.mjs` |
+| 202609290001_kitchen_operations_depth.sql | `554dd82021abca55b1deabc8460c0e93a545a3dd58f01e0c20c1eb70ae5df22a` | yes | `kitchen_ticket_items.course`/`prep_time_target_seconds`/`held_at`, `public.kitchen_course_fire_log`, and the `kitchen_tickets_by_store_status_created` index confirmed by `apps/api/scripts/verify-kitchen-operations-depth.mjs` |
+
+Note: this ledger's rows above stop at `202609280001` even though several 2026-09-28-dated
+migrations from other feature branches (`delivery_operations`, `reservations_waitlist`,
+`purchasing_vendors`, `customer_profile_tools`, `staff_breaks_and_corrections`) already exist in
+`supabase/migrations/` and are merged into `develop` — two pairs of them share a sequence number
+(`...0002` used twice, `...0004` used twice). Neither the missing ledger rows nor the filename
+collision were introduced by this branch (`feat/kitchen-operations`, Ahmad's A3 work); flagging
+for whoever integrates those branches, per `RULES.md`'s "Lead renumbers during integration" note
+on the last time this happened (`202609230002_table_waiter_assignment.sql`). This migration
+(`202609290001`) uses today's date and does not collide with any of them.
 
 Note: `202609230002_table_waiter_assignment.sql` was renamed from `..._0001_...` (Lead
 integration fixup, PR #4) — it and Ahmed's kitchen-display migration were both authored the
