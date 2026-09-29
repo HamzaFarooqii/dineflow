@@ -428,6 +428,9 @@ export async function closeOpenCheckCore(storeId: string, checkId: string, param
         discount_kind: row.discount_kind as 'percent' | 'fixed' | null, discount_value: row.discount_value === null ? null : Number(row.discount_value),
         subtotal_cents: line.subtotalCents, discount_applied_cents: line.discountAppliedCents, taxable_cents: line.taxableCents,
         tax_cents: line.taxCents, total_cents: line.totalCents,
+        // Open checks don't yet support adding a combo product to a check (A1/A4 were built in
+        // parallel, never integrated) -- every open-check item is a plain product line.
+        combo_selection: null,
       }
     })
     const totals = sumDiscountedLines(parsedItems.map(item => ({ subtotalCents: item.subtotal_cents, discountAppliedCents: item.discount_applied_cents,

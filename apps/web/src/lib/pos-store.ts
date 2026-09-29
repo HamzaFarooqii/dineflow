@@ -54,6 +54,11 @@ export interface CartItem {
   // and it deliberately isn't part of cartSignature since it doesn't affect money math or
   // require re-approval. Wiring it into checkout is Day 2, once kitchen tickets exist to carry it.
   notes?: string
+  // Sellable combos (Ahmad's A4 work): present only when this line is a combo, one entry per
+  // selected component. checkout.ts threads this straight through to the server as
+  // `combo_selection` -- the server re-validates it against the real catalog and expands it into
+  // the actual component order-item rows; the client never invents the expansion itself.
+  comboSelection?: { groupId: string; componentProductId: string; priceDeltaCents: number }[]
 }
 
 export interface CartTotals {

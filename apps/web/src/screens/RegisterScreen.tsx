@@ -20,6 +20,7 @@ import { MenuItemCard } from './menu/MenuItemCard'
 import { MenuSearch } from './menu/MenuSearch'
 import { RestaurantOrderItem, type DiscountEditorKind } from './menu/RestaurantOrderItem'
 import { ModifierPicker, modifierLineId } from './menu/ModifierPicker'
+import { ComboPicker } from './menu/ComboPicker'
 import { liveQuery } from 'dexie'
 
 export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
@@ -54,6 +55,7 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
   const [approvalReason, setApprovalReason] = useState('')
   const [oversoldAcknowledged, setOversoldAcknowledged] = useState(false)
   const [modifierPicker, setModifierPicker] = useState<{ product: LocalProduct; lineId?: string; initial: SelectedModifier[] } | null>(null)
+  const [comboPicker, setComboPicker] = useState<LocalProduct | null>(null)
   const [employeeId, setEmployeeId] = useState<string | null>(null)
   const [holdBusy, setHoldBusy] = useState(false)
   const [holdError, setHoldError] = useState('')
@@ -228,6 +230,7 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
   function addProductToCart(product: LocalProduct): boolean {
     if (product.tax_rate_id && taxRates[product.tax_rate_id] === undefined) { setError(`${product.name} needs a tax rate that has not synced to this browser yet.`); return false }
     setError('')
+    if (product.combo) { setComboPicker(product); return false }
     if (product.modifier_groups?.length) { setModifierPicker({ product, initial: [] }); return false }
     addItem({ lineId: modifierLineId(product.id, []), storeId, productId: product.id, name: product.name, sku: product.sku,
       unitPriceCents: product.unit_price_cents, basePriceCents: product.unit_price_cents, modifiers: [],
@@ -431,6 +434,17 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
           sku: modifierPicker.product.sku, unitPriceCents, basePriceCents: modifierPicker.product.unit_price_cents, modifiers,
           taxRateBps: taxRates[modifierPicker.product.tax_rate_id ?? ''] ?? 0, catalogVersion })
         setModifierPicker(null)
+      }} />}
+    {comboPicker && <ComboPicker product={comboPicker} currency={currency} productsById={new Map(products.map(candidate => [candidate.id, candidate]))}
+      onClose={() => setComboPicker(null)} onApply={(selection, unitPriceCents) => {
+        addItem({
+          lineId: `${comboPicker.id}:combo:${selection.map(entry => entry.componentProductId).sort().join(',')}`,
+          storeId, productId: comboPicker.id, name: comboPicker.name, sku: comboPicker.sku,
+          unitPriceCents, basePriceCents: unitPriceCents, modifiers: [],
+          taxRateBps: taxRates[comboPicker.tax_rate_id ?? ''] ?? 0, catalogVersion,
+          comboSelection: selection.map(entry => ({ groupId: entry.groupId, componentProductId: entry.componentProductId, priceDeltaCents: entry.priceDeltaCents })),
+        })
+        setComboPicker(null)
       }} />}
   </section>
 }

@@ -95,7 +95,16 @@ export async function completeLocalSale(items: CartItem[], storeId: string, meth
       // which reward_rule to deduct points for — the discount amount itself already travels as an
       // ordinary line discount above, exactly like a manual one.
       const reward = redeemedReward(items)
-      const payload = { operation_id: operationId, order, items: orderItems,
+      // Sellable combos (A4): the server payload carries each combo line's selection so it can
+      // re-validate against the real catalog and expand it into component order-item rows itself
+      // -- the client never invents that expansion. Kept out of the locally-persisted orderItems
+      // above; the local receipt only ever needs the already-settled snapshot, not the selection
+      // that produced it.
+      const payloadItems = orderItems.map((orderItem, index) => {
+        const selection = items[index].comboSelection
+        return selection?.length ? { ...orderItem, combo_selection: selection.map(entry => ({ group_id: entry.groupId, component_product_id: entry.componentProductId, price_delta_cents: entry.priceDeltaCents })) } : orderItem
+      })
+      const payload = { operation_id: operationId, order, items: payloadItems,
         ...(settlement ? { payments } : { payment: payments[0] }),
         loyalty_redemption: reward ? { reward_rule_id: reward.ruleId } : undefined }
       const outbox: OutboxEntry = { store_id: storeId, operation_id: operationId, order_id: operationId, status: 'pending',
