@@ -4,6 +4,7 @@ import { formatCents } from '../../../../../packages/domain/src/money'
 import { TABLE_STATUS_LABELS, TABLE_STATUS_TONE, type TableStatus } from '../../../../../packages/domain/src/table-status'
 import { createFloorArea, createRestaurantTable, deleteFloorArea, deleteRestaurantTable, fetchFloorPlan, mergeTableParty, TableStatusConflictError,
   transferTableParty, updateRestaurantTable, updateTableStatus, type FloorArea, type FloorEmployee, type RestaurantTable } from '../../lib/floor'
+import { createBooking, fetchBookings, runBookingAction, seatBooking, updateBooking, type BookingEntry, type BookingFilter, type BookingKind } from '../../lib/reservations'
 import { posDb } from '../../lib/db'
 import { requireSupabase } from '../../lib/supabase'
 import { usePosStore } from '../../lib/pos-store'
@@ -41,6 +42,20 @@ export function FloorScreen({ terminal = false }: { terminal?: boolean }) {
   const [actionError, setActionError] = useState('')
   const [actionBusy, setActionBusy] = useState(false)
   const [cartBlockNotice, setCartBlockNotice] = useState(false)
+  const [bookingFilter, setBookingFilter] = useState<BookingFilter>('today')
+  const [reservations, setReservations] = useState<BookingEntry[]>([])
+  const [waitlist, setWaitlist] = useState<BookingEntry[]>([])
+  const [bookingBusy, setBookingBusy] = useState(false)
+  const [bookingError, setBookingError] = useState('')
+  const [bookingWarnings, setBookingWarnings] = useState<string[]>([])
+  const [bookingFormOpen, setBookingFormOpen] = useState<BookingKind | null>(null)
+  const [editingBooking, setEditingBooking] = useState<{ kind: BookingKind; entry: BookingEntry } | null>(null)
+  const [bookingName, setBookingName] = useState('')
+  const [bookingPhone, setBookingPhone] = useState('')
+  const [bookingSize, setBookingSize] = useState('2')
+  const [bookingExpectedAt, setBookingExpectedAt] = useState('')
+  const [bookingNotes, setBookingNotes] = useState('')
+  const [bookingTableId, setBookingTableId] = useState('')
 
   // Floor management (Day 3): create/edit/delete areas and tables. Kept behind an explicit
   // toggle so day-to-day service on this screen stays exactly as fast and uncluttered as before —
@@ -80,6 +95,13 @@ export function FloorScreen({ terminal = false }: { terminal?: boolean }) {
     return plan
   }
 
+  const reloadBookings = async (id: string, filter = bookingFilter) => {
+    const bookings = await fetchBookings(id, filter, terminal)
+    setReservations(bookings.reservations)
+    setWaitlist(bookings.waitlist)
+    return bookings
+  }
+
   useEffect(() => {
     let active = true
     const load = async () => {
@@ -104,6 +126,7 @@ export function FloorScreen({ terminal = false }: { terminal?: boolean }) {
         if (active) setStoreId(id)
         if (active) setCurrency(config?.currency ?? '')
         const plan = await reload(id)
+        await reloadBookings(id)
         if (active && !newTableAreaId) setNewTableAreaId(plan.areas[0]?.id ?? '')
       } catch (reason) {
         if (active) setError(reason instanceof Error ? reason.message : 'Could not load the floor plan.')
@@ -116,6 +139,7 @@ export function FloorScreen({ terminal = false }: { terminal?: boolean }) {
 
   const visibleTables = selectedArea === 'all' ? tables : tables.filter(table => table.floor_area_id === selectedArea)
   const areaName = (id: string) => areas.find(area => area.id === id)?.name ?? 'Unassigned'
+  const tableName = (id: string | null) => id ? tables.find(table => table.id === id)?.label ?? 'Table' : 'Unassigned'
 
   function openTable(table: RestaurantTable) {
     setSelectedTable(table)
@@ -184,6 +208,68 @@ export function FloorScreen({ terminal = false }: { terminal?: boolean }) {
   async function handleCleaned(table: RestaurantTable) {
     const updated = await runTransition(table, CLEANED_FROM, 'available')
     if (updated && activeTableId === table.id) setActiveTableId(null)
+  }
+
+  function resetBookingForm(kind: BookingKind, entry?: BookingEntry) {
+    setBookingFormOpen(kind)
+    setEditingBooking(entry ? { kind, entry } : null)
+    setBookingName(entry?.guest_name ?? '')
+    setBookingPhone(entry?.guest_phone ?? '')
+    setBookingSize(String(entry?.guest_size ?? 2))
+    setBookingExpectedAt(entry?.expected_at ? entry.expected_at.slice(0, 16) : new Date(Date.now() + 30 * 60_000).toISOString().slice(0, 16))
+    setBookingNotes(entry?.notes ?? '')
+    setBookingTableId(entry?.restaurant_table_id ?? selectedTable?.id ?? '')
+    setBookingWarnings([])
+    setBookingError('')
+  }
+
+  async function saveBooking(event: FormEvent) {
+    event.preventDefault()
+    if (!bookingFormOpen) return
+    const size = Number(bookingSize)
+    if (!bookingName.trim() || !Number.isInteger(size) || size <= 0) {
+      setBookingError('Enter a guest name and party size.')
+      return
+    }
+    setBookingBusy(true); setBookingError(''); setBookingWarnings([])
+    try {
+      const draft = {
+        guest_name: bookingName.trim(),
+        guest_phone: bookingPhone.trim() || null,
+        guest_size: size,
+        notes: bookingNotes.trim(),
+        expected_at: new Date(bookingExpectedAt).toISOString(),
+        restaurant_table_id: bookingTableId || null,
+        floor_area_id: bookingTableId ? tables.find(table => table.id === bookingTableId)?.floor_area_id ?? null : null,
+      }
+      const result = editingBooking
+        ? await updateBooking(storeId, editingBooking.kind, editingBooking.entry.id, draft, terminal)
+        : await createBooking(storeId, bookingFormOpen, draft, terminal)
+      setBookingWarnings(result.warnings ?? [])
+      setBookingFormOpen(null); setEditingBooking(null)
+      await reloadBookings(storeId)
+    } catch (reason) { setBookingError(reason instanceof Error ? reason.message : 'Could not save this booking.') }
+    finally { setBookingBusy(false) }
+  }
+
+  async function handleBookingAction(kind: BookingKind, entry: BookingEntry, next: 'arrive' | 'cancel' | 'no-show') {
+    setBookingBusy(true); setBookingError('')
+    try {
+      await runBookingAction(storeId, kind, entry.id, next, terminal)
+      await reloadBookings(storeId)
+    } catch (reason) { setBookingError(reason instanceof Error ? reason.message : 'Could not update this booking.') }
+    finally { setBookingBusy(false) }
+  }
+
+  async function handleSeatBooking(kind: BookingKind, entry: BookingEntry, tableId: string) {
+    setBookingBusy(true); setBookingError('')
+    try {
+      await seatBooking(storeId, kind, entry.id, tableId, selectedWaiterId || null, terminal)
+      const plan = await reload(storeId)
+      await reloadBookings(storeId)
+      setSelectedTable(plan.tables.find(table => table.id === tableId) ?? selectedTable)
+    } catch (reason) { setBookingError(reason instanceof Error ? reason.message : 'Could not seat this booking.') }
+    finally { setBookingBusy(false) }
   }
 
   // --- Area management -----------------------------------------------------------------------
@@ -318,6 +404,46 @@ export function FloorScreen({ terminal = false }: { terminal?: boolean }) {
         <button type="submit" className="secondary-cta" disabled={areaActionBusy || !newAreaName.trim()}>{areaActionBusy ? 'Adding…' : 'Add area'}</button>
       </form>}
       {areaActionError && <p className="form-notice error" role="alert">{areaActionError}</p>}
+
+      <section className="floor-bookings" aria-label="Reservations and waitlist">
+        <div className="floor-bookings-head">
+          <div>
+            <p className="kicker">GUEST FLOW</p>
+            <h2>Reservations & Waitlist</h2>
+          </div>
+          <div className="floor-booking-actions">
+            <SelectField label="Filter" value={bookingFilter} onChange={event => {
+              const next = event.target.value as BookingFilter
+              setBookingFilter(next)
+              if (storeId) void reloadBookings(storeId, next)
+            }}>
+              <option value="today">Today</option>
+              <option value="upcoming">Upcoming</option>
+              <option value="waiting">Waiting</option>
+              <option value="all">All</option>
+            </SelectField>
+            <button type="button" className="secondary-cta" onClick={() => resetBookingForm('reservation')}>New reservation</button>
+            <button type="button" className="secondary-cta" onClick={() => resetBookingForm('waitlist')}>Add waitlist</button>
+          </div>
+        </div>
+        {bookingError && <p className="form-notice error" role="alert">{bookingError}</p>}
+        {bookingWarnings.length > 0 && <ul className="floor-booking-warnings">{bookingWarnings.map(warning => <li key={warning}>{warning}</li>)}</ul>}
+        <div className="floor-booking-columns">
+          <BookingList title="Reservations" kind="reservation" entries={reservations} tableName={tableName} busy={bookingBusy}
+            onEdit={entry => resetBookingForm('reservation', entry)}
+            onArrive={entry => void handleBookingAction('reservation', entry, 'arrive')}
+            onCancel={entry => void handleBookingAction('reservation', entry, 'cancel')}
+            onNoShow={entry => void handleBookingAction('reservation', entry, 'no-show')}
+            onSeat={(entry, tableId) => void handleSeatBooking('reservation', entry, tableId)}
+            selectedTableId={selectedTable?.id ?? ''} />
+          <BookingList title="Waitlist" kind="waitlist" entries={waitlist} tableName={tableName} busy={bookingBusy}
+            onEdit={entry => resetBookingForm('waitlist', entry)}
+            onCancel={entry => void handleBookingAction('waitlist', entry, 'cancel')}
+            onNoShow={entry => void handleBookingAction('waitlist', entry, 'no-show')}
+            onSeat={(entry, tableId) => void handleSeatBooking('waitlist', entry, tableId)}
+            selectedTableId={selectedTable?.id ?? ''} />
+        </div>
+      </section>
 
       <div className="floor-grid">
         {visibleTables.map(table => <TableCard key={table.id} table={table} areaName={areaName(table.floor_area_id)} currency={currency} onSelect={() => openTable(table)} />)}
@@ -468,6 +594,24 @@ export function FloorScreen({ terminal = false }: { terminal?: boolean }) {
         </section>
       </div>
     </Dialog>}
+    {bookingFormOpen && <Dialog title={editingBooking ? 'Edit booking' : bookingFormOpen === 'reservation' ? 'New reservation' : 'Add to waitlist'} kicker="GUEST FLOW" onClose={() => { if (!bookingBusy) { setBookingFormOpen(null); setEditingBooking(null) } }}>
+      <form className="floor-booking-form" onSubmit={event => void saveBooking(event)}>
+        <label>Guest name<input maxLength={120} value={bookingName} onChange={event => setBookingName(event.target.value)} required /></label>
+        <label>Phone<input inputMode="tel" value={bookingPhone} onChange={event => setBookingPhone(event.target.value)} /></label>
+        <label>Party size<input type="number" min={1} max={99} value={bookingSize} onChange={event => setBookingSize(event.target.value)} required /></label>
+        <label>{bookingFormOpen === 'waitlist' ? 'Arrival time' : 'Expected time'}<input type="datetime-local" value={bookingExpectedAt} onChange={event => setBookingExpectedAt(event.target.value)} required /></label>
+        <SelectField label="Assigned table" value={bookingTableId} onChange={event => setBookingTableId(event.target.value)}>
+          <option value="">No table yet</option>
+          {tables.map(table => <option key={table.id} value={table.id}>{table.label} · {areaName(table.floor_area_id)} · {TABLE_STATUS_LABELS[table.status]}</option>)}
+        </SelectField>
+        <label>Notes<textarea maxLength={500} value={bookingNotes} onChange={event => setBookingNotes(event.target.value)} /></label>
+        {bookingError && <p className="form-notice error" role="alert">{bookingError}</p>}
+        <div className="floor-inline-form-actions">
+          <button type="button" className="text-action" onClick={() => { setBookingFormOpen(null); setEditingBooking(null) }}>Cancel</button>
+          <button type="submit" className="cta" disabled={bookingBusy}>{bookingBusy ? 'Saving...' : 'Save'}</button>
+        </div>
+      </form>
+    </Dialog>}
     {selectedTable && <aside className="floor-detail" role="dialog" aria-label={`Table ${selectedTable.label}`}>
       <header><h2>Table {selectedTable.label}</h2><button type="button" className="text-action" onClick={() => setSelectedTable(null)}>Close</button></header>
       {!editTableOpen ? <dl>
@@ -532,5 +676,50 @@ export function FloorScreen({ terminal = false }: { terminal?: boolean }) {
         <button type="button" disabled={actionBusy || selectedTable.status !== CLEANED_FROM} onClick={() => void handleCleaned(selectedTable)}>Cleaned</button>
       </div>
     </aside>}
+  </section>
+}
+
+function formatBookingTime(value: string): string {
+  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(value))
+}
+
+function BookingList({
+  title, kind, entries, tableName, busy, selectedTableId, onEdit, onArrive, onCancel, onNoShow, onSeat,
+}: {
+  title: string
+  kind: BookingKind
+  entries: BookingEntry[]
+  tableName: (id: string | null) => string
+  busy: boolean
+  selectedTableId: string
+  onEdit: (entry: BookingEntry) => void
+  onArrive?: (entry: BookingEntry) => void
+  onCancel: (entry: BookingEntry) => void
+  onNoShow: (entry: BookingEntry) => void
+  onSeat: (entry: BookingEntry, tableId: string) => void
+}) {
+  return <section className="floor-booking-list">
+    <header><h3>{title}</h3><span>{entries.length}</span></header>
+    {entries.length === 0 && <p className="floor-empty">Nothing here for this filter.</p>}
+    {entries.map(entry => {
+      const actionable = kind === 'reservation' ? ['booked', 'arrived'].includes(entry.status) : entry.status === 'waiting'
+      const seatTableId = selectedTableId || entry.restaurant_table_id || ''
+      return <article key={entry.id} className="floor-booking-card">
+        <div className="floor-booking-main">
+          <strong>{entry.guest_name}</strong>
+          <span>{entry.guest_size} guests · {formatBookingTime(entry.expected_at)}</span>
+          <small>{tableName(entry.restaurant_table_id)} · {entry.status.replace('_', ' ')}</small>
+          {entry.wait_minutes !== undefined && entry.wait_minutes > 0 && <small>{entry.wait_minutes} min waiting</small>}
+          {entry.notes && <p>{entry.notes}</p>}
+        </div>
+        <div className="floor-booking-card-actions">
+          <button type="button" className="text-action" disabled={busy || !actionable} onClick={() => onEdit(entry)}>Edit</button>
+          {onArrive && <button type="button" className="text-action" disabled={busy || entry.status !== 'booked'} onClick={() => onArrive(entry)}>Arrive</button>}
+          <button type="button" className="text-action" disabled={busy || !actionable} onClick={() => onNoShow(entry)}>No-show</button>
+          <button type="button" className="text-action" disabled={busy || !actionable} onClick={() => onCancel(entry)}>Cancel</button>
+          <button type="button" className="secondary-cta" disabled={busy || !actionable || !seatTableId} title={!seatTableId ? 'Select a table or assign one first' : undefined} onClick={() => onSeat(entry, seatTableId)}>Seat</button>
+        </div>
+      </article>
+    })}
   </section>
 }

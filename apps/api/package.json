@@ -8,6 +8,7 @@
     "test": "tsx --test src/terminal-auth/*.test.ts",
     "test:integration": "tsx --test --test-concurrency=1 test/*.test.ts",
     "test:browser": "tsx test/browser-check.ts",
+    "test:browser:core-loop": "tsx test/core-loop-browser-check.ts",
     "test:orders": "node --test --import tsx src/routes/*.test.ts"
   },
   "dependencies": {

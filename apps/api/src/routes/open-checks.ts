@@ -455,6 +455,9 @@ export async function closeOpenCheckCore(storeId: string, checkId: string, param
     const operation: ValidatedOperation = {
       operationId: params.operationId, storeId, items: parsedItems, totals: { ...totals, totalCents: grandTotalCents }, serviceChargeCents,
       loyaltyRedemption: params.loyaltyRedemptionRewardRuleId ? { rewardRuleId: params.loyaltyRedemptionRewardRuleId } : null,
+      // Open checks never carry delivery orders (check.order_type is always dine_in/takeaway) --
+      // matches orders.ts's own "null unless order_type is delivery" convention for this field.
+      deliveryDetails: null,
       order: { customer_id: check.customer_id, receipt_number: params.receiptNumber, catalog_version: params.catalogVersion,
         order_type: check.order_type, table_id: check.table_id, client_generated_at: params.clientGeneratedAt,
         employee_id: params.employeeIdOverride ?? check.employee_id, manager_id: check.manager_id, manager_approved_at: check.manager_approved_at },
