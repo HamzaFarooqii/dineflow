@@ -59,6 +59,30 @@ export interface LocalModifierGroup {
   options: LocalModifierOption[]
 }
 
+// Sellable combos (Ahmad's A4 work) — a combo is a real LocalProduct (unit_price_cents is its
+// fixed-mode base price, or ignored in derived mode) with these groups attached. Deliberately a
+// separate shape from LocalModifierGroup: an option here is a real product_id, not a flat
+// name/price row, since it needs to drive stock consumption and its own kitchen routing.
+export interface LocalComboOption {
+  id: string
+  component_product_id: string
+  price_delta_cents: number
+  sort_order: number
+}
+export interface LocalComboGroup {
+  id: string
+  name: string
+  min_select: number
+  max_select: number
+  sort_order: number
+  options: LocalComboOption[]
+}
+export interface LocalCombo {
+  product_id: string
+  pricing_mode: 'fixed' | 'derived'
+  groups: LocalComboGroup[]
+}
+
 export interface LocalProduct {
   id: string
   store_id: string
@@ -82,6 +106,7 @@ export interface LocalProduct {
   unavailable_until?: string | null // ISO 8601
   sells_directly?: boolean
   modifier_groups?: LocalModifierGroup[]
+  combo?: LocalCombo | null
 }
 
 export interface LocalStock {

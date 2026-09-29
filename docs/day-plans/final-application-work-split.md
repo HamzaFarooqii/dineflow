@@ -155,9 +155,53 @@ Acceptance:
 - Repeated course-fire requests are idempotent.
 - Current prepare/ready/serve, ingredient consumption and table synchronization stay green.
 
-### A4. Sellable combos and variants — 8 points
+### A4. Sellable combos and variants — 8 points — ✅ done (2026-09-29)
 
 Branch: `feat/menu-combos-variants`
+
+Delivered: `supabase/migrations/202609290002_sellable_combos.sql` (additive: `combos`/`combo_groups`/
+`combo_group_options`, plus `pos_order_items.combo_parent_item_id`) applied and recorded in
+`APPLIED.md`. A combo is deliberately *not* a new checkout/receipt/KDS mechanism: it's a real
+`pos_products` row with selectable groups; at sale time it expands into its own priced order-item
+row plus one zero-priced order-item row per selected component (each snapshotting the component's
+real name/sku, linked via `combo_parent_item_id`) — so the existing stock-decrement,
+kitchen-ticket-creation and whole-order-refund loops in `orders.ts` handle every component with
+**zero changes of their own**; only the combo-parent row is excluded from getting its own kitchen
+ticket item (nothing is "prepared" for a header line). `packages/domain/src/combo.ts` (pure:
+`calculateComboPriceCents` for fixed/derived pricing, `validateComboSelection` for group min/max
+counts). `orders.ts` gained `resolveComboSelection` (matches a submitted selection against the
+combo's real catalog rows, tamper-checking each price) and `catalog.ts` gained `replaceComboCore`
+(catalog-time invariants: self-reference rejected in `parseComboGroups`, inactive/cross-store
+component rejected, nested combo-as-component rejected), both exported core functions per this
+repo's "core function, no req/res" testing convention. Web: `ComboEditor` (product-editor drawer,
+reuses the modifier editor's visual pattern but picks real products, not flat name/price rows) and
+`ComboPicker` (register-side, parallel to `ModifierPicker`) with loading/empty/validation/error
+states; `RegisterScreen` opens the combo picker instead of adding directly when a product has a
+combo configured, and the selection travels through `checkout.ts` to the server as
+`combo_selection`, never invented client-side.
+
+No dedicated variant model was built — see `docs/MODULE_STATUS.md`'s Menu row for the reasoning
+(a price-only variant is already a modifier; a stock-distinct variant is already just another
+product; a new structure would duplicate one of those two under a different name, which this
+task's own deliverable list explicitly warned against).
+
+Acceptance, verified: `apps/api/src/routes/combo.test.ts` (PGlite) proves a combo is rejected for
+referencing itself, an inactive component, a cross-store component, or another combo as a
+component; that a second full-replace save genuinely removes the first save's groups rather than
+appending to them; that `resolveComboSelection` rejects a tampered price and enforces group
+min/max counts; and — seeding the exact expanded row shape `orders.ts`'s checkout produces — that
+a two-unit combo sale decrements each selected component's stock by the combo's own quantity,
+routes exactly one kitchen ticket item per component (none for the combo header), that the
+existing whole-order refund loop restores each component's stock with no combo-specific code of
+its own, and that a component's later rename/price change never alters its already-sold snapshot.
+`packages/domain/src/combo.test.ts` covers fixed vs. derived pricing math and group validation
+directly. The full pre-existing `test:orders` suite (114 tests on this branch, including
+delivery/purchasing/reservations/breaks/staff-roles work already on `develop`) passes unchanged
+both before and after this branch's changes to `orders.ts`'s shared checkout path. Manual
+verification: `cd packages/domain && npm test` (65/65), `cd apps/api && npx tsc --noEmit && npm
+run test:orders` (114/114), `cd apps/web && npm test && npx tsc --noEmit -p tsconfig.app.json &&
+npm run build` (52/52, clean, clean). No interactive browser walkthrough was performed in this
+pass, same limitation flagged on A1-A3's own review notes.
 
 Deliver:
 

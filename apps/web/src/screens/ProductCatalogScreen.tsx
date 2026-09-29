@@ -23,6 +23,7 @@ import { Pencil, Plus, RefreshCw, ScanLine, Search, Trash2, X } from '../compone
 import { DishAvailability } from './menu/DishAvailability'
 import { RecipeEditor } from './menu/RecipeEditor'
 import { ModifierEditor } from './menu/ModifierEditor'
+import { ComboEditor } from './menu/ComboEditor'
 import { createUnit, loadRecipeData, saveRecipe, type RecipeData } from './menu/recipe-api'
 import {
   EMPTY_RECIPE_DRAFT,
@@ -1177,6 +1178,22 @@ export function ProductCatalogScreen() {
                     void posDb.products.put(updated)
                   }} />
                 : <p className="pc-field-hint">Save this dish first, then edit it to add sizes and add-ons.</p>}
+              </div>
+
+              <div className="pc-group">
+                <p className="pc-group-label">Sellable combo</p>
+                {editingProduct ? <ComboEditor storeId={storeId} productId={editingProduct.id} combo={editingProduct.combo} products={products ?? []} currency={currency} disabled={busy}
+                  onSaved={combo => {
+                    const updated = { ...editingProduct, combo }
+                    setEditingProduct(updated)
+                    void posDb.products.put(updated)
+                  }}
+                  onRemoved={() => {
+                    const updated = { ...editingProduct, combo: null }
+                    setEditingProduct(updated)
+                    void posDb.products.put(updated)
+                  }} />
+                : <p className="pc-field-hint">Save this dish first, then turn it into a combo of other menu items.</p>}
               </div>
 
               {/* Group 4: Dish Photo */}

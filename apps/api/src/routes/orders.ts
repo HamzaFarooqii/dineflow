@@ -7,6 +7,7 @@ import { ORDER_TYPES, type OrderType } from '../../../../packages/domain/src/ord
 import { BASE_MULTIPLIER_BPS, pointsEarned, tierForLifetimePoints } from '../../../../packages/domain/src/loyalty.js'
 import { requireCashierTerminal, requireDeviceTerminal } from '../terminal-auth/routes.js'
 import { createDeliveryOrderSnapshot, deliveryDetailsBody } from './delivery.js'
+import { calculateComboPriceCents, validateComboSelection } from '../../../../packages/domain/src/combo.js'
 
 export const ordersRouter = Router()
 export const terminalOrdersRouter = Router()
@@ -84,6 +85,49 @@ function parseItemModifiers(item: JsonRecord, label: string) {
   return { supplied: true, rows }
 }
 
+// A2/A4: only the *shape* of a combo selection is parsed here (structural, no DB access -- same
+// split this file already uses for modifiers: parseItemModifiers only checks shape, while
+// push()'s modifierCatalog query later checks the selection against the real catalog). Whether
+// this selection actually satisfies the combo's real groups/options/prices is checked in push(),
+// which is the only place that knows what a combo product's real configuration is.
+export interface ComboSelectionEntry { group_id: string; component_product_id: string; price_delta_cents: number }
+function parseComboSelection(item: JsonRecord, label: string): ComboSelectionEntry[] | null {
+  const raw = item.combo_selection
+  if (raw === undefined || raw === null) return null
+  if (!Array.isArray(raw) || raw.length > 50) throw new ApiError(422, 'validation_failed', `${label} combo selection is invalid.`)
+  return raw.map((value, index) => {
+    const entry = record(value, `${label} combo selection ${index + 1}`)
+    const delta = entry.price_delta_cents
+    if (!Number.isSafeInteger(delta) || (delta as number) < -MAX_CENTS || (delta as number) > MAX_CENTS) throw new ApiError(422, 'validation_failed', `${label} combo selection price is invalid.`)
+    return { group_id: id(entry.group_id, 'Combo group ID'), component_product_id: id(entry.component_product_id, 'Combo component ID'), price_delta_cents: delta as number }
+  })
+}
+
+// The catalog-dependent half of combo validation (mirrors the modifier validation loop in push()
+// below): does this selection actually satisfy the combo's real groups/options/prices? Pure and
+// directly unit-testable (no DB access) -- push() is the only caller, after it has fetched the
+// combo's real catalog rows.
+export interface ComboCatalogGroup { group_id: string; min_select: number; max_select: number; options: ComboSelectionEntry[] }
+export function resolveComboSelection(groups: readonly ComboCatalogGroup[], selection: readonly ComboSelectionEntry[]): { errors: string[]; resolved: ComboSelectionEntry[] } {
+  const optionByKey = new Map<string, ComboSelectionEntry>()
+  for (const group of groups) for (const option of group.options) optionByKey.set(`${group.group_id}:${option.component_product_id}`, option)
+  const errors: string[] = []
+  const resolved: ComboSelectionEntry[] = []
+  for (const entry of selection) {
+    const catalogOption = optionByKey.get(`${entry.group_id}:${entry.component_product_id}`)
+    if (!catalogOption) { errors.push('This combo selection is not on the current menu configuration.'); continue }
+    if (catalogOption.price_delta_cents !== entry.price_delta_cents) { errors.push('A combo option price does not match the catalog.'); continue }
+    resolved.push(catalogOption)
+  }
+  if (new Set(selection.map(entry => `${entry.group_id}:${entry.component_product_id}`)).size !== selection.length) {
+    errors.push('The same combo option was selected more than once.')
+  }
+  const countByGroup = new Map<string, number>()
+  for (const entry of selection) countByGroup.set(entry.group_id, (countByGroup.get(entry.group_id) ?? 0) + 1)
+  errors.push(...validateComboSelection(groups.map(group => ({ id: group.group_id, minSelect: group.min_select, maxSelect: group.max_select })), countByGroup))
+  return { errors, resolved }
+}
+
 export function validateOperation(raw: unknown) {
   const body = record(raw, 'Operation')
   const order = record(body.order, 'Order')
@@ -121,7 +165,8 @@ export function validateOperation(raw: unknown) {
       catalog_version: item.catalog_version as number, quantity: item.quantity as number,
       discount_kind: discount?.kind ?? null, discount_value: discount ? (discount.kind === 'percent' ? discount.bps : discount.cents) : null,
       subtotal_cents: line.subtotalCents, discount_applied_cents: line.discountAppliedCents,
-      taxable_cents: line.taxableCents, tax_cents: line.taxCents, total_cents: line.totalCents }
+      taxable_cents: line.taxableCents, tax_cents: line.taxCents, total_cents: line.totalCents,
+      combo_selection: parseComboSelection(item, `Item ${index + 1}`) }
   })
   if (new Set(parsedItems.map(item => item.id)).size !== parsedItems.length) {
     throw new ApiError(422, 'validation_failed', 'Item IDs must be unique within a sale.')
@@ -217,8 +262,8 @@ async function push(req: import('express').Request, res: import('express').Respo
       const store = await client.query('select name,timezone,currency from public.stores where id=$1', [operation.storeId])
       if (!store.rows[0]) throw new ApiError(422, 'cross_store_reference', 'Store no longer exists.')
       const productIds = [...new Set(operation.items.map(item => item.product_id))]
-      const products = await client.query<{ id: string; station_id: string | null }>(
-        'select id, station_id from public.pos_products where store_id=$1 and id = any($2::uuid[])', [operation.storeId, productIds])
+      const products = await client.query<{ id: string; station_id: string | null; unit_price_cents: string }>(
+        'select id, station_id, unit_price_cents::text from public.pos_products where store_id=$1 and id = any($2::uuid[])', [operation.storeId, productIds])
       if (products.rowCount !== productIds.length) throw new ApiError(422, 'cross_store_reference', 'An item refers to a product outside this store.')
       const stationByProduct = new Map(products.rows.map(row => [row.id, row.station_id]))
       const modifierCatalog = await client.query<{ product_id: string; group_id: string; group_name: string; selection: 'single' | 'multi'; required: boolean; option_id: string | null }>(
@@ -247,6 +292,67 @@ async function push(req: import('express').Request, res: import('express').Respo
           if (group.selection === 'single' && count > 1) throw new ApiError(422, 'validation_failed', `${item.snapshot_name} allows only one ${group.group_name} selection.`)
         }
       }
+
+      // A4: expand every combo line into its own priced snapshot row plus one zero-priced child
+      // row per selected component -- so stock decrement, kitchen routing and refunds all work
+      // through the exact same per-order-item loops every other line already uses, rather than a
+      // second, parallel consumption/routing mechanism. See packages/domain/src/combo.ts's header
+      // comment for why this isn't modeled as another modifier_groups-shaped table.
+      const comboProductIds = [...new Set(operation.items.filter(item => item.combo_selection).map(item => item.product_id))]
+      const comboCatalog = comboProductIds.length ? await client.query<{
+        product_id: string; pricing_mode: 'fixed' | 'derived'; group_id: string; min_select: number; max_select: number
+        component_product_id: string; price_delta_cents: number
+      }>(
+        `select c.product_id, c.pricing_mode, cg.id as group_id, cg.min_select, cg.max_select, cgo.component_product_id, cgo.price_delta_cents
+         from public.combos c
+         join public.combo_groups cg on cg.store_id=c.store_id and cg.combo_product_id=c.product_id
+         join public.combo_group_options cgo on cgo.store_id=cg.store_id and cgo.group_id=cg.id
+         where c.store_id=$1 and c.product_id = any($2::uuid[])`,
+        [operation.storeId, comboProductIds],
+      ) : { rows: [] as { product_id: string; pricing_mode: 'fixed' | 'derived'; group_id: string; min_select: number; max_select: number; component_product_id: string; price_delta_cents: number }[], rowCount: 0 }
+      const componentProductIds = [...new Set(comboCatalog.rows.map(row => row.component_product_id))]
+      const componentProducts = componentProductIds.length ? await client.query<{ id: string; name: string; sku: string; station_id: string | null; unit_price_cents: string }>(
+        `select id, name, sku, station_id, unit_price_cents::text from public.pos_products where store_id=$1 and id = any($2::uuid[]) and active=true`,
+        [operation.storeId, componentProductIds],
+      ) : { rows: [] as { id: string; name: string; sku: string; station_id: string | null; unit_price_cents: string }[], rowCount: 0 }
+      if (componentProducts.rowCount !== componentProductIds.length) throw new ApiError(422, 'validation_failed', 'A combo references an inactive or missing component.')
+      const componentById = new Map(componentProducts.rows.map(row => [row.id, row]))
+      for (const [id, product] of componentById) stationByProduct.set(id, product.station_id)
+
+      const items: (typeof operation.items[number] & { combo_parent_item_id: string | null; is_combo_parent: boolean })[] = []
+      for (const item of operation.items) {
+        const isComboLine = Boolean(item.combo_selection)
+        items.push({ ...item, combo_parent_item_id: null, is_combo_parent: isComboLine })
+        if (!isComboLine) continue
+        const comboRowsForItem = comboCatalog.rows.filter(row => row.product_id === item.product_id)
+        if (!comboRowsForItem.length) throw new ApiError(422, 'validation_failed', `${item.snapshot_name} is not a combo, but a combo selection was supplied.`)
+        const groupsForCombo = new Map<string, { group_id: string; min_select: number; max_select: number; options: ComboSelectionEntry[] }>()
+        for (const row of comboRowsForItem) {
+          const group = groupsForCombo.get(row.group_id) ?? { group_id: row.group_id, min_select: row.min_select, max_select: row.max_select, options: [] }
+          group.options.push({ group_id: row.group_id, component_product_id: row.component_product_id, price_delta_cents: row.price_delta_cents })
+          groupsForCombo.set(row.group_id, group)
+        }
+        const { errors, resolved } = resolveComboSelection([...groupsForCombo.values()], item.combo_selection!)
+        if (errors.length) throw new ApiError(422, 'validation_failed', `${item.snapshot_name}: ${errors[0]}`)
+        const comboProductRow = products.rows.find(row => row.id === item.product_id)
+        const comboBasePriceCents = comboProductRow ? Number(comboProductRow.unit_price_cents) : 0
+        const pricingMode = comboRowsForItem[0].pricing_mode
+        const expectedPrice = calculateComboPriceCents(pricingMode, comboBasePriceCents, resolved.map(option => ({
+          priceDeltaCents: option.price_delta_cents, componentUnitPriceCents: Number(componentById.get(option.component_product_id)!.unit_price_cents),
+        })))
+        if (expectedPrice !== item.snapshot_price_cents) throw new ApiError(422, 'total_mismatch', `${item.snapshot_name} combo price does not match its selected components.`)
+        for (const option of resolved) {
+          const component = componentById.get(option.component_product_id)!
+          items.push({
+            id: randomUUID(), product_id: component.id, snapshot_name: component.name, snapshot_sku: component.sku,
+            snapshot_price_cents: 0, base_price_cents: 0, modifiers: [], modifiers_supplied: true, snapshot_tax_bps: 0,
+            catalog_version: item.catalog_version, quantity: item.quantity, discount_kind: null, discount_value: null,
+            subtotal_cents: 0, discount_applied_cents: 0, taxable_cents: 0, tax_cents: 0, total_cents: 0,
+            combo_selection: null, combo_parent_item_id: item.id, is_combo_parent: false,
+          })
+        }
+      }
+      const allProductIds = [...new Set(items.map(item => item.product_id))]
       if (operation.order.customer_id) {
         const customer = await client.query('select 1 from public.pos_customers where store_id=$1 and id=$2', [operation.storeId, operation.order.customer_id])
         if (!customer.rowCount) {
@@ -295,14 +401,14 @@ async function push(req: import('express').Request, res: import('express').Respo
           address: operation.deliveryDetails.address, instructions: operation.deliveryDetails.instructions,
         })
       }
-      for (const item of operation.items) {
+      for (const item of items) {
         await client.query(`insert into public.pos_order_items(id,store_id,order_id,product_id,snapshot_name,snapshot_sku,
           snapshot_price_cents,snapshot_tax_bps,catalog_version,quantity,discount_kind,discount_value,
-          subtotal_cents,discount_applied_cents,taxable_cents,tax_cents,total_cents)
-          values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+          subtotal_cents,discount_applied_cents,taxable_cents,tax_cents,total_cents,combo_parent_item_id)
+          values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
           [item.id, operation.storeId, operation.operationId, item.product_id, item.snapshot_name, item.snapshot_sku,
             item.snapshot_price_cents, item.snapshot_tax_bps, item.catalog_version, item.quantity, item.discount_kind, item.discount_value,
-            item.subtotal_cents, item.discount_applied_cents, item.taxable_cents, item.tax_cents, item.total_cents])
+            item.subtotal_cents, item.discount_applied_cents, item.taxable_cents, item.tax_cents, item.total_cents, item.combo_parent_item_id])
         for (const modifier of item.modifiers) {
           await client.query(
             `insert into public.pos_order_item_modifiers(store_id,order_item_id,snapshot_group_name,snapshot_option_name,price_delta_cents)
@@ -324,7 +430,10 @@ async function push(req: import('express').Request, res: import('express').Respo
       const ticketId = randomUUID()
       await client.query(`insert into public.kitchen_tickets(id,store_id,order_id,table_id,status) values ($1,$2,$3,$4,'preparing')`,
         [ticketId, operation.storeId, operation.operationId, operation.order.table_id])
-      for (const item of operation.items) {
+      // A combo's own parent line gets no kitchen_ticket_item -- there's no dish to prepare for
+      // "Combo Meal" itself, only for the real components already expanded into their own rows
+      // above, each routed to its own real station exactly like an item ordered on its own.
+      for (const item of items.filter(item => !item.is_combo_parent)) {
         await client.query(`insert into public.kitchen_ticket_items(id,store_id,ticket_id,order_item_id,station_id,status,fired_at)
           values ($1,$2,$3,$4,$5,'preparing',now())`,
           [randomUUID(), operation.storeId, ticketId, item.id, stationByProduct.get(item.product_id) ?? null])
@@ -385,8 +494,8 @@ async function push(req: import('express').Request, res: import('express').Respo
         }
       }
       let position = BigInt((await client.query('select last_position::text from public.pos_sync_feed_state where store_id=$1', [operation.storeId])).rows[0].last_position)
-      for (const productId of productIds) {
-        const quantity = operation.items.filter(item => item.product_id === productId).reduce((sum, item) => sum + item.quantity, 0)
+      for (const productId of allProductIds) {
+        const quantity = items.filter(item => item.product_id === productId).reduce((sum, item) => sum + item.quantity, 0)
         await client.query(`insert into public.pos_inventory_movements(store_id,product_id,order_id,operation_id,delta,reason)
           values ($1,$2,$3,$4,$5,'sale')`, [operation.storeId, productId, operation.operationId, operation.operationId, -quantity])
         const stock = await client.query(`update public.pos_stock set current_stock=current_stock-$3, updated_at=now()

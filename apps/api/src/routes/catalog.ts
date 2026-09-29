@@ -33,10 +33,20 @@ async function snapshot(req: import('express').Request, res: import('express').R
         [storeId],
       )
       const stock = await client.query('select product_id,current_stock,updated_at from public.pos_stock where store_id = $1', [storeId])
+      const combos = await client.query(
+        `select c.product_id as combo_product_id, c.pricing_mode,
+                cg.id as group_id, cg.name as group_name, cg.min_select, cg.max_select, cg.sort_order as group_sort_order,
+                cgo.id as option_id, cgo.component_product_id, cgo.price_delta_cents, cgo.sort_order as option_sort_order
+         from public.combos c
+         join public.combo_groups cg on cg.store_id=c.store_id and cg.combo_product_id=c.product_id
+         left join public.combo_group_options cgo on cgo.store_id=cg.store_id and cgo.group_id=cg.id
+         where c.store_id=$1 order by c.product_id, cg.sort_order, cgo.sort_order`,
+        [storeId],
+      )
       await client.query('commit')
       res.json({ store: store.rows[0], catalog_version: 1, checkpoint: feed.rows[0].last_position,
         categories: categories.rows, tax_rates: taxRates.rows, products: products.rows, stock: stock.rows,
-        modifier_groups: shapeModifierGroups(modifiers.rows) })
+        modifier_groups: shapeModifierGroups(modifiers.rows), combos: shapeCombos(combos.rows) })
     } catch (reason) { await client.query('rollback'); throw reason }
     finally { client.release() }
   } catch (reason) { sendApiError(res, reason) }
@@ -63,6 +73,31 @@ function shapeModifierGroups(rows: Record<string, unknown>[]): ModifierGroupView
       price_delta_cents: Number(row.price_delta_cents), active: Boolean(row.active) })
   }
   return [...groups.values()]
+}
+
+interface ComboSnapshotView { product_id: string; pricing_mode: 'fixed' | 'derived'; groups: { id: string; name: string; min_select: number; max_select: number; sort_order: number; options: { id: string; component_product_id: string; price_delta_cents: number; sort_order: number }[] }[] }
+
+// Shapes the flat combo/group/option join from `snapshot`'s query into one entry per combo
+// product, same nesting convention shapeModifierGroups already uses below.
+function shapeCombos(rows: Record<string, unknown>[]): ComboSnapshotView[] {
+  const combos = new Map<string, ComboSnapshotView>()
+  const groups = new Map<string, ComboSnapshotView['groups'][number]>()
+  for (const row of rows) {
+    const productId = String(row.combo_product_id)
+    let combo = combos.get(productId)
+    if (!combo) { combo = { product_id: productId, pricing_mode: row.pricing_mode as 'fixed' | 'derived', groups: [] }; combos.set(productId, combo) }
+    const groupId = String(row.group_id)
+    let group = groups.get(groupId)
+    if (!group) {
+      group = { id: groupId, name: String(row.group_name), min_select: Number(row.min_select), max_select: Number(row.max_select),
+        sort_order: Number(row.group_sort_order), options: [] }
+      groups.set(groupId, group)
+      combo.groups.push(group)
+    }
+    if (row.option_id) group.options.push({ id: String(row.option_id), component_product_id: String(row.component_product_id),
+      price_delta_cents: Number(row.price_delta_cents), sort_order: Number(row.option_sort_order) })
+  }
+  return [...combos.values()]
 }
 
 function modifierText(value: unknown, label: string): string {
@@ -741,6 +776,137 @@ async function createUnit(req: import('express').Request, res: import('express')
 }
 
 // PUT /catalog/products/:productId/recipe — owner/manager saves a dish's whole recipe.
+// ---------------------------------------------------------------------------
+// Combos (Ahmad's A4 work) — a combo is configured on an existing pos_products row (create the
+// dish first via POST /catalog/products, same as recipes/modifiers already require), then this
+// endpoint attaches/replaces its selectable groups. Full-replace-on-save, same convention
+// replaceProductModifiers above already uses: the client always sends its complete current group
+// list, not a diff.
+// ---------------------------------------------------------------------------
+
+interface ComboGroupOptionView { id: string; component_product_id: string; price_delta_cents: number; sort_order: number }
+interface ComboGroupView { id: string; name: string; min_select: number; max_select: number; sort_order: number; options: ComboGroupOptionView[] }
+
+function comboText(value: unknown, label: string): string {
+  const result = typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : ''
+  if (!result || result.length > 60) throw new ApiError(422, 'validation_failed', `${label} must be 1–60 characters.`)
+  return result
+}
+
+export function parseComboGroups(raw: unknown, comboProductId: string) {
+  if (!Array.isArray(raw) || !raw.length || raw.length > 20) throw new ApiError(422, 'validation_failed', 'A combo needs 1 to 20 groups.')
+  return raw.map((value, groupIndex) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ApiError(422, 'validation_failed', `Combo group ${groupIndex + 1} is invalid.`)
+    const group = value as Record<string, unknown>
+    const minSelect = group.min_select, maxSelect = group.max_select
+    if (!Number.isSafeInteger(minSelect) || (minSelect as number) < 0) throw new ApiError(422, 'validation_failed', `Combo group ${groupIndex + 1} min_select is invalid.`)
+    if (!Number.isSafeInteger(maxSelect) || (maxSelect as number) < 1) throw new ApiError(422, 'validation_failed', `Combo group ${groupIndex + 1} max_select is invalid.`)
+    if ((minSelect as number) > (maxSelect as number)) throw new ApiError(422, 'validation_failed', `Combo group ${groupIndex + 1} min_select cannot exceed max_select.`)
+    if (!Array.isArray(group.options) || group.options.length < 1 || group.options.length > 50) throw new ApiError(422, 'validation_failed', `Combo group ${groupIndex + 1} needs 1 to 50 options.`)
+    const options = group.options.map((value, optionIndex) => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ApiError(422, 'validation_failed', `Combo option ${optionIndex + 1} is invalid.`)
+      const option = value as Record<string, unknown>
+      const componentProductId = String(option.component_product_id ?? '')
+      if (!UUID_RE.test(componentProductId)) throw new ApiError(422, 'validation_failed', `Combo option ${optionIndex + 1} needs a valid component product.`)
+      // A combo cannot reference itself as one of its own components.
+      if (componentProductId === comboProductId) throw new ApiError(422, 'validation_failed', 'A combo cannot include itself as a component.')
+      const priceDelta = option.price_delta_cents
+      if (!Number.isSafeInteger(priceDelta) || (priceDelta as number) < -1_000_000_000 || (priceDelta as number) > 1_000_000_000) {
+        throw new ApiError(422, 'validation_failed', `Combo option ${optionIndex + 1} price is invalid.`)
+      }
+      return { component_product_id: componentProductId, price_delta_cents: priceDelta as number }
+    })
+    if (new Set(options.map(option => option.component_product_id)).size !== options.length) {
+      throw new ApiError(422, 'validation_failed', `Combo group ${groupIndex + 1} lists the same component more than once.`)
+    }
+    return { name: comboText(group.name, 'Combo group name'), min_select: minSelect as number, max_select: maxSelect as number, options }
+  })
+}
+
+// Core of PUT /catalog/products/:productId/combo -- exported, req/res-free, directly testable
+// against PGlite (same shape as open-checks.ts's createOpenCheckCore / kitchen.ts's
+// fireCourseCore). Enforces the three catalog-time invariants a combo must never violate: every
+// component belongs to this store, every component is active, and no component is itself a combo
+// (no nesting) -- self-reference is already rejected earlier, in parseComboGroups.
+export async function replaceComboCore(storeId: string, productId: string, pricingMode: 'fixed' | 'derived', groups: ReturnType<typeof parseComboGroups>) {
+  const client = await db.connect()
+  try {
+    await client.query('begin')
+    const product = await client.query('select 1 from public.pos_products where store_id=$1 and id=$2 and active=true for update', [storeId, productId])
+    if (!product.rowCount) throw new ApiError(404, 'not_found', 'Menu item not found or inactive.')
+
+    const componentIds = [...new Set(groups.flatMap(group => group.options.map(option => option.component_product_id)))]
+    if (componentIds.length) {
+      const components = await client.query<{ id: string; active: boolean }>(
+        'select id, active from public.pos_products where store_id=$1 and id = any($2::uuid[])', [storeId, componentIds])
+      // A component must belong to this store and be an active, sellable product.
+      if (components.rowCount !== componentIds.length) throw new ApiError(422, 'cross_store_reference', 'A component references a product outside this store.')
+      if (components.rows.some(row => !row.active)) throw new ApiError(422, 'validation_failed', 'A component product is inactive.')
+      // No nested combos: a component can never itself be a combo header.
+      const nested = await client.query('select 1 from public.combos where store_id=$1 and product_id = any($2::uuid[])', [storeId, componentIds])
+      if (nested.rowCount) throw new ApiError(422, 'validation_failed', 'A combo cannot include another combo as a component.')
+    }
+
+    await client.query(
+      `insert into public.combos(product_id, store_id, pricing_mode) values ($1,$2,$3)
+       on conflict (product_id) do update set pricing_mode = excluded.pricing_mode`,
+      [productId, storeId, pricingMode],
+    )
+    // Full replace: delete every existing group for this combo (combo_group_options cascades).
+    await client.query('delete from public.combo_groups where store_id=$1 and combo_product_id=$2', [storeId, productId])
+    const saved: ComboGroupView[] = []
+    for (let groupIndex = 0; groupIndex < groups.length; groupIndex += 1) {
+      const group = groups[groupIndex]
+      const insertedGroup = await client.query<{ id: string }>(
+        'insert into public.combo_groups(store_id,combo_product_id,name,min_select,max_select,sort_order) values ($1,$2,$3,$4,$5,$6) returning id',
+        [storeId, productId, group.name, group.min_select, group.max_select, groupIndex],
+      )
+      const groupId = insertedGroup.rows[0].id
+      const options: ComboGroupOptionView[] = []
+      for (let optionIndex = 0; optionIndex < group.options.length; optionIndex += 1) {
+        const option = group.options[optionIndex]
+        const insertedOption = await client.query<ComboGroupOptionView>(
+          `insert into public.combo_group_options(store_id,group_id,component_product_id,price_delta_cents,sort_order)
+           values ($1,$2,$3,$4,$5) returning id,component_product_id,price_delta_cents,sort_order`,
+          [storeId, groupId, option.component_product_id, option.price_delta_cents, optionIndex],
+        )
+        options.push(insertedOption.rows[0])
+      }
+      saved.push({ id: groupId, name: group.name, min_select: group.min_select, max_select: group.max_select, sort_order: groupIndex, options })
+    }
+    await client.query('commit')
+    return { product_id: productId, pricing_mode: pricingMode, groups: saved }
+  } catch (reason) { await client.query('rollback'); throw reason }
+  finally { client.release() }
+}
+
+async function replaceCombo(req: import('express').Request, res: import('express').Response) {
+  try {
+    const body = req.body as Record<string, unknown>
+    const storeId = String(body?.store_id ?? '')
+    const productId = String(req.params.productId ?? '')
+    if (!UUID_RE.test(storeId) || !UUID_RE.test(productId)) throw new ApiError(400, 'validation_failed', 'Valid store and product IDs are required.')
+    await requireStoreManager(req, storeId)
+    const pricingMode = body.pricing_mode
+    if (pricingMode !== 'fixed' && pricingMode !== 'derived') throw new ApiError(422, 'validation_failed', 'pricing_mode must be fixed or derived.')
+    const groups = parseComboGroups(body.groups, productId)
+    res.json(await replaceComboCore(storeId, productId, pricingMode, groups))
+  } catch (reason) { sendApiError(res, reason) }
+}
+
+// DELETE /catalog/products/:productId/combo — removes the combo configuration; the underlying
+// pos_products row is untouched and simply goes back to being a plain, non-combo menu item.
+async function deleteCombo(req: import('express').Request, res: import('express').Response) {
+  try {
+    const storeId = String(req.query.store_id ?? '')
+    const productId = String(req.params.productId ?? '')
+    if (!UUID_RE.test(storeId) || !UUID_RE.test(productId)) throw new ApiError(400, 'validation_failed', 'Valid store and product IDs are required.')
+    await requireStoreManager(req, storeId)
+    await db.query('delete from public.combos where store_id=$1 and product_id=$2', [storeId, productId])
+    res.status(204).end()
+  } catch (reason) { sendApiError(res, reason) }
+}
+
 async function putRecipe(req: import('express').Request, res: import('express').Response) {
   try {
     const body = req.body as Record<string, unknown>
@@ -762,4 +928,6 @@ catalogRouter.get('/recipes', (req, res) => void listRecipeData(req, res))
 catalogRouter.post('/units', (req, res) => void createUnit(req, res))
 catalogRouter.put('/products/:productId/recipe', (req, res) => void putRecipe(req, res))
 catalogRouter.put('/products/:productId/modifiers', (req, res) => void replaceProductModifiers(req, res))
+catalogRouter.put('/products/:productId/combo', (req, res) => void replaceCombo(req, res))
+catalogRouter.delete('/products/:productId/combo', (req, res) => void deleteCombo(req, res))
 terminalCatalogRouter.get('/snapshot', (req, res) => void snapshot(req, res, true))

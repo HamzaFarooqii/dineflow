@@ -47,6 +47,16 @@ schema no longer matches history, and it needs manual reconciliation, not a sile
 | 202609260003_service_charge.sql | `a8268107e9942418d7f36274ca375690553fad62f3f3c9b66a4cc1e842d34371` | yes | `stores.service_charge_bps` and `pos_orders.service_charge_cents` columns exist |
 | 202609270001_modifiers.sql | `c22d27afa488f5142da526dae806a2157593deffc4ee3acd681c98a7c8658300` | yes | all four modifier tables, RLS, and member-read policies confirmed by `verify-day5-closeout.mjs` |
 | 202609280001_inventory_terminal_tenant_fks.sql | `0152bf0c5cf6106473aef9309e3edfe7d248356d0e98d3f3c27eaee4474b7625` | yes | all four composite inventory-to-terminal-employee foreign keys confirmed by `verify-day5-closeout.mjs` |
+| 202609290002_sellable_combos.sql | `6304e688736f5a399a874e96277f1bc0ddb8a48be51d083a358ccf3e766eea0c` | yes | `public.combos`, `public.combo_groups`, `public.combo_group_options`, and `pos_order_items.combo_parent_item_id` confirmed by `apps/api/scripts/verify-sellable-combos.mjs` |
+
+Note: this branch (`feat/menu-combos-variants`, Ahmad's A4 work) numbered its migration
+`202609290002` rather than `...0001` deliberately, to dodge a near-certain collision with
+`202609290001_kitchen_operations_depth.sql` on the sibling `feat/kitchen-operations` branch
+(Ahmad's A3 work), which is not yet merged into `develop` as of this row. If both branches merge
+before either renumbers, this ledger and the two migration filenames stay distinct and correct as
+written; no action needed unless a genuine same-number collision appears at merge time, in which
+case follow the same renumber-and-record-here pattern this ledger already used for
+`202609230002_table_waiter_assignment.sql`.
 
 Note: `202609230002_table_waiter_assignment.sql` was renamed from `..._0001_...` (Lead
 integration fixup, PR #4) — it and Ahmed's kitchen-display migration were both authored the
