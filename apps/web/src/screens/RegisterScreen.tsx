@@ -333,7 +333,10 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
     setHoldBusy(true); setHoldError('')
     try {
       const items: SaveCheckItem[] = cart.map(item => ({
-        id: item.lineId, productId: item.productId, snapshotName: item.name, snapshotSku: item.sku,
+        // item.lineId is a local cart merge key (see modifierLineId), not a server item id -- the
+        // server fully replaces a check's items on every save (editOpenCheckCore), so there is no
+        // continuity to preserve; omitting id lets it assign a fresh one, as SaveCheckItem.id allows.
+        productId: item.productId, snapshotName: item.name, snapshotSku: item.sku,
         snapshotPriceCents: item.unitPriceCents, snapshotTaxBps: item.taxRateBps, catalogVersion: item.catalogVersion,
         quantity: item.quantity, discount: item.discount,
         modifiers: item.modifiers.map(modifier => ({ optionId: modifier.optionId, groupName: modifier.groupName, optionName: modifier.optionName, priceDeltaCents: modifier.priceDeltaCents })),

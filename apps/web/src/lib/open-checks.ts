@@ -31,12 +31,19 @@ export class OpenCheckConflictError extends Error {
 }
 
 async function openChecksRequest<T>(path: string, method: string, storeId: string, body?: Record<string, unknown>, terminal = false): Promise<T> {
-  const query = new URLSearchParams({ store_id: storeId })
-  const response = await fetch(`${configuredApiUrl()}${terminal ? '/pos/open-checks' : '/open-checks'}${path}?${query}`, {
+  // path may already carry its own query string (e.g. fetchOpenChecks's `?status=open`) -- split it
+  // off and merge into one URLSearchParams instead of concatenating a second literal '?', which
+  // produced an unparsable "...?status=open?store_id=..." URL and made store_id invisible server-side.
+  const [routePath, existingQuery] = path.split('?')
+  const query = new URLSearchParams(existingQuery)
+  query.set('store_id', storeId)
+  const response = await fetch(`${configuredApiUrl()}${terminal ? '/pos/open-checks' : '/open-checks'}${routePath}?${query}`, {
     method,
     credentials: terminal ? 'include' : 'same-origin',
     headers: { 'Content-Type': 'application/json', ...(terminal ? {} : { Authorization: `Bearer ${await accessToken()}` }) },
-    body: body ? JSON.stringify(body) : undefined,
+    // The server's write handlers (create/edit/void/close) validate store_id from the JSON body,
+    // the same convention orders.ts uses -- the query string alone (used by the GET handlers) isn't enough.
+    body: body ? JSON.stringify({ store_id: storeId, ...body }) : undefined,
     signal: AbortSignal.timeout(15_000),
   })
   const parsed = await response.json().catch(() => ({})) as T & { message?: string; code?: string; version?: number }
