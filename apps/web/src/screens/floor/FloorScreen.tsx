@@ -619,8 +619,9 @@ export function FloorScreen({ terminal = false }: { terminal?: boolean }) {
         <div><dt>Seats</dt><dd>{selectedTable.seats}</dd></div>
         <div><dt>Status</dt><dd><StatusBadge tone={TABLE_STATUS_TONE[selectedTable.status]}>{TABLE_STATUS_LABELS[selectedTable.status]}</StatusBadge></dd></div>
         <div><dt>Waiter</dt><dd>{selectedTable.assigned_waiter_name ?? '—'}</dd></div>
-        <div><dt>Last order</dt><dd>{selectedTable.current_order_total_cents && currency
-          ? formatCents(Number(selectedTable.current_order_total_cents), currency) : '—'}</dd></div>
+        <div><dt>{selectedTable.open_check_total_cents ? 'Open check' : 'Last order'}</dt><dd>
+          {selectedTable.open_check_total_cents && currency ? `${formatCents(Number(selectedTable.open_check_total_cents), currency)} · ${selectedTable.open_check_item_count ?? 0} item${selectedTable.open_check_item_count === 1 ? '' : 's'}`
+            : selectedTable.current_order_total_cents && currency ? formatCents(Number(selectedTable.current_order_total_cents), currency) : '—'}</dd></div>
       </dl> : <div className="floor-inline-form floor-edit-table-form">
         <label>Label<input type="text" maxLength={40} value={editTableLabel} onChange={event => setEditTableLabel(event.target.value)} /></label>
         <label>Seats<input type="number" min={1} value={editTableSeats} onChange={event => setEditTableSeats(event.target.value)} /></label>
@@ -664,6 +665,7 @@ export function FloorScreen({ terminal = false }: { terminal?: boolean }) {
       <div className="floor-detail-actions">
         <button type="button" disabled={actionBusy || selectedTable.status !== SEAT_FROM} onClick={() => void handleSeat(selectedTable)}>Seat</button>
         <button type="button" disabled={actionBusy || selectedTable.status !== ADD_ORDER_FROM} onClick={() => void handleAddOrder(selectedTable)}>Add order</button>
+        {selectedTable.open_check_id && <button type="button" onClick={() => navigate(terminal ? '/pos/open-checks' : '/open-checks')}>Resume check</button>}
         {!terminal && <button type="button" disabled={actionBusy || selectedTable.status !== MARK_SERVED_FROM} onClick={() => void handleMarkServed(selectedTable)}
           title="The kitchen normally does this automatically once every item on the ticket is served">Mark served</button>
         }

@@ -43,13 +43,26 @@ Hamza closeout evidence:
   976.63 kB main bundle to 108.86 kB; its largest chunk is 469.87 kB and Vite no longer warns.
 - The Ember artifact under `docs/ember-artifact/` remains unchanged. Shared tokens, compact
   layouts, dialogs/drawers, states, and operational typography remain the application standard.
+- **Manual click-through of the core POS loop (item 7), 2026-09-29:** `apps/api/test/
+  core-loop-browser-check.ts` (`npm run test:browser:core-loop`) drives real headless Chromium
+  through the actual built app end to end — seat a table, start its order, add a dish, attach a
+  guest, pay cash, mark the kitchen ticket ready and served, then bill/settle/clean the table back
+  to available — asserting on the real rendered screens at every step, with zero uncaught browser
+  errors. Screenshots in `docs/core-loop-screenshots/`. Two things this run surfaced along the way,
+  neither a defect in today's app: kitchen ticket items are created straight into `preparing`
+  rather than `queued` (already an intentional, commented choice in `orders.ts`); and replaying
+  every migration from a clean database (needed to seed this fixture) fails at
+  `202609180006_stores_country_column.sql`, because the "drifted production database" state its
+  own comment describes no longer matches `202609180002_store_business_details.sql` as currently
+  committed — worth a follow-up migration to make the fix-up idempotent, but out of scope to touch
+  today.
 
 ## Product modules
 
 | Module | Status | Done now | Explicitly left |
 |---|---|---|---|
-| **A. POS / Register** | 🟡 | Dine-in/takeaway/delivery, cart and notes, guest requirement, inventory warning, discounts, rewards, promotions, service charge, manager approval, modifiers, offline checkout, receipts, refund flow, equal-split calculator. **Discount-stacking is a decided policy, not an open gap**: a line carries exactly one discount source (manual/reward/promotion), whichever was applied last — documented as a permanent invariant next to `LineDiscount` in `packages/domain/src/money.ts`, confirmed by audit to already hold structurally (every write site replaces the field, none accumulate) | Hold/resume; true multiple-payment/itemized/per-seat split settlement; tips |
-| **B. Front of House / Tables** | ✅ | Areas/tables CRUD in an Ember dialog, Seat/Add order/Bill/Settle/Clean, Transfer/Merge, waiter terminal mode, atomic status transitions, reservation/waitlist drawer with conflict warnings and seat-once table assignment. Audited 2026-09-29: `seat()` correctly reuses the shared atomic `applyTableStatusTransition` inside a transaction with a row lock and replays idempotently on a duplicate `operation_id`. **Gap closed 2026-09-29** (`apps/api/src/routes/reservations-seat.test.ts`): the HTTP path itself is now proven, not just the underlying function — duplicate-`operation_id` replay, an already-seated booking rejecting a different operation id, a cross-store booking id returning `not_found` rather than acting on another store's row, and a session claiming a different store's `store_id` outright rejected with `cross_store_reference` | True running/open table tabs rather than last-completed-order context |
+| **A. POS / Register** | 🟡 | Dine-in/takeaway/delivery, cart and notes, guest requirement, inventory warning, discounts, rewards, promotions, service charge, manager approval, modifiers, offline checkout, receipts, refund flow, equal-split calculator, **open checks: durable versioned create/hold/resume/edit/void, cross-device server-backed receipt detail (`feat/open-checks`, Ahmad)**. **Discount-stacking is a decided policy, not an open gap**: a line carries exactly one discount source (manual/reward/promotion), whichever was applied last — documented as a permanent invariant next to `LineDiscount` in `packages/domain/src/money.ts`, confirmed by audit to already hold structurally (every write site replaces the field, none accumulate) | True multiple-payment/itemized/per-seat split settlement (A2); an open check's own create/edit/void/close calls are online-only by design (see `apps/web/src/lib/open-checks.ts`), not queued through the offline outbox like a completed sale |
+| **B. Front of House / Tables** | ✅ | Areas/tables CRUD in an Ember dialog, Seat/Add order/Bill/Settle/Clean, Transfer/Merge, waiter terminal mode, atomic status transitions, reservation/waitlist drawer with conflict warnings and seat-once table assignment, **a table's open check shows a real live running total on the Floor screen, not just its last completed order (`feat/open-checks`, Ahmad)**. Audited 2026-09-29: `seat()` correctly reuses the shared atomic `applyTableStatusTransition` inside a transaction with a row lock and replays idempotently on a duplicate `operation_id`. **Gap closed 2026-09-29** (`apps/api/src/routes/reservations-seat.test.ts`): the HTTP path itself is now proven, not just the underlying function — duplicate-`operation_id` replay, an already-seated booking rejecting a different operation id, a cross-store booking id returning `not_found` rather than acting on another store's row, and a session claiming a different store's `store_id` outright rejected with `cross_store_reference` | No committed gap |
 | **C. Menu** | 🟡 | Product/category CRUD, availability, kitchen routing, recipe builder, unit conversion, food cost, ingredient creation dialog, modifier group/option CRUD and checkout/KDS/receipt snapshots | Sellable bundles/combos; a dedicated variant matrix beyond modifier-based sizes |
 | **D. Kitchen / KDS** | 🟡 | Order-derived tickets, station grouping, preparing/ready/served lifecycle, Chef terminal mode, modifiers, recipe consumption, table synchronization, performance reporting, **SLA calm/warning/late states from a snapshotted prep-time target, per-station due/late summary, manager ticket history (date/station/status filters, paginated), course-based firing (appetizer/side/beverage fire immediately, main/dessert held for an explicit fire) with hold/fire controls and an audit log of who fired each course (`feat/kitchen-operations`, Ahmad's A3)** | Standalone ticket creation remains intentionally excluded |
 | **E. Recipes** | ✅ | Recipe CRUD, yields, units, conversion-aware costing, searchable ingredient selector, inline ingredient creation | No committed gap |
@@ -91,13 +104,13 @@ out of this list on 2026-09-29 (now rows B/H/G/K above) — they are not multi-d
 half-shipped; each was independently audited for tenant isolation, transactional idempotency, and
 real test coverage before being trusted here.
 
-1. **Operational depth:** open checks/hold-resume, sellable combos/variants. (Kitchen SLA
-   classification, course firing and ticket history/pagination shipped -- see Module D above and
-   `feat/kitchen-operations`.) Separately, a small but real gap
-   found during manual-test-workflow authoring: wire a recipient/address dialog into the Register's
-   Delivery order type so checkout can actually send the `delivery` details the API already
-   requires — right now Dispatch/Rider work correctly on rows created directly via the API, but the
-   UI has no way to create one.
+1. **Operational depth:** sellable combos/variants. (Open checks/hold-resume shipped — see Module
+   A/B above and `docs/day-plans/day6-ahmad-open-checks.md`; kitchen SLA classification, course
+   firing, and ticket history/pagination shipped — see Module D above and `feat/kitchen-operations`.)
+   Separately, a small but real gap found during manual-test-workflow authoring: wire a
+   recipient/address dialog into the Register's Delivery order type so checkout can actually send
+   the `delivery` details the API already requires — right now Dispatch/Rider work correctly on
+   rows created directly via the API, but the UI has no way to create one.
 2. **Commercial depth:** true multi-payment/split-tender/itemized-per-seat settlement, tips
    (blocks Staff's tip reporting).
 3. **Scale hardening:** make browser E2E a CI gate, then add performance budgets and monitoring.

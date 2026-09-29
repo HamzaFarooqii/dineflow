@@ -7,6 +7,7 @@ export interface LocalSalesReport {
   taxCents: number
   cashTakingsCents: number
   cardTakingsCents: number
+  tipsCents?: number
   recordedTotalCents: number
   completedOrderCount: number
   averageSaleCents: number
@@ -28,7 +29,7 @@ export interface ReportingData {
 
 const emptyReport = (): LocalSalesReport => ({
   grossSalesCents: 0, discountCents: 0, netSalesCents: 0, taxCents: 0,
-  cashTakingsCents: 0, cardTakingsCents: 0, recordedTotalCents: 0,
+  cashTakingsCents: 0, cardTakingsCents: 0, tipsCents: 0, recordedTotalCents: 0,
   completedOrderCount: 0, averageSaleCents: 0, itemsSold: 0,
   pendingCount: 0, pendingAmountCents: 0, rejectedCount: 0, rejectedAmountCents: 0,
   refundedCount: 0, refundedAmountCents: 0,
@@ -105,20 +106,24 @@ export function calculateLocalSalesReport(storeId: string, day: string, timezone
   for (const item of data.items) if (orderIds.has(item.order_id)) report.itemsSold += item.quantity
   for (const payment of data.payments) {
     if (!orderIds.has(payment.order_id)) continue
+    report.tipsCents = (report.tipsCents ?? 0) + (payment.tip_cents ?? 0)
     if (payment.method === 'cash') report.cashTakingsCents += payment.amount_cents
     if (payment.method === 'card') report.cardTakingsCents += payment.amount_cents
   }
-  const paymentByOrder = new Map(data.payments.map(payment => [payment.order_id, payment]))
   for (const order of refundsToday) {
     const amount = order.refunded_amount_cents ?? order.total_cents
     report.refundedCount += 1
     report.refundedAmountCents += amount
-    report.netSalesCents -= order.subtotal_cents - (order.discount_cents ?? 0)
-    report.taxCents -= order.tax_cents
+    report.tipsCents = (report.tipsCents ?? 0) - (order.refunded_tip_cents ?? 0)
+    report.netSalesCents -= order.refunded_merchandise_cents ?? (order.subtotal_cents - (order.discount_cents ?? 0))
+    report.taxCents -= order.refunded_tax_cents ?? order.tax_cents
     report.recordedTotalCents -= amount
-    const payment = paymentByOrder.get(order.id)
-    if (payment?.method === 'cash') report.cashTakingsCents -= amount
-    if (payment?.method === 'card') report.cardTakingsCents -= amount
+    const tenders = data.payments.filter(payment => payment.order_id === order.id)
+    for (const payment of tenders) {
+      const refunded = payment.refunded_amount_cents ?? (tenders.length === 1 ? amount : 0)
+      if (payment.method === 'cash') report.cashTakingsCents -= refunded
+      if (payment.method === 'card') report.cardTakingsCents -= refunded
+    }
   }
   const originalTotal = dayOrders.reduce((sum, order) => sum + order.total_cents, 0)
   report.averageSaleCents = report.completedOrderCount
@@ -185,7 +190,7 @@ export interface RecentOrderSummary {
   receiptNumber: string
   time: string
   totalCents: number
-  paymentMethod: 'cash' | 'card' | 'unknown'
+  paymentMethod: 'cash' | 'card' | 'split' | 'unknown'
   itemCount: number
   syncStatus: 'synced' | 'pending' | 'failed'
   refunded: boolean
@@ -197,7 +202,8 @@ export function getRecentOrders(orders: LocalOrder[], items: LocalOrderItem[], p
     .sort((a, b) => Date.parse(b.client_generated_at) - Date.parse(a.client_generated_at))
     .slice(0, limit)
 
-  const paymentMap = new Map<string, 'cash' | 'card'>(payments.map(p => [p.order_id, p.method]))
+  const paymentMap = new Map<string, 'cash' | 'card' | 'split'>()
+  for (const payment of payments) paymentMap.set(payment.order_id, paymentMap.has(payment.order_id) ? 'split' : payment.method)
   const itemCountMap = new Map<string, number>()
   for (const it of items) itemCountMap.set(it.order_id, (itemCountMap.get(it.order_id) ?? 0) + it.quantity)
 
@@ -243,12 +249,14 @@ export function calculateCashierShift(
       cardCents += p.amount_cents
     }
   }
-  const paymentByOrder = new Map(payments.map(payment => [payment.order_id, payment]))
   for (const order of refundsToday) {
     const amount = order.refunded_amount_cents ?? order.total_cents
-    const payment = paymentByOrder.get(order.id)
-    if (payment?.method === 'cash') cashCents -= amount
-    if (payment?.method === 'card') cardCents -= amount
+    const tenders = payments.filter(payment => payment.order_id === order.id)
+    for (const payment of tenders) {
+      const refunded = payment.refunded_amount_cents ?? (tenders.length === 1 ? amount : 0)
+      if (payment.method === 'cash') cashCents -= refunded
+      if (payment.method === 'card') cardCents -= refunded
+    }
   }
   const salesCents = todayOrders.reduce((sum, o) => sum + o.total_cents, 0)
     - refundsToday.reduce((sum, o) => sum + (o.refunded_amount_cents ?? o.total_cents), 0)

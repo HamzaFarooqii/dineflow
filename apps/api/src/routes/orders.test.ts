@@ -182,3 +182,67 @@ test('rejects mismatched discount-derived totals and incomplete manager evidence
   partialEvidence.order.manager_id = managerId
   assert.throws(() => validateOperation(partialEvidence), /evidence is incomplete/)
 })
+
+// A2: split settlement -- multiple tenders, tips, backward compatibility with the singular
+// `payment` field every existing caller (push(), checkout.ts) still sends unchanged.
+test('a singular payment still produces exactly one tender in the parsed operation', () => {
+  const result = validateOperation(validOperation())
+  assert.equal(result.payments.length, 1)
+  assert.equal(result.payments[0].amount_cents, line.totalCents)
+  assert.equal(result.payments[0].tip_cents, 0, 'absent tip_cents defaults to zero, same as an older client')
+})
+test('a cash+card split accepts two tenders whose amounts sum to the order total, tips excluded from that sum', () => {
+  const operation = validOperation() as Record<string, unknown>
+  delete operation.payment
+  const half = Math.floor(line.totalCents / 2)
+  operation.payments = [
+    { id: '11111111-1111-4111-8111-000000000001', method: 'cash', amount_cents: half, tendered_cents: half + 100 + 50, change_cents: 50, tip_cents: 100, reference: null },
+    { id: '11111111-1111-4111-8111-000000000002', method: 'card', amount_cents: line.totalCents - half, tendered_cents: line.totalCents - half + 25, change_cents: 0, tip_cents: 25, reference: 'AUTH-1' },
+  ]
+  const result = validateOperation(operation)
+  assert.equal(result.payments.length, 2)
+  assert.equal(result.payments.reduce((sum, payment) => sum + payment.amount_cents, 0), line.totalCents)
+  assert.equal(result.payments[1].tip_cents, 25)
+  assert.equal(result.payments[1].reference, 'AUTH-1')
+})
+test('rejects tenders whose amounts do not sum to the order total', () => {
+  const operation = validOperation() as Record<string, unknown>
+  delete operation.payment
+  operation.payments = [
+    { id: '11111111-1111-4111-8111-000000000003', method: 'cash', amount_cents: line.totalCents - 1, tendered_cents: line.totalCents - 1, change_cents: 0, reference: null },
+  ]
+  assert.throws(() => validateOperation(operation), /total_mismatch|do not balance/)
+})
+test('rejects a cash tender whose tendered amount does not cover amount plus tip plus change', () => {
+  const operation = validOperation() as Record<string, unknown>
+  const payment = (operation.payment as Record<string, unknown>)
+  payment.tip_cents = 100
+  // tendered_cents is left as the fixture's pre-tip value -- no longer balances once a tip is added.
+  assert.throws(() => validateOperation(operation), /does not balance/)
+})
+test('rejects sending both payment and payments together', () => {
+  const operation = validOperation() as Record<string, unknown>
+  operation.payments = [operation.payment]
+  assert.throws(() => validateOperation(operation), /either payment or payments/)
+})
+test('rejects duplicate tender IDs within one sale', () => {
+  const operation = validOperation() as Record<string, unknown>
+  delete operation.payment
+  const half = Math.floor(line.totalCents / 2)
+  const sameId = '11111111-1111-4111-8111-000000000009'
+  operation.payments = [
+    { id: sameId, method: 'cash', amount_cents: half, tendered_cents: half, change_cents: 0, reference: null },
+    { id: sameId, method: 'card', amount_cents: line.totalCents - half, tendered_cents: line.totalCents - half, change_cents: 0, reference: null },
+  ]
+  assert.throws(() => validateOperation(operation), /Tender IDs must be unique/)
+})
+
+test('refund input rejects repeated items and tenders before checking refundable balances', async () => {
+  const { parseRefundItems, parseRefundTenders } = await import('./orders.js')
+  const item = { order_item_id: '11111111-1111-4111-8111-000000000001', quantity: 1 }
+  const tender = { payment_id: item.order_item_id, amount_cents: 100 }
+  assert.throws(() => parseRefundItems([item, item]), /unique/)
+  assert.throws(() => parseRefundTenders([tender, tender]), /unique/)
+  assert.throws(() => parseRefundTenders([{ ...tender, amount_cents: 0 }]), /positive/)
+  assert.deepEqual(parseRefundItems([item]), [item])
+})
