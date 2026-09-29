@@ -21,7 +21,7 @@
 .kitchen-ticket-item:first-child{padding-top:0;border-top:0}
 .kitchen-item-name{flex:1;min-width:0;font-size:13px;color:var(--mise-ink)}
 .kitchen-item-name small{display:block;color:var(--mise-ink-muted);font-size:11px}
-.kitchen-item-modifiers { display: block; margin-top: 3px; color: var(--mise-orange) !important; font: 600 10px 'Inter', sans-serif !important; }
+.kitchen-item-modifiers { display: block; margin-top: 3px; color: var(--mise-saffron) !important; font: 600 10px 'Inter', sans-serif !important; }
 
 .kitchen-station-late-count{color:var(--mise-danger);font:600 11px 'JetBrains Mono',monospace}
 

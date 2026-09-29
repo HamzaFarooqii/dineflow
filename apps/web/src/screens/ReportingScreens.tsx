@@ -29,6 +29,11 @@ import {
 } from '../lib/server-reports'
 import { fetchFloorPlan, type FloorPlan } from '../lib/floor'
 import { fetchKitchenTickets, type KitchenTicket } from '../lib/kitchen'
+import { fetchBookings, type BookingEntry } from '../lib/reservations'
+import { fetchOpenChecks, type OpenCheckHeader } from '../lib/open-checks'
+import { fetchDispatchKpis, type DeliveryKpis, type DeliveryStatus } from '../lib/delivery'
+
+const DELIVERY_ACTIVE_STATUSES: readonly DeliveryStatus[] = ['pending', 'accepted', 'picked_up', 'out_for_delivery']
 import { buildCsv, downloadCsv } from '../lib/csv'
 import { PageHeader } from '../components/PageHeader'
 import { MetricCard } from '../components/MetricCard'
@@ -36,7 +41,7 @@ import { StatusBadge } from '../components/StatusBadge'
 import { Dialog } from '../components/Dialog'
 import { TABLE_STATUS_LABELS, TABLE_STATUS_TONE } from '../../../../packages/domain/src/table-status'
 import { KITCHEN_TICKET_STATUS_LABELS, KITCHEN_TICKET_STATUS_TONE } from '../../../../packages/domain/src/kitchen-ticket-status'
-import { Wallet, RefreshCw, Award, AlertTriangle, CircleAlert, Receipt, ShoppingCart, Users, LayoutGrid, ChefHat, Clock, Package, Calendar } from '../components/icons'
+import { Wallet, RefreshCw, Award, AlertTriangle, CircleAlert, Receipt, ShoppingCart, Users, LayoutGrid, ChefHat, Clock, Package, Calendar, CalendarClock, Truck, ClipboardList } from '../components/icons'
 import './reporting.css'
 
 // Health-check the API the same way ConnectionAndSync/CashierDashboardScreen do: navigator.onLine
@@ -206,8 +211,16 @@ function useOversoldProducts(storeId: string | undefined) {
 interface OperationsSnapshot {
   floor: FloorPlan
   tickets: KitchenTicket[]
+  openChecks: OpenCheckHeader[]
+  waitingBookings: BookingEntry[]
+  deliveryKpis: DeliveryKpis | null
 }
 
+// Dashboard "what's new" cards (Open Checks, Reservations/Waitlist, Dispatch) intentionally reuse
+// this same 30s-refreshed snapshot rather than each adding their own polling loop -- one shared
+// live-operations heartbeat, not four independent ones hitting the API on their own schedules.
+// A module that isn't reachable yet (a store with no reservations feature enabled, say) degrades
+// to an empty list/null rather than failing the whole snapshot, same spirit as floor/tickets already had.
 function useOperationsSnapshot(storeId: string | undefined) {
   const [snapshot, setSnapshot] = useState<OperationsSnapshot>()
   const [error, setError] = useState('')
@@ -218,8 +231,13 @@ function useOperationsSnapshot(storeId: string | undefined) {
     if (!storeId) return
     const load = async () => {
       try {
-        const [floor, tickets] = await Promise.all([fetchFloorPlan(storeId), fetchKitchenTickets(storeId)])
-        if (active) { setSnapshot({ floor, tickets }); setError('') }
+        const [floor, tickets, openChecks, bookings, deliveryKpis] = await Promise.all([
+          fetchFloorPlan(storeId), fetchKitchenTickets(storeId),
+          fetchOpenChecks(storeId).catch(() => []),
+          fetchBookings(storeId, 'waiting').catch(() => ({ reservations: [], waitlist: [] })),
+          fetchDispatchKpis(storeId).catch(() => null),
+        ])
+        if (active) { setSnapshot({ floor, tickets, openChecks, waitingBookings: [...bookings.reservations, ...bookings.waitlist], deliveryKpis }); setError('') }
       } catch (reason) {
         if (active) setError(reason instanceof Error ? reason.message : 'Live operations are unavailable.')
       }
@@ -523,6 +541,33 @@ export function OwnerDashboardScreen({ greetingName }: { greetingName?: string }
         </section>
       </div>
 
+      {/* Module quick-links: the modules that shipped alongside/after the core five-day build --
+          a live count where the operations snapshot already carries one, a plain link otherwise.
+          Kept lightweight on purpose (a strip of cards, not four more full rich panels above) since
+          each module already has its own full screen for the real detail. */}
+      <div className="dashboard-module-strip">
+        <Link to="/open-checks" className="dashboard-module-card">
+          <span className="dashboard-module-icon"><Receipt aria-hidden="true" size={18} /></span>
+          <div><strong>{operations ? operations.openChecks.length : '—'}</strong><span>Open checks held</span></div>
+        </Link>
+        <Link to="/floor" className="dashboard-module-card">
+          <span className="dashboard-module-icon"><CalendarClock aria-hidden="true" size={18} /></span>
+          <div><strong>{operations ? operations.waitingBookings.length : '—'}</strong><span>Reservations &amp; waitlist</span></div>
+        </Link>
+        <Link to="/delivery" className="dashboard-module-card">
+          <span className="dashboard-module-icon"><Truck aria-hidden="true" size={18} /></span>
+          <div><strong>{operations?.deliveryKpis ? DELIVERY_ACTIVE_STATUSES.reduce((sum, status) => sum + (operations.deliveryKpis!.by_status[status] ?? 0), 0) : '—'}</strong><span>Deliveries in progress</span></div>
+        </Link>
+        <Link to="/purchasing" className="dashboard-module-card">
+          <span className="dashboard-module-icon"><ClipboardList aria-hidden="true" size={18} /></span>
+          <div><strong>Purchasing</strong><span>Vendors &amp; purchase orders</span></div>
+        </Link>
+        <Link to="/customers" className="dashboard-module-card">
+          <span className="dashboard-module-icon"><Users aria-hidden="true" size={18} /></span>
+          <div><strong>Guests</strong><span>Profiles, favorites &amp; merges</span></div>
+        </Link>
+      </div>
+
       {/* Two-Column Analytics: Top Products & Inventory Health */}
       <div className="dashboard-columns">
         <section className="dashboard-panel">
@@ -771,6 +816,10 @@ function groupHoursWorked(shifts: ShiftRow[], breaks: BreakRow[]): HoursWorkedRo
       if (brk.paid) row.paidBreakMs += ms; else row.unpaidBreakMs += ms
     } else row.openBreak = brk
   }
+  // The panel's own subtitle says "net of unpaid breaks" -- totalMs above is each closed shift's
+  // full clock-in-to-clock-out span, so unpaid break time (already tallied above) must come back
+  // out here, once per employee, rather than being counted as hours worked.
+  for (const row of rows.values()) row.totalMs = Math.max(0, row.totalMs - row.unpaidBreakMs)
   return Array.from(rows.values()).sort((a, b) => Number(Boolean(b.openShift)) - Number(Boolean(a.openShift)) || b.totalMs - a.totalMs || a.name.localeCompare(b.name))
 }
 

@@ -1,6 +1,17 @@
 import { accessToken, configuredApiUrl } from './catalog'
+import type { BadgeTone } from '../components/StatusBadge'
 
 export type DeliveryStatus = 'pending' | 'accepted' | 'picked_up' | 'out_for_delivery' | 'delivered' | 'failed'
+
+// Single source of truth for the delivery-status color, shared by Dispatch and the Rider terminal
+// so the same status always reads as the same color regardless of which screen shows it -- the
+// wording can differ per audience (Dispatch's "Pending" is the rider's "New"), the tone shouldn't.
+// Matches this codebase's own convention (table-status.ts, kitchen-ticket-status.ts): a plain
+// object, consumed through the shared <StatusBadge tone={...}> component, not a bespoke CSS class
+// with its own hardcoded hex colors per screen.
+export const DELIVERY_STATUS_TONE: Record<DeliveryStatus, BadgeTone> = {
+  pending: 'warning', accepted: 'info', picked_up: 'info', out_for_delivery: 'saffron', delivered: 'success', failed: 'danger',
+}
 
 export interface DeliveryOrder {
   id: string

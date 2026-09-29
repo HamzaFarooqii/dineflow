@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { advanceMyDelivery, fetchMyDeliveries, newOperationId, DeliveryConflictError, type DeliveryOrder, type DeliveryStatus } from '../../lib/delivery'
+import { advanceMyDelivery, fetchMyDeliveries, newOperationId, DeliveryConflictError, DELIVERY_STATUS_TONE, type DeliveryOrder, type DeliveryStatus } from '../../lib/delivery'
 import { currentAccess } from '../../terminal-auth/cache'
 import { PageHeader } from '../../components/PageHeader'
+import { StatusBadge } from '../../components/StatusBadge'
 import './delivery.css'
 
 const POLL_MS = 15_000
@@ -92,7 +93,7 @@ export function RiderDeliveryScreen() {
         return <article className="rider-card" key={delivery.id}>
           <div className="rider-card-head">
             <span className="rider-card-receipt">{delivery.receipt_number ?? delivery.order_id.slice(0, 8)}</span>
-            <span className={`rider-status-badge ${delivery.status}`}>{STATUS_LABEL[delivery.status]}</span>
+            <StatusBadge tone={DELIVERY_STATUS_TONE[delivery.status]}>{STATUS_LABEL[delivery.status]}</StatusBadge>
           </div>
           <p className="rider-card-field"><b>{delivery.recipient_name_snapshot}</b> · {delivery.contact_phone_snapshot}</p>
           <p className="rider-card-field">{delivery.address_snapshot}</p>

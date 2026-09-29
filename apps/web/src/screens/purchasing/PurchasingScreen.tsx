@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { Link } from 'react-router-dom'
 import { formatCents } from '../../../../../packages/domain/src/money'
 import { requireSupabase } from '../../lib/supabase'
 import { posDb } from '../../lib/db'
@@ -11,7 +12,8 @@ import {
 } from '../../lib/purchasing'
 import { PageHeader } from '../../components/PageHeader'
 import { Dialog } from '../../components/Dialog'
-import { Plus } from '../../components/icons'
+import { EmptyState } from '../../components/EmptyState'
+import { Plus, Mail, Phone, Truck } from '../../components/icons'
 import './purchasing.css'
 
 interface Ingredient { id: string; name: string; unit_id: string; cost_per_unit_cents: number }
@@ -40,6 +42,7 @@ export function PurchasingScreen() {
   const [editingVendor, setEditingVendor] = useState<Vendor | null>(null)
   const [poDialogOpen, setPoDialogOpen] = useState(false)
   const [receiveOpen, setReceiveOpen] = useState(false)
+  const [receiveNotice, setReceiveNotice] = useState('')
 
   const unitsById = useMemo(() => new Map(units.map(u => [u.id, u])), [units])
   const activeVendors = useMemo(() => vendors.filter(v => v.active), [vendors])
@@ -175,13 +178,14 @@ export function PurchasingScreen() {
             <div className="purchasing-detail-actions">
               {selectedOrder.status === 'draft' && <button type="button" className="secondary-cta" disabled={detailBusy} onClick={() => void handleSend()}>Send to vendor</button>}
               {(selectedOrder.status === 'sent' || selectedOrder.status === 'partially_received') &&
-                <button type="button" className="cta" disabled={detailBusy} onClick={() => setReceiveOpen(value => !value)}>{receiveOpen ? 'Close receiving' : 'Receive stock'}</button>}
+                <button type="button" className="cta" disabled={detailBusy} onClick={() => { setReceiveOpen(value => !value); setReceiveNotice('') }}>{receiveOpen ? 'Close receiving' : 'Receive stock'}</button>}
               {selectedOrder.status !== 'cancelled' && selectedOrder.status !== 'received' &&
                 <button type="button" className="text-action" disabled={detailBusy} onClick={() => void handleCancel()}>Cancel order</button>}
             </div>
 
+            {receiveNotice && <p className="form-notice" role="status">{receiveNotice} <Link to="/inventory">View in Inventory →</Link></p>}
             {detail && receiveOpen && <ReceiveForm storeId={storeId} detail={detail} currency={currency}
-              onReceived={next => { applyDetail(next); setReceiveOpen(false) }} />}
+              onReceived={next => { applyDetail(next); setReceiveOpen(false); setReceiveNotice('Stock received and recorded against each ingredient’s balance and stock ledger.') }} />}
 
             {detail && <>
               <h3>Lines</h3>
@@ -235,18 +239,29 @@ function StatusPill({ status }: { status: PurchaseOrder['status'] }) {
 }
 
 function VendorsTab({ vendors, onAdd, onEdit }: { vendors: Vendor[]; onAdd: () => void; onEdit: (vendor: Vendor) => void }) {
+  const activeCount = vendors.filter(vendor => vendor.active).length
   return <div className="purchasing-vendors">
-    <button type="button" className="cta" onClick={onAdd}><Plus aria-hidden="true" size={15} />New vendor</button>
-    {!vendors.length && <p className="purchasing-hint">No vendors yet.</p>}
-    <div className="purchasing-vendor-grid">
-      {vendors.map(vendor => <button type="button" key={vendor.id} className={`purchasing-vendor-card${vendor.active ? '' : ' inactive'}`} onClick={() => onEdit(vendor)}>
-        <b>{vendor.name}</b>
-        {!vendor.active && <span className="purchasing-approved-tag">Inactive</span>}
-        {vendor.contact_name && <span>{vendor.contact_name}</span>}
-        {vendor.email && <span>{vendor.email}</span>}
-        {vendor.phone && <span>{vendor.phone}</span>}
-      </button>)}
+    <div className="purchasing-vendors-head">
+      <div><strong>{activeCount} active vendor{activeCount === 1 ? '' : 's'}</strong>
+        {vendors.length > activeCount && <small>{vendors.length - activeCount} inactive</small>}</div>
+      <button type="button" className="cta" onClick={onAdd}><Plus aria-hidden="true" size={15} />New vendor</button>
     </div>
+    {!vendors.length
+      ? <EmptyState title="No vendors yet." description="Add a vendor to start creating purchase orders and tracking what you buy from them."
+          action={<button type="button" className="secondary-cta" onClick={onAdd}><Plus aria-hidden="true" size={15} />Add your first vendor</button>} />
+      : <div className="purchasing-vendor-grid">
+        {vendors.map(vendor => <button type="button" key={vendor.id} className={`purchasing-vendor-card${vendor.active ? '' : ' inactive'}`} onClick={() => onEdit(vendor)}>
+          <div className="purchasing-vendor-card-head">
+            <span className="purchasing-vendor-icon" aria-hidden="true"><Truck size={16} /></span>
+            <b>{vendor.name}</b>
+            {!vendor.active && <span className="purchasing-approved-tag">Inactive</span>}
+          </div>
+          {vendor.contact_name && <span className="purchasing-vendor-detail">{vendor.contact_name}</span>}
+          {vendor.email && <span className="purchasing-vendor-detail"><Mail aria-hidden="true" size={12} />{vendor.email}</span>}
+          {vendor.phone && <span className="purchasing-vendor-detail"><Phone aria-hidden="true" size={12} />{vendor.phone}</span>}
+          {vendor.terms && <span className="purchasing-vendor-terms">{vendor.terms}</span>}
+        </button>)}
+      </div>}
   </div>
 }
 

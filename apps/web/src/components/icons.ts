@@ -15,5 +15,5 @@ export {
   Wallet, RefreshCw, Award, Receipt, Tag,
   Monitor, History, Shield, Play,
   ArrowLeft, ArrowRight, Download, LogIn, LockKeyhole, MonitorSmartphone, ScanLine,
-  Truck,
+  Truck, Mail, Phone, CalendarClock,
 } from 'lucide-react'

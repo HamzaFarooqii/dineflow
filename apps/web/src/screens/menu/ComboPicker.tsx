@@ -56,10 +56,11 @@ export function ComboPicker({ product, productsById, currency, onClose, onApply 
   }
 
   return <Dialog title={`Build ${product.name}`} kicker="COMBO" onClose={onClose} className="modifier-picker-dialog">
-    <div className="modifier-picker-price"><span>{product.combo?.pricing_mode === 'derived' ? 'Built from selections' : 'Starting price'}</span><strong>{formatCents(product.unit_price_cents, currency)}</strong></div>
+    <p className="modifier-picker-intro">Pick one option from each group below, then add it to the check.</p>
+    <div className="modifier-picker-price"><span>{product.combo?.pricing_mode === 'derived' ? 'Price adds up as you choose' : 'Starting price'}</span><strong>{formatCents(product.unit_price_cents, currency)}</strong></div>
     <div className="modifier-picker-groups">
       {groups.map(group => <fieldset key={group.id} className="modifier-picker-group">
-        <legend><span>{group.name}</span><small>Choose {group.min_select === group.max_select ? group.min_select : `${group.min_select}-${group.max_select}`}</small></legend>
+        <legend><span>{group.name}</span><small>{group.min_select === group.max_select ? `Pick ${group.min_select}` : `Pick ${group.min_select} to ${group.max_select}`}</small></legend>
         <div className="modifier-picker-options">
           {[...group.options].sort((a, b) => a.sort_order - b.sort_order).map(option => {
             const componentProduct = productsById.get(option.component_product_id)

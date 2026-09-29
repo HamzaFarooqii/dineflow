@@ -803,18 +803,18 @@
 }
 /* Modifier builder — drawer-first Ember editor, designed for the real 420px work surface. */
 .modifier-editor{display:grid;gap:14px;margin-top:2px}
-.modifier-editor-intro{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:14px;padding:16px;border:1px solid var(--mise-border-hairline);border-radius:var(--mise-r3);background:linear-gradient(135deg,var(--mise-surface) 0%,var(--mise-orange-soft) 180%)}
+.modifier-editor-intro{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:14px;padding:16px;border:1px solid var(--mise-border-hairline);border-radius:var(--mise-r3);background:linear-gradient(135deg,var(--mise-surface) 0%,var(--mise-saffron-fill) 180%)}
 .modifier-editor-intro>div{display:grid;gap:4px;min-width:0}
 .modifier-editor-eyebrow{color:var(--mise-action);font:700 9px var(--mise-font-mono);letter-spacing:.12em}
 .modifier-editor-intro strong{font-size:14px;color:var(--mise-ink)}
 .modifier-editor-intro p{max-width:420px;margin:1px 0 0;color:var(--mise-ink-secondary);font-size:11px;line-height:1.55}
 .modifier-add-group,.modifier-add-option{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--mise-border-strong);border-radius:var(--mise-r2);background:var(--mise-surface);color:var(--mise-ink);font:650 11px Inter,sans-serif;cursor:pointer;transition:border-color .15s ease,background .15s ease,transform .15s ease}
 .modifier-add-group{min-height:36px;padding:0 12px;white-space:nowrap}
-.modifier-add-group:hover,.modifier-add-option:hover{border-color:var(--mise-action);background:var(--mise-orange-soft)}
+.modifier-add-group:hover,.modifier-add-option:hover{border-color:var(--mise-action);background:var(--mise-saffron-fill)}
 .modifier-add-group:active,.modifier-add-option:active{transform:translateY(1px)}
 .modifier-add-group:disabled,.modifier-add-option:disabled{cursor:not-allowed;opacity:.55}
 .modifier-empty{display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px;align-items:center;padding:16px;border:1px dashed var(--mise-border-strong);border-radius:var(--mise-r3);background:var(--mise-surface-soft)}
-.modifier-empty-icon{display:grid;width:34px;height:34px;place-items:center;border-radius:50%;background:var(--mise-orange-soft);color:var(--mise-action)}
+.modifier-empty-icon{display:grid;width:34px;height:34px;place-items:center;border-radius:50%;background:var(--mise-saffron-fill);color:var(--mise-action)}
 .modifier-empty div{display:grid;gap:3px}
 .modifier-empty strong{color:var(--mise-ink);font-size:12px}.modifier-empty p{margin:0;color:var(--mise-ink-muted);font-size:10px;line-height:1.45}
 .modifier-empty .text-action{grid-column:2;justify-self:start}
@@ -831,7 +831,7 @@
 .modifier-field,.modifier-selection-field{display:grid;gap:6px;margin:0}
 .modifier-field>span,.modifier-selection-field>span,.modifier-option-row label>span{color:var(--mise-ink-secondary);font:650 9px Inter,sans-serif;letter-spacing:.02em}
 .modifier-group-controls input,.modifier-option-row input{width:100%;min-width:0;height:38px;padding:0 10px;border:1px solid var(--mise-border-strong);border-radius:var(--mise-r2);background:var(--mise-surface);color:var(--mise-ink);font:500 12px Inter,sans-serif;outline:0;box-sizing:border-box}
-.modifier-group-controls input:focus,.modifier-option-row input:focus{border-color:var(--mise-action);box-shadow:0 0 0 3px var(--mise-orange-soft)}
+.modifier-group-controls input:focus,.modifier-option-row input:focus{border-color:var(--mise-action);box-shadow:0 0 0 3px var(--mise-saffron-fill)}
 .modifier-segmented{display:grid;grid-template-columns:1fr 1fr;padding:3px;border:1px solid var(--mise-border-hairline);border-radius:var(--mise-r2);background:var(--mise-surface-sunken)}
 .modifier-segmented button{height:30px;padding:0 8px;border:0;border-radius:6px;background:transparent;color:var(--mise-ink-muted);font:650 10px Inter,sans-serif;cursor:pointer}
 .modifier-segmented button.active{background:var(--mise-surface);color:var(--mise-ink);box-shadow:0 1px 3px rgba(22,18,15,.09)}
@@ -840,7 +840,7 @@
 .modifier-toggle{position:relative;flex:0 0 auto;width:32px;height:18px;border-radius:99px;background:var(--mise-border-strong);transition:background .15s ease}
 .modifier-toggle i{position:absolute;top:3px;left:3px;width:12px;height:12px;border-radius:50%;background:var(--mise-surface);box-shadow:0 1px 2px rgba(22,18,15,.25);transition:transform .15s ease}
 .modifier-required>input:checked+.modifier-toggle{background:var(--mise-action)}.modifier-required>input:checked+.modifier-toggle i{transform:translateX(14px)}
-.modifier-required>input:focus-visible+.modifier-toggle{box-shadow:0 0 0 3px var(--mise-orange-soft)}
+.modifier-required>input:focus-visible+.modifier-toggle{box-shadow:0 0 0 3px var(--mise-saffron-fill)}
 .modifier-required>span:last-child{display:grid;gap:1px}.modifier-required strong{font-size:10px;color:var(--mise-ink)}.modifier-required small{font-size:9px;color:var(--mise-ink-muted)}
 .modifier-options-editor{display:grid;gap:9px;padding:14px;border-top:1px solid var(--mise-border-hairline);background:var(--mise-surface-soft)}
 .modifier-options-head{display:flex;align-items:end;justify-content:space-between;gap:10px;margin-bottom:1px}.modifier-options-head>div{display:flex;align-items:baseline;gap:6px}.modifier-options-head strong{font-size:11px;color:var(--mise-ink)}.modifier-options-head span{font-size:9px;color:var(--mise-ink-muted)}.modifier-options-head>small{color:var(--mise-ink-muted);font:700 8px var(--mise-font-mono);letter-spacing:.06em}

@@ -885,7 +885,20 @@ export function ProductCatalogScreen() {
                           </button>
                         )
                       }
-                      const cost = costSavedRecipe(recipe, recipeData.ingredients, recipeData.units)
+                      // costSavedRecipe throws on a non-positive line quantity or yield -- normally
+                      // impossible through the recipe editor's own validation, but one malformed row
+                      // (bad historical data, a race with an in-progress edit elsewhere) must not
+                      // blank the entire product list, the same reasoning as the food-cost report's
+                      // own per-dish guard in apps/api/src/routes/reports.ts.
+                      let cost: ReturnType<typeof costSavedRecipe> | null = null
+                      try { cost = costSavedRecipe(recipe, recipeData.ingredients, recipeData.units) } catch { cost = null }
+                      if (!cost) {
+                        return (
+                          <button type="button" className="recipe-row-link" onClick={() => openRecipe(product)}>
+                            Recipe needs review
+                          </button>
+                        )
+                      }
                       const pct = formatFoodCostPercent(foodCostBps(cost.portionCostCents, product.unit_price_cents))
                       return (
                         <button

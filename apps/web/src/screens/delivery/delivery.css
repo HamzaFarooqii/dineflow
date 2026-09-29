@@ -9,19 +9,12 @@
 .rider-card{display:grid;gap:10px;padding:16px;border:1px solid var(--mise-border-hairline);border-radius:var(--mise-r3);background:var(--mise-surface);box-sizing:border-box}
 .rider-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
 .rider-card-receipt{font:600 15px 'Inter',sans-serif;color:var(--mise-ink)}
-.rider-status-badge{display:inline-block;padding:3px 10px;border-radius:999px;font:600 11px 'Inter',sans-serif;text-transform:uppercase;letter-spacing:.03em}
-.rider-status-badge.pending{background:#fef3c7;color:#92400e}
-.rider-status-badge.accepted{background:#dbeafe;color:#1e40af}
-.rider-status-badge.picked_up{background:#e0e7ff;color:#3730a3}
-.rider-status-badge.out_for_delivery{background:#fce7f3;color:#9d174d}
-.rider-status-badge.delivered{background:#d1fae5;color:#065f46}
-.rider-status-badge.failed{background:#fee2e2;color:#991b1b}
 .rider-card-field{font-size:13px;color:var(--mise-ink-secondary);word-break:break-word}
 .rider-card-field b{color:var(--mise-ink)}
 .rider-card-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
 .rider-card-actions button{flex:1;min-width:120px;min-height:48px;border-radius:var(--mise-r2);border:1px solid var(--mise-border-strong);background:var(--mise-ink);color:var(--mise-ink-inverse);font:600 14px 'Inter',sans-serif}
 .rider-card-actions button.secondary{background:var(--mise-surface);color:var(--mise-ink);border-color:var(--mise-border-strong)}
-.rider-card-actions button.danger{background:#b91c1c;border-color:#b91c1c;color:#fff}
+.rider-card-actions button.danger{background:var(--mise-danger);border-color:var(--mise-danger);color:var(--mise-ink-inverse)}
 .rider-card-actions button:disabled{opacity:.6}
 
 /* Owner dispatch */

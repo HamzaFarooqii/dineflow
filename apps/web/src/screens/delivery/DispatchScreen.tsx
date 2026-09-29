@@ -2,9 +2,10 @@ import { Fragment, useEffect, useState } from 'react'
 import { requireSupabase } from '../../lib/supabase'
 import {
   assignRider, fetchDispatchKpis, fetchDispatchList, fetchDeliveryTimeline, newOperationId, ownerTransitionDelivery,
-  DeliveryConflictError, type DeliveryKpis, type DeliveryOrder, type DeliveryStatus, type DeliveryStatusEvent,
+  DeliveryConflictError, DELIVERY_STATUS_TONE, type DeliveryKpis, type DeliveryOrder, type DeliveryStatus, type DeliveryStatusEvent,
 } from '../../lib/delivery'
 import { PageHeader } from '../../components/PageHeader'
+import { StatusBadge } from '../../components/StatusBadge'
 import './delivery.css'
 
 const POLL_MS = 20_000
@@ -127,7 +128,7 @@ export function DispatchScreen() {
               <td>{delivery.receipt_number ?? delivery.order_id.slice(0, 8)}</td>
               <td>{delivery.recipient_name_snapshot}<br /><small>{delivery.contact_phone_snapshot}</small></td>
               <td>{delivery.address_snapshot}</td>
-              <td><span className={`rider-status-badge ${delivery.status}`}>{STATUS_LABEL[delivery.status]}</span></td>
+              <td><StatusBadge tone={DELIVERY_STATUS_TONE[delivery.status]}>{STATUS_LABEL[delivery.status]}</StatusBadge></td>
               <td>
                 <select value={delivery.rider_id ?? ''} disabled={busyId === delivery.id || !['pending', 'accepted'].includes(delivery.status)}
                   onChange={event => void onAssign(delivery, event.target.value)}>

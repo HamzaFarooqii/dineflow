@@ -56,7 +56,7 @@
 
 .loyalty-section-heading h2 { margin-top: var(--mise-space-4); }
 .loyalty-eyebrow {
-  color: var(--mise-orange);
+  color: var(--mise-saffron);
   font: 700 10px/1 'JetBrains Mono', monospace;
   letter-spacing: .12em;
 }
@@ -139,7 +139,7 @@
 }
 
 .loyalty-tier-rank {
-  color: var(--mise-orange);
+  color: var(--mise-saffron);
   font: 700 11px 'JetBrains Mono', monospace;
 }
 

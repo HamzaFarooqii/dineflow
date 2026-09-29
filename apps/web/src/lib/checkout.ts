@@ -57,8 +57,22 @@ export async function completeLocalSale(items: CartItem[], storeId: string, meth
   // stays untouched by the register/payment screens (Restaurant POS Transformation Blueprint,
   // docs/09, Day 2) — orderType and activeTableId are cart-scoped the same way discount/approval
   // state already is. table_id only ever travels with a dine-in order.
-  const { orderType, activeTableId } = usePosStore.getState()
+  const { orderType, activeTableId, deliveryDetails } = usePosStore.getState()
   const tableId = orderType === 'dine_in' ? activeTableId : null
+  // Delivery orders need a recipient/address snapshot the API validates and stores immutably
+  // (apps/api/src/routes/delivery.ts's deliveryDetailsBody) -- checked here, not just left to the
+  // server's 422, so a bad delivery order never gets as far as the offline outbox where it would
+  // fail forever on every retry instead of failing once, visibly, at checkout.
+  let delivery: { recipient_name: string; contact_phone: string; address: string; delivery_instructions: string | null } | undefined
+  if (orderType === 'delivery') {
+    const recipientName = deliveryDetails.recipientName.trim()
+    const contactPhone = deliveryDetails.contactPhone.replace(/\D/g, '')
+    const address = deliveryDetails.address.trim()
+    if (!recipientName) throw new Error('Enter the recipient’s name for this delivery.')
+    if (!/^[1-9][0-9]{3,14}$/.test(contactPhone)) throw new Error('Enter a valid delivery phone number, with country code.')
+    if (!address) throw new Error('Enter a delivery address.')
+    delivery = { recipient_name: recipientName, contact_phone: contactPhone, address, delivery_instructions: deliveryDetails.instructions.trim() || null }
+  }
   await posDb.transaction('rw', [posDb.orders, posDb.order_items, posDb.payments,
     posDb.outbox, posDb.stock_adjustments, posDb.sync_metadata], async () => {
       const prefixRow = await posDb.sync_metadata.get(`receipt_prefix:${storeId}`)
@@ -104,7 +118,9 @@ export async function completeLocalSale(items: CartItem[], storeId: string, meth
         const selection = items[index].comboSelection
         return selection?.length ? { ...orderItem, combo_selection: selection.map(entry => ({ group_id: entry.groupId, component_product_id: entry.componentProductId, price_delta_cents: entry.priceDeltaCents })) } : orderItem
       })
-      const payload = { operation_id: operationId, order, items: payloadItems,
+      // orders.ts reads recipient/address details off order.delivery specifically (nested, not a
+      // sibling of "order" in the payload) -- see validateOperation's `record(order.delivery, ...)`.
+      const payload = { operation_id: operationId, order: delivery ? { ...order, delivery } : order, items: payloadItems,
         ...(settlement ? { payments } : { payment: payments[0] }),
         loyalty_redemption: reward ? { reward_rule_id: reward.ruleId } : undefined }
       const outbox: OutboxEntry = { store_id: storeId, operation_id: operationId, order_id: operationId, status: 'pending',

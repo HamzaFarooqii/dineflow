@@ -497,11 +497,18 @@ export async function loadFoodCostReport(storeId: string, from: string, to: stri
     const unitsSold = Number(sale?.units ?? 0)
     const netRevenueCents = Number(sale?.revenue ?? 0)
     const lines = product.recipe_id ? linesByRecipe.get(product.recipe_id) ?? [] : []
-    const recipe = product.recipe_id && product.yield_quantity && lines.length
-      ? costRecipe(lines.map(line => ({ quantity: Number(line.quantity),
+    // costRecipe throws on a non-positive quantity or yield rather than returning a per-line
+    // "unit_mismatch"-style status -- a single malformed recipe (bad historical data, a race with
+    // an in-progress edit) must not 500 the whole report and hide every other dish's numbers.
+    // Treated exactly like any other uncostable recipe: this dish shows as "Incomplete" instead.
+    let recipe: ReturnType<typeof costRecipe> | null = null
+    if (product.recipe_id && product.yield_quantity && lines.length) {
+      try {
+        recipe = costRecipe(lines.map(line => ({ quantity: Number(line.quantity),
           unit: { id: line.line_unit_id, kind: line.line_kind, factorToBase: line.line_factor },
           ingredient: { unit: { id: line.ingredient_unit_id, kind: line.ingredient_kind, factorToBase: line.ingredient_factor }, costPerUnitCents: line.cost_per_unit_cents } })), Number(product.yield_quantity))
-      : null
+      } catch { recipe = null }
+    }
     const portionCostCents = recipe?.portionCostCents ?? 0
     const estimatedFoodCostCents = portionCostCents * unitsSold
     return { productId: product.product_id, name: product.name, unitsSold, netRevenueCents, portionCostCents,

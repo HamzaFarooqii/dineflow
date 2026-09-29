@@ -16,6 +16,14 @@ import type { LocalCustomer } from './db'
 
 export type { LineDiscount }
 
+export interface DeliveryDetailsDraft {
+  recipientName: string
+  contactPhone: string
+  address: string
+  instructions: string
+}
+export const emptyDeliveryDetails: DeliveryDetailsDraft = { recipientName: '', contactPhone: '', address: '', instructions: '' }
+
 export interface SelectedModifier {
   groupId: string
   optionId: string
@@ -126,6 +134,12 @@ export interface PosStore {
   activeTableId: string | null
   setActiveTableId: (tableId: string | null) => void
 
+  // Recipient/address capture for a Delivery-type order (checkout.ts sends this as `order.delivery`
+  // whenever orderType is 'delivery' -- the API rejects a delivery order without it). Cart-scoped
+  // the same way orderType/activeTableId already are; cleared on clearCart.
+  deliveryDetails: DeliveryDetailsDraft
+  setDeliveryDetails: (details: DeliveryDetailsDraft) => void
+
   // The open check (lib/open-checks.ts) this cart is currently resuming, if any — null for an
   // ordinary walk-up sale. Set by loadCheckIntoCart when a held check is resumed from the Open
   // Checks screen, or right after a fresh check is created by "Hold." activeCheckVersion is the
@@ -193,6 +207,9 @@ export const usePosStore = create<PosStore>((set, get) => ({
   activeTableId: null,
   setActiveTableId: tableId => set({ activeTableId: tableId }),
 
+  deliveryDetails: emptyDeliveryDetails,
+  setDeliveryDetails: details => set({ deliveryDetails: details }),
+
   activeCheckId: null,
   activeCheckVersion: null,
   setActiveCheck: (checkId, version) => set({ activeCheckId: checkId, activeCheckVersion: version }),
@@ -250,7 +267,7 @@ export const usePosStore = create<PosStore>((set, get) => ({
       }
     }),
 
-  clearCart: () => set({ items: [], selectedCustomer: null, managerApproval: null, orderType: 'dine_in', activeTableId: null, activeCheckId: null, activeCheckVersion: null }),
+  clearCart: () => set({ items: [], selectedCustomer: null, managerApproval: null, orderType: 'dine_in', activeTableId: null, activeCheckId: null, activeCheckVersion: null, deliveryDetails: emptyDeliveryDetails }),
 
   // Notes don't affect totals or approval — no managerApproval invalidation needed here, unlike
   // every money-affecting mutation above.

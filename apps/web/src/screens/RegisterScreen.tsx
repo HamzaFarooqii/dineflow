@@ -84,6 +84,8 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
   const activeCheckId = usePosStore(state => state.activeCheckId)
   const activeCheckVersion = usePosStore(state => state.activeCheckVersion)
   const setActiveCheck = usePosStore(state => state.setActiveCheck)
+  const deliveryDetails = usePosStore(state => state.deliveryDetails)
+  const setDeliveryDetails = usePosStore(state => state.setDeliveryDetails)
   useEffect(() => {
     if (!storeId) return
     const subscription = liveQuery(() => posDb.outbox.where('store_id').equals(storeId).toArray()).subscribe(entries => {
@@ -323,14 +325,22 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
   // offline checkout with no way to satisfy it — that would break this app's core offline-first
   // guarantee. A cashier terminal is always customerAuthorized, so this is unconditional there.
   const needsCustomer = customerAuthorized && !selectedCustomer
-  const proceedBlocked = !cart.length || Boolean(cartError) || !storeId || needsApproval || needsOversoldAcknowledgement || needsCustomer
+  // A Delivery order needs a recipient, a normalized phone, and an address before checkout.ts can
+  // build the order.delivery snapshot the API requires -- checked here so "Proceed to payment" is
+  // disabled with a clear reason, the same pattern needsCustomer already uses, instead of letting
+  // the cashier reach Payment and fail there.
+  const needsDeliveryDetails = orderType === 'delivery' && (!deliveryDetails.recipientName.trim() ||
+    !/^[1-9][0-9]{3,14}$/.test(deliveryDetails.contactPhone.replace(/\D/g, '')) || !deliveryDetails.address.trim())
+  const proceedBlocked = !cart.length || Boolean(cartError) || !storeId || needsApproval || needsOversoldAcknowledgement || needsCustomer || needsDeliveryDetails
 
   // Hold: saves the current cart to the server as a durable, resumable open check (lib/open-checks.ts)
   // instead of completing a sale -- an online-only call (see that file's header comment), since a
   // held check exists specifically to be resumable from a *different* terminal. A dine-in check
-  // needs a table (set by Floor's "Add order"); takeaway/delivery can be held without one.
+  // needs a table (set by Floor's "Add order"); takeaway can be held without one. Delivery can't be
+  // held at all yet: an open check has no column for recipient/address, so a held delivery check
+  // would fail at close time with nowhere to recover -- same known gap as combos, not a new one.
   const holdBlocked = !cart.length || Boolean(cartError) || !storeId || needsApproval || needsOversoldAcknowledgement || needsCustomer ||
-    (orderType === 'dine_in' && !activeTableId) || holdBusy
+    (orderType === 'dine_in' && !activeTableId) || orderType === 'delivery' || holdBusy
   async function handleHold() {
     if (holdBlocked) return
     setHoldBusy(true); setHoldError('')
@@ -376,15 +386,32 @@ export function RegisterScreen({ terminal = false }: { terminal?: boolean }) {
         disabled={Boolean(product.tax_rate_id && taxRates[product.tax_rate_id] === undefined)}
         onSelect={() => addProductToCart(product)} />)}</div>
     </div>
-    <aside className="sale-cart"><div className="cart-title"><h2>Open check</h2>
-        <Link className="text-action" to={terminal ? '/pos/open-checks' : '/open-checks'}>Resume a held check</Link>
-        <button className="text-action" type="button" onClick={() => void handleHold()} disabled={holdBlocked} title={orderType === 'dine_in' && !activeTableId ? 'Select a table from Floor before holding a dine-in check.' : undefined}>{holdBusy ? 'Holding…' : 'Hold'}</button>
-        <button className="text-action" type="button" onClick={() => { if (window.confirm('Void this check and clear it? This cannot be undone.')) clear() }} disabled={!cart.length}>Void check</button></div>
+    <aside className="sale-cart"><div className="cart-title"><h2>{activeCheckId ? 'Resuming held check' : 'Open check'}</h2>
+        <Link className="text-action" to={terminal ? '/pos/open-checks' : '/open-checks'}>Open Checks ↗</Link></div>
+      <div className="cart-actions-row">
+        <button className="secondary-cta cart-hold-button" type="button" onClick={() => void handleHold()} disabled={holdBlocked}
+          title={orderType === 'dine_in' && !activeTableId ? 'Select a table from Floor before holding a dine-in check.' : orderType === 'delivery' ? 'Delivery orders can’t be held yet — complete checkout directly.' : undefined}>
+          {holdBusy ? 'Holding…' : activeCheckId ? 'Save changes to held check' : 'Hold this check'}
+        </button>
+        <button className="text-action" type="button" onClick={() => { if (window.confirm('Void this check and clear it? This cannot be undone.')) clear() }} disabled={!cart.length}>Void check</button>
+      </div>
+      {Boolean(cart.length) && !activeCheckId && <p className="cart-hold-hint">Items only live in this browser until you tap <b>Hold this check</b> — that's what makes a check resumable later, from Open Checks or a different terminal. Proceeding straight to payment works too and needs no hold.</p>}
+      {activeCheckId && <p className="cart-hold-hint cart-hold-hint-active">You're resuming a check held earlier. Keep editing freely — tap <b>Save changes to held check</b> to store your edits, or Proceed to payment to close it out now.</p>}
       {holdError && <p className="form-notice error" role="alert">{holdError}</p>}
       <div className="order-type-selector" role="radiogroup" aria-label="Order type">
         {ORDER_TYPES.map(type => <button key={type} type="button" role="radio" aria-checked={orderType === type}
           className={orderType === type ? 'active' : ''} onClick={() => setOrderType(type)}>{ORDER_TYPE_LABELS[type]}</button>)}
       </div>
+      {orderType === 'delivery' && <div className="delivery-details-field" aria-label="Delivery details">
+        <label>Recipient name<input value={deliveryDetails.recipientName} maxLength={120} placeholder="Who's this for?"
+          onChange={event => setDeliveryDetails({ ...deliveryDetails, recipientName: event.target.value })} /></label>
+        <label>Phone<input inputMode="tel" value={deliveryDetails.contactPhone} placeholder="+1 234 567 8900"
+          onChange={event => setDeliveryDetails({ ...deliveryDetails, contactPhone: event.target.value })} /></label>
+        <label>Delivery address<textarea value={deliveryDetails.address} maxLength={400} rows={2} placeholder="Street, unit, city"
+          onChange={event => setDeliveryDetails({ ...deliveryDetails, address: event.target.value })} /></label>
+        <label>Note for the rider (optional)<input value={deliveryDetails.instructions} maxLength={500} placeholder="Gate code, landmark, etc."
+          onChange={event => setDeliveryDetails({ ...deliveryDetails, instructions: event.target.value })} /></label>
+      </div>}
       <div className={`crm-cart-customer ${needsCustomer ? 'crm-cart-customer-required' : ''}`}>{selectedCustomer && customerAuthorized ? <><strong>{selectedCustomer.name}</strong><small>{selectedCustomer.phone_normalized ? `+${selectedCustomer.phone_normalized}` : 'No phone'} · {selectedCustomer.sync_status === 'synced' ? 'Saved' : 'Pending sync'}</small><div className="crm-cart-customer-actions"><button type="button" className="text-action" onClick={() => setCustomerOpen(true)}>Change customer</button><button type="button" className="text-action" onClick={() => selectCustomer(null)}>Remove</button></div></> : <><button type="button" className={customerAuthorized ? 'secondary-cta' : 'text-action'} disabled={!storeId || !customerAuthorized} onClick={() => setCustomerOpen(true)}>{customerAuthorized ? 'Select or add a guest (required)' : 'Add customer'}</button>{storeId && !customerAuthorized && <small>Customer access requires validated management membership.</small>}</>}</div>
       {customerSyncWarning && <p className="crm-sync-note" role="status">{customerSyncWarning}</p>}
       {!cart.length && <p className="empty-cart">Add a dish to start this check.</p>}

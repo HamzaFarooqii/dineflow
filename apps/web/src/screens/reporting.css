@@ -280,6 +280,17 @@ h2 .panel-icon {
 .operations-copy small{color:var(--mise-ink-muted);font-size:11px}
 .ticket-time{display:inline-flex;align-items:center;gap:4px;min-width:50px;color:var(--mise-saffron-deep);font:700 11px var(--mise-font-mono)}
 
+/* Module quick-links strip -- lighter-weight than the rich Floor/Kitchen panels above, since each
+   of these modules already has its own full screen; this is a "here's what's happening, go look
+   closer" prompt, not a second copy of that screen's detail. */
+.dashboard-module-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:var(--mise-space-12);margin-bottom:var(--mise-space-16)}
+.dashboard-module-card{display:flex;align-items:center;gap:12px;padding:14px;border:1px solid var(--mise-border-hairline);border-radius:var(--mise-r3);background:var(--mise-surface);text-decoration:none;transition:border-color .15s ease,box-shadow .15s ease}
+.dashboard-module-card:hover{border-color:var(--mise-border-strong);box-shadow:var(--mise-e1)}
+.dashboard-module-icon{display:grid;place-items:center;width:36px;height:36px;flex:none;border-radius:var(--mise-r2);background:var(--mise-saffron-fill);color:var(--mise-saffron-deep)}
+.dashboard-module-card div{display:grid;gap:1px;min-width:0}
+.dashboard-module-card strong{color:var(--mise-ink);font:700 17px var(--mise-font-mono)}
+.dashboard-module-card span{color:var(--mise-ink-muted);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
 @media(max-width:900px){
   .dashboard-operations-grid{grid-template-columns:1fr}
 }
