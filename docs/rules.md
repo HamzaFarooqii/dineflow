@@ -1,4 +1,4 @@
-# Counterline POS — Team and Coding Agent Rules
+# Dineflow POS — Team and Coding Agent Rules
 
 These rules apply to every contributor, reviewer, automation, and coding agent.
 
@@ -56,7 +56,7 @@ Do not claim a feature is complete when it only works with mock data, when its m
 - Use integer cents for every price, tax, payment, tender, change, and order total. Never use floating-point money calculations.
 - Validate user input and show useful loading, empty, and error states.
 - Keep interfaces responsive at 375px, 390px, tablet, and desktop widths. Do not introduce horizontal page scrolling on mobile.
-- Preserve the Counterline visual system: parchment backgrounds, deep evergreen navigation, muted gold details, coral actions, editorial serif headings, and accessible contrast.
+- Preserve the current Ember visual system (`docs/DESIGN_SYSTEM.md` is the binding reference, not this bullet): a deep warm-linen canvas, near-black warm ink instead of grey, a deep oxblood-rust accent (`--mise-saffron`), and Fraunces for headings/dish-names/numerals over Archivo for UI text. Reference `--mise-*` tokens by name, never hex values, and never invent a new palette without updating `docs/DESIGN_SYSTEM.md` first — that doc, not this line, is what "preserve the visual system" means in practice.
 - Keep components small and name them for the user-facing feature they provide.
 - Do not hardcode secrets, API keys, passwords, real customer data, or production credentials.
 - Keep `.env.local` local. Commit `.env.example` only.

@@ -6,6 +6,7 @@ import { boundedInteger, calculateDiscountedLine, calculateServiceCharge, discou
 import { ORDER_TYPES, type OrderType } from '../../../../packages/domain/src/order-type.js'
 import { BASE_MULTIPLIER_BPS, pointsEarned, tierForLifetimePoints } from '../../../../packages/domain/src/loyalty.js'
 import { requireCashierTerminal, requireDeviceTerminal } from '../terminal-auth/routes.js'
+import { createDeliveryOrderSnapshot, deliveryDetailsBody } from './delivery.js'
 
 export const ordersRouter = Router()
 export const terminalOrdersRouter = Router()
@@ -149,6 +150,14 @@ export function validateOperation(raw: unknown) {
   const parsedOrderType = orderTypeValue(order.order_type)
   const tableId = order.table_id === null || order.table_id === undefined ? null : id(order.table_id, 'Table ID')
   if (tableId && parsedOrderType !== 'dine_in') throw new ApiError(422, 'validation_failed', 'A table can only be set for a dine-in order.')
+  // Delivery orders snapshot their recipient/contact/address/instructions at checkout time (see
+  // delivery.ts's createDeliveryOrderSnapshot) -- required exactly when order_type is 'delivery',
+  // rejected otherwise, same "field only makes sense for its own order type" rule as table_id
+  // above.
+  const deliveryDetails = parsedOrderType === 'delivery' ? deliveryDetailsBody(record(order.delivery, 'Delivery details')) : null
+  if (parsedOrderType !== 'delivery' && order.delivery !== undefined && order.delivery !== null) {
+    throw new ApiError(422, 'validation_failed', 'Delivery details can only be set for a delivery order.')
+  }
   const employeeId = order.employee_id === null || order.employee_id === undefined ? null : id(order.employee_id, 'Employee ID')
   const managerId = order.manager_id === null || order.manager_id === undefined ? null : id(order.manager_id, 'Manager ID')
   const managerApprovedAt = order.manager_approved_at === null || order.manager_approved_at === undefined ? null : timestamp(order.manager_approved_at, 'Manager approval time')
@@ -170,6 +179,7 @@ export function validateOperation(raw: unknown) {
   }
   return { operationId, storeId, items: parsedItems, totals: { ...totals, totalCents: grandTotalCents }, serviceChargeCents,
     loyaltyRedemption: parseLoyaltyRedemption(body, customerId),
+    deliveryDetails,
     order: { customer_id: customerId, receipt_number: text(order.receipt_number, 'Receipt number', 100),
       catalog_version: order.catalog_version as number, order_type: parsedOrderType, table_id: tableId,
       client_generated_at: generatedAt, employee_id: employeeId, manager_id: managerId, manager_approved_at: managerApprovedAt },
@@ -264,6 +274,13 @@ export async function createPaidOrder(client: import('pg').PoolClient, operation
           operation.serviceChargeCents, operation.totals.totalCents, operation.order.catalog_version, operation.order.client_generated_at, operation.order.customer_id,
           operation.order.employee_id, operation.order.manager_id, operation.order.manager_approved_at,
           operation.order.order_type, operation.order.table_id])
+      if (operation.deliveryDetails) {
+        await createDeliveryOrderSnapshot(client, {
+          storeId: operation.storeId, orderId: operation.operationId,
+          recipientName: operation.deliveryDetails.recipientName, contactPhone: operation.deliveryDetails.contactPhone,
+          address: operation.deliveryDetails.address, instructions: operation.deliveryDetails.instructions,
+        })
+      }
       for (const item of operation.items) {
         await client.query(`insert into public.pos_order_items(id,store_id,order_id,product_id,snapshot_name,snapshot_sku,
           snapshot_price_cents,snapshot_tax_bps,catalog_version,quantity,discount_kind,discount_value,

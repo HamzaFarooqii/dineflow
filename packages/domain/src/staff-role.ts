@@ -24,14 +24,14 @@ export const STAFF_ROLE_LABELS: Record<StaffRole, string> = {
  * with no capabilities beyond logging in; extend this file, not a per-screen role check, when
  * that changes.
  */
-export type StaffCapability = 'register' | 'floor' | 'kitchen' | 'inventory' | 'staff'
+export type StaffCapability = 'register' | 'floor' | 'kitchen' | 'inventory' | 'staff' | 'delivery'
 
 const ROLE_CAPABILITIES: Record<Exclude<StaffRole, 'manager'>, readonly StaffCapability[]> = {
   cashier: ['register'],
   waiter: ['register', 'floor'],
   chef: ['kitchen'],
   inventory_manager: ['inventory'],
-  rider: [],
+  rider: ['delivery'],
 }
 
 export function roleHasCapability(role: StaffRole, capability: StaffCapability): boolean {

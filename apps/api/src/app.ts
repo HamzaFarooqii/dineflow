@@ -2,6 +2,7 @@ import express from 'express'
 import { catalogRouter, terminalCatalogRouter } from './routes/catalog.js'
 import { ordersRouter, terminalOrdersRouter } from './routes/orders.js'
 import { customersRouter, terminalCustomersRouter } from './routes/customers.js'
+import { customerProfileRouter, terminalCustomerProfileRouter } from './routes/customer-profile.js'
 import { storesRouter } from './routes/stores.js'
 import { reportsRouter } from './routes/reports.js'
 import { auditRouter } from './routes/audit.js'
@@ -12,6 +13,12 @@ import { promotionsRouter, terminalPromotionsRouter } from './routes/promotions.
 import { loyaltyRouter, terminalLoyaltyRouter } from './routes/loyalty.js'
 import { shiftsRouter, terminalShiftsRouter } from './routes/shifts.js'
 import { openChecksRouter, terminalOpenChecksRouter } from './routes/open-checks.js'
+import { deliveryRouter, terminalDeliveryRouter } from './routes/delivery.js'
+
+import { purchasingRouter } from './routes/purchasing.js'
+
+import { reservationsRouter, terminalReservationsRouter } from './routes/reservations.js'
+import { timekeepingRouter, terminalTimekeepingRouter } from './routes/timekeeping.js'
 import { terminalAuthRouter, type TerminalAuthOptions } from './terminal-auth/routes.js'
 
 export function createApp(options: TerminalAuthOptions) {
@@ -23,6 +30,7 @@ export function createApp(options: TerminalAuthOptions) {
   app.use('/catalog', catalogRouter)
   app.use('/orders', ordersRouter)
   app.use('/customers', customersRouter)
+  app.use('/customers', customerProfileRouter)
   app.use('/stores', storesRouter)
   app.use('/reports', reportsRouter)
   app.use('/floor', floorRouter)
@@ -32,10 +40,19 @@ export function createApp(options: TerminalAuthOptions) {
   app.use('/loyalty', loyaltyRouter)
   app.use('/shifts', shiftsRouter)
   app.use('/open-checks', openChecksRouter)
+  app.use('/delivery', deliveryRouter)
+
+  app.use('/purchasing', purchasingRouter)
+
+
+  app.use('/reservations', reservationsRouter)
+
+  app.use('/shifts', timekeepingRouter)
   app.use(auditRouter)
   app.use('/pos/catalog', terminalCatalogRouter)
   app.use('/pos/orders', terminalOrdersRouter)
   app.use('/pos/customers', terminalCustomersRouter)
+  app.use('/pos/customers', terminalCustomerProfileRouter)
   app.use('/pos/floor', terminalFloorRouter)
   app.use('/pos/kitchen', terminalKitchenRouter)
   app.use('/pos/inventory', terminalInventoryRouter)
@@ -43,5 +60,8 @@ export function createApp(options: TerminalAuthOptions) {
   app.use('/pos/promotions', terminalPromotionsRouter)
   app.use('/pos/shifts', terminalShiftsRouter)
   app.use('/pos/open-checks', terminalOpenChecksRouter)
+  app.use('/pos/delivery', terminalDeliveryRouter)
+  app.use('/pos/reservations', terminalReservationsRouter)
+  app.use('/pos/shifts', terminalTimekeepingRouter)
   return app
 }
