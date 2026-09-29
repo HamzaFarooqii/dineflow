@@ -356,7 +356,9 @@ export async function voidOpenCheckCore(storeId: string, checkId: string, expect
 export interface CloseOpenCheckParams {
   operationId: string; expectedVersion: number; receiptNumber: string; catalogVersion: number
   clientGeneratedAt: string; serviceChargeBps: number
-  payment: { method: 'cash' | 'card'; amountCents: number; tenderedCents: number; changeCents: number; reference: string | null }
+  // A2: one or more tenders -- cash+card split, itemized, per-seat, or simply the one payment a
+  // non-splitting close has always sent (a single-element array works identically).
+  payments: { id: string; method: 'cash' | 'card'; amountCents: number; tenderedCents: number; changeCents: number; tipCents: number; reference: string | null }[]
   employeeIdOverride: string | null; loyaltyRedemptionRewardRuleId: string | null
 }
 
@@ -436,10 +438,17 @@ export async function closeOpenCheckCore(storeId: string, checkId: string, param
     const needsApproval = parsedItems.some(item => discountNeedsManagerApproval(item.subtotal_cents, item.discount_applied_cents))
     if (needsApproval && !check.manager_id) throw new ApiError(422, 'validation_failed', 'A discount on this check requires manager approval before it can be closed.')
 
-    const { payment } = params
-    if (payment.amountCents !== grandTotalCents || (payment.method === 'cash' && payment.tenderedCents !== payment.amountCents + payment.changeCents) ||
-        (payment.method === 'card' && (payment.tenderedCents !== payment.amountCents || payment.changeCents !== 0))) {
-      throw new ApiError(422, 'total_mismatch', 'Payment does not balance with the check.')
+    if (!params.payments.length || params.payments.length > 20) throw new ApiError(422, 'validation_failed', 'A check needs 1 to 20 tenders to close.')
+    for (const payment of params.payments) {
+      if (payment.amountCents === 0 && payment.tipCents > 0) throw new ApiError(422, 'validation_failed', 'A tip must belong to a positive sale allocation.')
+      if ((payment.method === 'cash' && payment.tenderedCents !== payment.amountCents + payment.tipCents + payment.changeCents) ||
+          (payment.method === 'card' && (payment.tenderedCents !== payment.amountCents + payment.tipCents || payment.changeCents !== 0))) {
+        throw new ApiError(422, 'total_mismatch', 'A tender does not balance.')
+      }
+    }
+    if (new Set(params.payments.map(payment => payment.id)).size !== params.payments.length) throw new ApiError(422, 'validation_failed', 'Tender IDs must be unique.')
+    if (params.payments.reduce((sum, payment) => sum + payment.amountCents, 0) !== grandTotalCents) {
+      throw new ApiError(422, 'total_mismatch', 'Payments do not balance with the check.')
     }
     if (params.loyaltyRedemptionRewardRuleId && !check.customer_id) throw new ApiError(422, 'validation_failed', 'Loyalty redemption requires a guest on this check.')
 
@@ -452,8 +461,8 @@ export async function closeOpenCheckCore(storeId: string, checkId: string, param
       order: { customer_id: check.customer_id, receipt_number: params.receiptNumber, catalog_version: params.catalogVersion,
         order_type: check.order_type, table_id: check.table_id, client_generated_at: params.clientGeneratedAt,
         employee_id: params.employeeIdOverride ?? check.employee_id, manager_id: check.manager_id, manager_approved_at: check.manager_approved_at },
-      payment: { id: randomUUID(), method: payment.method, amount_cents: payment.amountCents, tendered_cents: payment.tenderedCents,
-        change_cents: payment.changeCents, reference: payment.reference },
+      payments: params.payments.map(payment => ({ id: payment.id, method: payment.method, amount_cents: payment.amountCents,
+        tendered_cents: payment.tenderedCents, change_cents: payment.changeCents, tip_cents: payment.tipCents, reference: payment.reference })),
     }
 
     result = await createPaidOrder(client, operation, payloadHash)
@@ -481,6 +490,31 @@ export async function closeOpenCheckCore(storeId: string, checkId: string, param
 // Thin HTTP handlers -- request parsing and auth only, manual-QA-only same as every other route
 // file's HTTP layer in this codebase (see floor.test.ts's comment on applyTableStatusTransition).
 // =================================================================================================
+
+// Parses only the *shape* of one or more tenders (id/method/amounts) -- the balance-against-the-
+// check-total check happens in closeOpenCheckCore, which is the only place that actually knows
+// the check's real total (computed fresh from its stored items, not trusted from the request).
+interface ParsedClosePayment { id: string; method: 'cash' | 'card'; amountCents: number; tenderedCents: number; changeCents: number; tipCents: number; reference: string | null }
+function parseClosePayment(raw: unknown, label: string): ParsedClosePayment {
+  const payment = record(raw, label)
+  const method = payment.method
+  if (method !== 'cash' && method !== 'card') throw new ApiError(422, 'validation_failed', `${label} method is invalid.`)
+  const amountCents = cents(payment.amount_cents, `${label} amount`)
+  const tenderedCents = cents(payment.tendered_cents, `${label} tendered amount`)
+  const changeCents = cents(payment.change_cents, `${label} change amount`)
+  const tipCents = payment.tip_cents === undefined || payment.tip_cents === null ? 0 : cents(payment.tip_cents, `${label} tip`)
+  const reference = payment.reference === null || payment.reference === undefined ? null : text(payment.reference, `${label} reference`, 120)
+  return { id: id(payment.id, `${label} ID`), method, amountCents, tenderedCents, changeCents, tipCents, reference }
+}
+function parseClosePayments(body: JsonRecord) {
+  const rawList = body.payments
+  const rawSingle = body.payment
+  if (rawList !== undefined && rawSingle !== undefined) throw new ApiError(422, 'validation_failed', 'Send either payment or payments, not both.')
+  if (rawList !== undefined && !Array.isArray(rawList)) throw new ApiError(422, 'validation_failed', 'Payments must be a list.')
+  if (Array.isArray(rawList)) return rawList.map((raw, index) => parseClosePayment(raw, `Tender ${index + 1}`))
+  const legacy = record(rawSingle, 'Payment')
+  return [parseClosePayment({ ...legacy, id: legacy.id ?? randomUUID() }, 'Payment')]
+}
 
 // The check's customer_id (needed to validate a redemption actually has a guest to redeem
 // against) is only known once closeOpenCheckCore loads the check row -- so this only parses the
@@ -582,18 +616,12 @@ async function closeOpenCheck(req: Request, res: Response, terminal = false) {
     if (!Number.isSafeInteger(body.catalog_version) || (body.catalog_version as number) < 1) throw new ApiError(422, 'validation_failed', 'Catalog version is invalid.')
     const clientGeneratedAt = timestamp(body.client_generated_at, 'Sale time')
     const serviceChargeBps = serviceChargeBpsValue(body.service_charge_bps)
-    const paymentRaw = record(body.payment, 'Payment')
-    const method = paymentRaw.method
-    if (method !== 'cash' && method !== 'card') throw new ApiError(422, 'validation_failed', 'Payment method is invalid.')
-    const amount = cents(paymentRaw.amount_cents, 'Payment amount')
-    const tendered = cents(paymentRaw.tendered_cents, 'Tendered amount')
-    const change = cents(paymentRaw.change_cents, 'Change amount')
-    const reference = paymentRaw.reference === null || paymentRaw.reference === undefined ? null : text(paymentRaw.reference, 'Card reference', 120)
+    const payments = parseClosePayments(body)
 
     const hash = createHash('sha256').update(JSON.stringify(req.body)).digest('hex')
     const result = await closeOpenCheckCore(storeId, checkId, {
       operationId, expectedVersion, receiptNumber, catalogVersion: body.catalog_version as number, clientGeneratedAt, serviceChargeBps,
-      payment: { method, amountCents: amount, tenderedCents: tendered, changeCents: change, reference },
+      payments,
       employeeIdOverride: access.employeeId, loyaltyRedemptionRewardRuleId: parseLoyaltyRedemptionRewardRuleId(body),
     }, hash)
     res.json(result)

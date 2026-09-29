@@ -3,7 +3,7 @@ import { posDb, type LocalCustomer, type LocalOrder, type LocalOrderItem, type L
 // customer is null both when the order has no customer_id and when that customer isn't (or
 // isn't yet) synced to this browser — the receipt shows "Guest not on file" either way rather
 // than distinguishing the two, since neither is actionable from a receipt screen.
-export interface SavedReceipt { order: LocalOrder; items: LocalOrderItem[]; payment: LocalPayment; customer: LocalCustomer | null }
+export interface SavedReceipt { order: LocalOrder; items: LocalOrderItem[]; payment: LocalPayment; payments?: LocalPayment[]; customer: LocalCustomer | null }
 
 // One read-only transaction: never reconstruct a historical sale from the catalog.
 export async function readReceipt(storeId: string, orderId: string): Promise<SavedReceipt | null> {
@@ -11,10 +11,11 @@ export async function readReceipt(storeId: string, orderId: string): Promise<Sav
     const order = await posDb.orders.get(orderId)
     if (!order || order.store_id !== storeId) return null
     const items = await posDb.order_items.where('order_id').equals(orderId).toArray()
-    const payment = await posDb.payments.where('order_id').equals(orderId).first()
+    const payments = await posDb.payments.where('order_id').equals(orderId).toArray()
+    const payment = payments[0]
     if (!items.length || !payment) throw new Error('This saved receipt is incomplete. Keep the local data and ask a manager to review it. Do not charge again.')
     const customer = order.customer_id ? (await posDb.customers.get(order.customer_id)) ?? null : null
-    return { order, items, payment, customer }
+    return { order, items, payment, payments, customer }
   })
 }
 
@@ -38,10 +39,11 @@ export async function fetchRemoteReceipt(storeId: string, orderId: string, termi
   if (response.status === 404) return null
   const body = await response.json().catch(() => ({})) as {
     order?: Record<string, unknown>; items?: Record<string, unknown>[]
-    payment?: Record<string, unknown> | null; customer?: { id: string; name: string; phone_normalized: string | null } | null; message?: string
+    payments?: Record<string, unknown>[]; payment?: Record<string, unknown> | null; customer?: { id: string; name: string; phone_normalized: string | null } | null; message?: string
   }
   if (!response.ok) throw new Error(body.message ?? `Check could not be loaded (${response.status}).`)
-  if (!body.order || !body.payment) throw new Error('This check is missing its saved payment record. Do not charge again.')
+  const rawPayments = body.payments ?? (body.payment ? [body.payment] : [])
+  if (!body.order || !rawPayments.length) throw new Error('This check is missing its saved payment record. Do not charge again.')
   const order = body.order as Record<string, unknown>
   const localOrder: LocalOrder = {
     id: order.id as string, store_id: order.store_id as string, receipt_number: order.receipt_number as string,
@@ -53,6 +55,9 @@ export async function fetchRemoteReceipt(storeId: string, orderId: string, termi
     customer_id: order.customer_id as string | null, employee_id: order.employee_id as string | null,
     manager_id: order.manager_id as string | null, manager_approved_at: order.manager_approved_at as string | null,
     order_type: order.order_type as LocalOrder['order_type'], table_id: order.table_id as string | null,
+    refunded_at: order.refunded_at as string | null, refunded_amount_cents: order.refunded_amount_cents as number,
+    refunded_tax_cents: order.refunded_tax_cents as number, refunded_merchandise_cents: order.refunded_merchandise_cents as number,
+    refunded_tip_cents: order.refunded_tip_cents as number,
   }
   const items: LocalOrderItem[] = (body.items ?? []).map(item => ({
     id: item.id as string, order_id: localOrder.id, product_id: item.product_id as string,
@@ -63,14 +68,14 @@ export async function fetchRemoteReceipt(storeId: string, orderId: string, termi
     discount_value: item.discount_value as number | null, discount_applied_cents: item.discount_applied_cents as number,
     taxable_cents: item.taxable_cents as number, tax_cents: item.tax_cents as number, total_cents: item.total_cents as number,
   }))
-  const paymentRaw = body.payment
-  const payment: LocalPayment = { id: paymentRaw.id as string, order_id: localOrder.id, method: paymentRaw.method as LocalPayment['method'],
+  const payments: LocalPayment[] = rawPayments.map(paymentRaw => ({ id: paymentRaw.id as string, order_id: localOrder.id, method: paymentRaw.method as LocalPayment['method'],
     amount_cents: paymentRaw.amount_cents as number, tendered_cents: paymentRaw.tendered_cents as number,
-    change_cents: paymentRaw.change_cents as number, reference: paymentRaw.reference as string | null }
+    change_cents: paymentRaw.change_cents as number, tip_cents: (paymentRaw.tip_cents as number) ?? 0,
+    refunded_amount_cents: (paymentRaw.refunded_amount_cents as number) ?? 0, refunded_tip_cents: (paymentRaw.refunded_tip_cents as number) ?? 0, reference: paymentRaw.reference as string | null }))
   const customer: LocalCustomer | null = body.customer ? { id: body.customer.id, store_id: localOrder.store_id, name: body.customer.name,
     phone_normalized: body.customer.phone_normalized, client_generated_at: localOrder.client_generated_at, creating_operation_id: null,
     sync_status: 'synced', failure_reason: null } : null
-  return { order: localOrder, items, payment, customer }
+  return { order: localOrder, items, payment: payments[0], payments, customer }
 }
 
 export function saleDate(order: LocalOrder): string {

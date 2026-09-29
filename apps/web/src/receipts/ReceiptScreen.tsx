@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigationType, useParams } from 'react-router-dom'
 import { liveQuery } from 'dexie'
 import { formatCents } from '../../../../packages/domain/src/money'
@@ -40,7 +40,7 @@ export function ReceiptScreen({ terminal = false }: { terminal?: boolean }) {
       .catch(reason => { if (active) setRemoteError(reason instanceof Error ? reason.message : 'Unable to load this check from the server.') })
     return () => { active = false }
   }, [receipt, scope.storeId, orderId, terminal, attempt])
-  const stillLoading = receipt === undefined || (receipt === null && remoteReceipt === undefined && navigator.onLine)
+  const stillLoading = receipt === undefined || (receipt === null && remoteReceipt === undefined && navigator.onLine && !remoteError)
   const notFound = receipt === null && !stillLoading && (remoteReceipt === null || remoteReceipt === undefined)
   const effectiveReceipt = receipt ?? remoteReceipt ?? null
   const failure = scope.error || error
@@ -50,6 +50,9 @@ export function ReceiptScreen({ terminal = false }: { terminal?: boolean }) {
   const [canRefund, setCanRefund] = useState(false)
   const [refunding, setRefunding] = useState(false)
   const [refundError, setRefundError] = useState('')
+  const [partialRefund, setPartialRefund] = useState(false)
+  const [refundQuantities, setRefundQuantities] = useState<Record<string, number>>({})
+  const refundOperation = useRef(crypto.randomUUID())
   useEffect(() => {
     if (terminal || !scope.storeId) return
     let active = true
@@ -71,8 +74,9 @@ export function ReceiptScreen({ terminal = false }: { terminal?: boolean }) {
   // "Refund this receipt" button every time, and every screen reading local sales (reports, order
   // history) sees the same fact immediately.
   const submitRefund = async () => {
+    const receipt = effectiveReceipt
     if (!receipt || refunding) return
-    if (!window.confirm(`Refund check ${receipt.order.receipt_number} for its full amount? This cannot be undone.`)) return
+    if (!window.confirm(`Refund check ${receipt.order.receipt_number} for the selected remaining items? This cannot be undone.`)) return
     setRefunding(true)
     setRefundError('')
     try {
@@ -81,21 +85,22 @@ export function ReceiptScreen({ terminal = false }: { terminal?: boolean }) {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ store_id: receipt.order.store_id }),
+        body: JSON.stringify({ store_id: receipt.order.store_id, operation_id: refundOperation.current,
+          ...(partialRefund ? { items: Object.entries(refundQuantities).filter(([, quantity]) => quantity > 0).map(([order_item_id, quantity]) => ({ order_item_id, quantity })) } : {}) }),
       })
       const data = (await response.json()) as { code?: string; message?: string; refund?: { amount_cents: string } }
       if (!response.ok) {
-        if (data.code === 'refund_conflict') {
-          // The server already had this order refunded (e.g. a prior attempt succeeded but this
-          // browser never heard back) — bring the local record in line rather than leaving it
-          // permanently out of sync with reality.
-          await posDb.orders.update(receipt.order.id, { refunded_at: new Date().toISOString(), refunded_amount_cents: receipt.order.total_cents })
-          return
-        }
         throw new Error(data.message ?? `Server error (${response.status})`)
       }
-      const amountCents = data.refund ? Number(data.refund.amount_cents) : receipt.order.total_cents
-      await posDb.orders.update(receipt.order.id, { refunded_at: new Date().toISOString(), refunded_amount_cents: amountCents })
+      const refreshed = await fetchRemoteReceipt(scope.storeId, receipt.order.id, terminal)
+      if (!refreshed) throw new Error('Refund recorded. Reload the receipt to see its balance.')
+      if (await posDb.orders.get(receipt.order.id)) await posDb.transaction('rw', posDb.orders, posDb.payments, async () => {
+        await posDb.orders.put(refreshed.order)
+        await posDb.payments.bulkPut(refreshed.payments ?? [refreshed.payment])
+      })
+      else setRemoteReceipt(refreshed)
+      refundOperation.current = crypto.randomUUID()
+      setRefundQuantities({})
     } catch (reason) {
       setRefundError(reason instanceof Error ? reason.message : 'Could not refund this check.')
     } finally {
@@ -118,11 +123,18 @@ export function ReceiptScreen({ terminal = false }: { terminal?: boolean }) {
         ? <div role="status"><h2>Check not found</h2><p>{remoteError || (!navigator.onLine ? 'This check is not saved for this restaurant in this browser. Reconnect to check the server, or look under Orders on the terminal that closed it.' : 'This check is not saved for this restaurant in this browser, and could not be found on the server. Look under Orders on the terminal that closed it.')}</p></div>
       : <><p role="status">{fresh ? 'Check closed and saved in this browser. ' : !receipt ? 'Loaded from the server — this check was closed on a different device. ' : ''}{syncLabel(effectiveReceipt.order)}{effectiveReceipt.order.failure_reason ? ` — ${effectiveReceipt.order.failure_reason}` : ''}</p>
         <ReceiptOutput key={effectiveReceipt.order.id} receipt={effectiveReceipt} fresh={fresh} />
-        {canRefund && receipt && receipt.order.sync_status === 'synced' && <div className="refund-action">
-          {receipt.order.refunded_at
-            ? <p role="status">Refunded {formatCents(receipt.order.refunded_amount_cents ?? receipt.order.total_cents, receipt.order.currency)} on {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(receipt.order.refunded_at))}.</p>
-            : <><button type="button" className="cta" onClick={() => void submitRefund()} disabled={refunding}>{refunding ? 'Refunding…' : 'Refund this check'}</button>
-              {refundError && <p role="alert" className="form-notice error">{refundError}</p>}</>}
+        {canRefund && effectiveReceipt.order.sync_status === 'synced' && <div className="refund-action">
+          {Boolean(effectiveReceipt.order.refunded_amount_cents) && <p role="status">Refunded {formatCents(effectiveReceipt.order.refunded_amount_cents!, effectiveReceipt.order.currency)}.</p>}
+          {(effectiveReceipt.order.refunded_amount_cents ?? 0) < effectiveReceipt.order.total_cents && <>
+            <label><input type="checkbox" checked={partialRefund} disabled={refunding} onChange={event => { setPartialRefund(event.target.checked); refundOperation.current = crypto.randomUUID() }} />Partial refund</label>
+            {partialRefund && effectiveReceipt.items.map(item => <label key={item.id}>{item.snapshot_name} ? quantity to refund
+              <input type="number" min={0} max={item.quantity} step={1} disabled={refunding} value={refundQuantities[item.id] ?? 0}
+                onChange={event => { setRefundQuantities(current => ({ ...current, [item.id]: Number(event.target.value) })); refundOperation.current = crypto.randomUUID() }} />
+            </label>)}
+            <p className="screen-note">Refunds return to the original tenders, up to their remaining balance, with a proportional refund of each tender’s tip.</p>
+            <button type="button" className="cta" onClick={() => void submitRefund()} disabled={refunding}>{refunding ? 'Refunding?' : partialRefund ? 'Refund selected items' : 'Refund remaining check'}</button>
+          </>}
+          {refundError && <p role="alert" className="form-notice error">{refundError}</p>}
         </div>}</>}
   </section>
 }

@@ -1,0 +1,10 @@
+.split-settlement { border: 1px solid var(--mise-border-hairline); border-radius: 12px; padding: 16px; min-width: 0; }
+.split-settlement legend { font-weight: 700; padding: 0 6px; }
+.settlement-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.settlement-controls label { min-width: 0; }
+.settlement-controls input, .settlement-controls select { width: 100%; box-sizing: border-box; min-height: 44px; }
+.settlement-controls select { border: 1px solid var(--mise-border-strong); border-radius: 8px; padding: 10px 12px; background: var(--mise-surface); color: var(--mise-ink); font: inherit; }
+.split-settlement > .secondary-cta { margin-top: 12px; }
+.settlement-tender { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--mise-border-hairline); }
+.settlement-tender h3 { margin: 0 0 12px; }
+@media (max-width: 480px) { .settlement-controls { grid-template-columns: 1fr; } }

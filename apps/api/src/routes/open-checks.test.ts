@@ -13,6 +13,7 @@ process.env.DATABASE_URL ??= 'postgresql://localhost:5432/validation_only'
 const { parseCheckItems, serviceChargeBpsValue, versionValue, createOpenCheckCore, editOpenCheckCore, voidOpenCheckCore, closeOpenCheckCore, loadCheckDetail } = await import('./open-checks.js')
 const { applyTableStatusTransition } = await import('./floor.js')
 const { db } = await import('../db.js')
+const { refundOrderCore } = await import('./orders.js')
 
 test('parseCheckItems rejects an empty or oversized item list', () => {
   assert.throws(() => parseCheckItems([]), /1 to 100 items/)
@@ -68,6 +69,8 @@ const chain = [
   '202609260003_service_charge.sql',
   '202609270001_modifiers.sql',
   '202609280002_open_checks.sql',
+  '202609280003_split_settlement.sql',
+  '202609280004_refund_settlement_integrity.sql',
 ]
 
 test('open checks: full lifecycle against real Postgres semantics (PGlite)', async () => {
@@ -160,7 +163,7 @@ test('open checks: full lifecycle against real Postgres semantics (PGlite)', asy
     const closeParams = {
       operationId, expectedVersion: 4, receiptNumber: `OC-${checkId.slice(0, 8)}`, catalogVersion: 1,
       clientGeneratedAt: new Date().toISOString(), serviceChargeBps: 0,
-      payment: { method: 'cash' as const, amountCents: 2200, tenderedCents: 2500, changeCents: 300, reference: null },
+      payments: [{ id: randomUUID(), method: 'cash' as const, amountCents: 2200, tenderedCents: 2500, changeCents: 300, tipCents: 0, reference: null }],
       employeeIdOverride: null, loyaltyRedemptionRewardRuleId: null,
     }
     const hash = 'test-hash-1'
@@ -226,6 +229,97 @@ test('open checks: full lifecycle against real Postgres semantics (PGlite)', asy
     const tableStillOrdering = await database.query('select status from public.restaurant_tables where id=$1', [table])
     assert.equal(tableStillOrdering.rows[0].status, 'ordering')
     await voidOpenCheckCore(store, thirdCheck.check.id as string, 1, null)
+
+    // --- split settlement: closing a check with multiple tenders (cash + card) and tips ---
+    const splitTable = randomUUID()
+    await database.query('insert into public.restaurant_tables(id,store_id,floor_area_id,label,seats) values ($1,$2,$3,$4,4)', [splitTable, store, area, 'T2'])
+    await applyTableStatusTransition(store, splitTable, 'available', 'seated')
+    const splitCheck = await createOpenCheckCore(store, { orderType: 'dine_in', tableId: splitTable, customerId: null, employeeId: null })
+    const splitEdit = await editOpenCheckCore(store, splitCheck.check.id as string, {
+      expectedVersion: 1, items: parseCheckItems(itemInput), serviceChargeBps: 0, notes: null, customerId: null, managerId: null, managerApprovedAt: null,
+    })
+    assert.equal(splitEdit.check.total_cents, 2200) // same $22.00 two-burger line as the main flow above
+    const splitOperationId = randomUUID()
+    const cashTenderId = randomUUID(), cardTenderId = randomUUID()
+    const splitResult = await closeOpenCheckCore(store, splitCheck.check.id as string, {
+      operationId: splitOperationId, expectedVersion: splitEdit.check.version, receiptNumber: `SPLIT-${splitOperationId.slice(0, 8)}`,
+      catalogVersion: 1, clientGeneratedAt: new Date().toISOString(), serviceChargeBps: 0,
+      payments: [
+        { id: cashTenderId, method: 'cash', amountCents: 1200, tenderedCents: 1700, changeCents: 300, tipCents: 200, reference: null },
+        { id: cardTenderId, method: 'card', amountCents: 1000, tenderedCents: 1150, changeCents: 0, tipCents: 150, reference: 'AUTH-1' },
+      ],
+      employeeIdOverride: null, loyaltyRedemptionRewardRuleId: null,
+    }, 'split-hash-1') as { status: string; operation_id: string }
+    assert.equal(splitResult.status, 'accepted')
+    const splitPayments = await database.query(
+      'select method, amount_cents, tip_cents, change_cents, reference from public.pos_payments where store_id=$1 and order_id=$2 order by method',
+      [store, splitOperationId],
+    )
+    assert.equal(splitPayments.rowCount, 2, 'both tenders were recorded as separate rows')
+    const cardRow = splitPayments.rows.find((row: { method: string }) => row.method === 'card')
+    const cashRow = splitPayments.rows.find((row: { method: string }) => row.method === 'cash')
+    assert.equal(Number(cardRow.amount_cents), 1000)
+    assert.equal(Number(cardRow.tip_cents), 150)
+    assert.equal(cardRow.reference, 'AUTH-1')
+    assert.equal(Number(cashRow.amount_cents), 1200)
+    assert.equal(Number(cashRow.tip_cents), 200)
+    assert.equal(Number(cashRow.change_cents), 300)
+    // amount_cents alone (excluding tips) must sum to exactly the check's total -- tips are
+    // additional money collected on top, never counted toward the bill itself.
+    const amountSum = splitPayments.rows.reduce((sum: number, row: { amount_cents: string }) => sum + Number(row.amount_cents), 0)
+    assert.equal(amountSum, 2200)
+
+    const splitItemId = (await database.query<{ id: string }>('select id from public.pos_order_items where order_id=$1', [splitOperationId])).rows[0].id
+    const refundOperationId = randomUUID()
+    const partialRequest = { operation_id: refundOperationId, items: [{ order_item_id: splitItemId, quantity: 1 }], tenders: [{ payment_id: cashTenderId, amount_cents: 1100 }] }
+    const partial = await refundOrderCore(store, splitOperationId, owner, partialRequest)
+    assert.equal(Number(partial.refund.amount_cents), 1100)
+    const replayRefund = await refundOrderCore(store, splitOperationId, owner, partialRequest)
+    assert.equal(replayRefund.refund.id, partial.refund.id, 'lost-response retry does not refund twice')
+    await assert.rejects(refundOrderCore(store, splitOperationId, owner, { ...partialRequest, reason: 'changed' }), /another request/)
+    await assert.rejects(refundOrderCore(store, splitOperationId, owner, { items: partialRequest.items, tenders: [{ payment_id: cashTenderId, amount_cents: 1100 }] }), /100 cents remain/)
+    const remainderRefund = await refundOrderCore(store, splitOperationId, owner, { operation_id: randomUUID() })
+    assert.equal(Number(remainderRefund.refund.amount_cents), 1100)
+    const allocated = await database.query<{ amount: string }>('select sum(amount_cents)::text as amount from public.pos_refund_tenders where payment_id=$1', [cashTenderId])
+    assert.equal(Number(allocated.rows[0].amount), 1200)
+    const refundedTips = await database.query<{ tips: string }>('select sum(tip_cents)::text as tips from public.pos_refund_tenders where payment_id=any($1::uuid[])', [[cashTenderId, cardTenderId]])
+    assert.equal(Number(refundedTips.rows[0].tips), 350, 'full refunds return every original tip cent')
+    await assert.rejects(refundOrderCore(store, splitOperationId, owner, {}), /fully refunded/)
+    await assert.rejects(refundOrderCore(otherStore, splitOperationId, owner, {}), /not found/)
+
+    const serviceCheck = await createOpenCheckCore(store, { orderType: 'takeaway', tableId: null, customerId: null, employeeId: null })
+    const serviceEdit = await editOpenCheckCore(store, serviceCheck.check.id as string, {
+      expectedVersion: 1, items: parseCheckItems(itemInput), serviceChargeBps: 1000, notes: null, customerId: null, managerId: null, managerApprovedAt: null,
+    })
+    const serviceOrder = randomUUID()
+    await closeOpenCheckCore(store, serviceCheck.check.id as string, {
+      operationId: serviceOrder, expectedVersion: serviceEdit.check.version, receiptNumber: 'SERVICE-REFUND', catalogVersion: 1,
+      clientGeneratedAt: new Date().toISOString(), serviceChargeBps: 1000,
+      payments: [{ id: randomUUID(), method: 'cash', amountCents: 2400, tenderedCents: 2400, changeCents: 0, tipCents: 0, reference: null }],
+      employeeIdOverride: null, loyaltyRedemptionRewardRuleId: null,
+    }, 'service-refund-hash')
+    const serviceItem = (await database.query<{ id: string }>('select id from public.pos_order_items where order_id=$1', [serviceOrder])).rows[0].id
+    const halfRefund = await refundOrderCore(store, serviceOrder, owner, { items: [{ order_item_id: serviceItem, quantity: 1 }] })
+    assert.equal(Number(halfRefund.refund.amount_cents), 1200, 'partial refund includes the proportional service charge')
+    const components = (await database.query<{ tax_cents: string; merchandise_cents: string; service_charge_cents: string }>('select tax_cents,merchandise_cents,service_charge_cents from public.pos_refunds where id=$1', [halfRefund.refund.id])).rows[0]
+    assert.equal(Number(components.tax_cents), 100)
+    assert.equal(Number(components.merchandise_cents), 1000)
+    assert.equal(Number(components.service_charge_cents), 100)
+    assert.equal(Number((await refundOrderCore(store, serviceOrder, owner, {})).refund.amount_cents), 1200)
+
+    // A split close that doesn't balance (amounts don't sum to the check total) is rejected.
+    await applyTableStatusTransition(store, splitTable, 'dirty', 'available')
+    await applyTableStatusTransition(store, splitTable, 'available', 'seated')
+    const unbalancedCheck = await createOpenCheckCore(store, { orderType: 'dine_in', tableId: splitTable, customerId: null, employeeId: null })
+    const unbalancedEdit = await editOpenCheckCore(store, unbalancedCheck.check.id as string, {
+      expectedVersion: 1, items: parseCheckItems(itemInput), serviceChargeBps: 0, notes: null, customerId: null, managerId: null, managerApprovedAt: null,
+    })
+    await assert.rejects(closeOpenCheckCore(store, unbalancedCheck.check.id as string, {
+      operationId: randomUUID(), expectedVersion: unbalancedEdit.check.version, receiptNumber: 'UNBALANCED-1',
+      catalogVersion: 1, clientGeneratedAt: new Date().toISOString(), serviceChargeBps: 0,
+      payments: [{ id: randomUUID(), method: 'cash', amountCents: 1000, tenderedCents: 1000, changeCents: 0, tipCents: 0, reference: null }],
+      employeeIdOverride: null, loyaltyRedemptionRewardRuleId: null,
+    }, 'unbalanced-hash'), /do not balance/)
 
     // --- tenant isolation: a check cannot be read, edited or closed from a different store ---
     assert.equal(await loadCheckDetail(otherStore, checkId), null)

@@ -14,6 +14,29 @@ const cart: CartItem[] = [{ storeId, productId, name: 'Test item', sku: 'TEST-00
   unitPriceCents: 199, taxRateBps: 500, catalogVersion: 1, quantity: 2, discount: null }]
 Object.defineProperty(navigator, 'onLine', { value: true, configurable: true })
 
+test('split checkout persists stable tender IDs and tips through an offline retry', async () => {
+  await posDb.delete(); await posDb.open()
+  await posDb.store_config.put({ id: storeId, store_id: storeId, name: 'Test store', timezone: 'UTC', currency: 'USD', catalog_version: 1, service_charge_bps: 0 })
+  const tenders = [
+    { id: crypto.randomUUID(), method: 'cash' as const, amount_cents: 200, tip_cents: 20, tendered_cents: 300, change_cents: 80, reference: null },
+    { id: crypto.randomUUID(), method: 'card' as const, amount_cents: 218, tip_cents: 10, tendered_cents: 228, change_cents: 0, reference: 'AUTH-123' },
+  ]
+  const sale = await completeLocalSale(cart, storeId, 'cash', 0, null, null, null, null, false, tenders)
+  const before = (await posDb.outbox.where('operation_id').equals(sale.operationId).first())!.payload
+  await pushOrdersForStore(storeId, async () => { throw new Error('offline') })
+  const after = (await posDb.outbox.where('operation_id').equals(sale.operationId).first())!.payload
+  assert.equal(after, before)
+  assert.deepEqual(JSON.parse(after).payments.map((payment: { id: string }) => payment.id), tenders.map(tender => tender.id))
+  const payments = await posDb.payments.where('order_id').equals(sale.operationId).toArray()
+  assert.equal(payments.length, 2)
+  assert.equal(payments.reduce((sum, payment) => sum + (payment.tip_cents ?? 0), 0), 30)
+  assert.equal((await posDb.orders.get(sale.operationId))?.total_cents, 418)
+  await assert.rejects(completeLocalSale(cart, storeId, 'cash', 0, null, null, null, null, false,
+    [{ ...tenders[0], amount_cents: 199, change_cents: 81 }, tenders[1]]), /equal the check total/)
+  assert.equal(await posDb.orders.count(), 1)
+  await posDb.delete()
+})
+
 test('cash checkout commits the receipt, sale, payment, stock overlay and outbox together', async () => {
   await posDb.delete()
   await posDb.open()

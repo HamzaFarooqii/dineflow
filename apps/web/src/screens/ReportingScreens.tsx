@@ -349,6 +349,7 @@ function exportDailyReportCsv(state: ReportState) {
     ['Tax collected', formatCents(report.taxCents, config.currency)],
     ['Cash takings', formatCents(report.cashTakingsCents, config.currency)],
     ['Card takings', formatCents(report.cardTakingsCents, config.currency)],
+    ['Tips (separate from sales)', formatCents(report.tipsCents ?? 0, config.currency)],
     ['Recorded total', formatCents(report.recordedTotalCents, config.currency)],
     ['Completed orders', report.completedOrderCount],
     ['Average ticket', formatCents(report.averageSaleCents, config.currency)],
@@ -449,6 +450,7 @@ export function OwnerDashboardScreen({ greetingName }: { greetingName?: string }
                   <span className="dot dot-card" />
                   <span>Card payments</span>
                   <strong><Money cents={report.cardTakingsCents} currency={config.currency} /></strong>
+                  <small>Tips (all tenders): {formatCents(report.tipsCents ?? 0, config.currency)}</small>
                   <small>({cardPct}%)</small>
                 </div>
               </div>
@@ -677,6 +679,7 @@ function DailySalesReport({ tabs }: { tabs?: ReactNode }) {
             <ReportLine label="Net sales" hint="Gross sales minus discounts and refunded merchandise" cents={state.report.netSalesCents} currency={state.config.currency} />
             <ReportLine label="Tax collected" hint="Tax after refunds" cents={state.report.taxCents} currency={state.config.currency} />
             <ReportLine label="Cash takings" hint="Cash received less cash refunds; change excluded" cents={state.report.cashTakingsCents} currency={state.config.currency} />
+            <ReportLine label="Tips" hint="Additional to sales and service charge" cents={state.report.tipsCents ?? 0} currency={state.config.currency} />
             <ReportLine label="Card takings" hint="Card payments less card refunds" cents={state.report.cardTakingsCents} currency={state.config.currency} />
             <ReportLine label="Recorded total" hint={`${state.report.completedOrderCount} completed order${state.report.completedOrderCount === 1 ? '' : 's'}; refunds deducted`} cents={state.report.recordedTotalCents} currency={state.config.currency} emphasized />
           </div>

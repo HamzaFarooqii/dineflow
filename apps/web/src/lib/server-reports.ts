@@ -25,6 +25,7 @@ export interface ServerDailySummary {
   taxCents: number
   cashTakingsCents: number
   cardTakingsCents: number
+  tipsCents?: number
   recordedTotalCents: number
   completedOrderCount: number
   averageSaleCents: number
@@ -42,7 +43,7 @@ export interface ServerOrderSummary {
   receiptNumber: string
   time: string
   totalCents: number
-  paymentMethod: 'cash' | 'card' | 'unknown'
+  paymentMethod: 'cash' | 'card' | 'split' | 'unknown'
   itemCount: number
   syncStatus: 'synced'
   employeeId: string | null
