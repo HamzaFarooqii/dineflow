@@ -1,0 +1,198 @@
+// Real Menu (combo builder) + Register (combo picker) + Kitchen screens, against the real API
+// (createApp) backed by an in-memory Postgres (PGlite) replaying every migration this branch
+// actually has, and a fixture Supabase identity server standing in for auth/REST. Same harness
+// shape as apps/api/test/browser-check.ts, open-checks-browser-check.ts and
+// kitchen-operations-browser-check.ts -- including the db.js singleton patch every owner-web
+// route needs. No live account or store data is used.
+import assert from 'node:assert/strict'
+import { readFile, mkdir } from 'node:fs/promises'
+import { fileURLToPath } from 'node:url'
+import { randomUUID } from 'node:crypto'
+import { spawn } from 'node:child_process'
+import express from 'express'
+import { PGlite } from '@electric-sql/pglite'
+import type { Pool } from 'pg'
+import { chromium, expect as baseExpect } from '@playwright/test'
+
+const root = fileURLToPath(new URL('../../../', import.meta.url))
+const screenshots = root + 'docs/qa/a4'
+await mkdir(screenshots, { recursive: true })
+const expect = baseExpect.configure({ timeout: 20_000 })
+const db = new PGlite()
+await db.exec(`create role anon; create role authenticated; create role service_role bypassrls;
+  create schema auth; create table auth.users(id uuid primary key,raw_user_meta_data jsonb);
+  create function auth.uid() returns uuid language sql as 'select null::uuid';
+  create function auth.jwt() returns jsonb language sql as 'select ''{}''::jsonb';
+  create schema storage;
+  create table storage.buckets(id text primary key, name text, public boolean);
+  create table storage.objects(id uuid primary key default gen_random_uuid(), bucket_id text, name text);
+  create function storage.foldername(name text) returns text[] language sql as 'select string_to_array($1, ''/'')';`)
+// Replay every migration this branch actually has, in filename order -- a hand-picked subset
+// drifts from the app's real schema/UI expectations (open-checks-browser-check.ts hit this first).
+for (const name of [
+  '202609130001_auth_and_stores.sql', '202609150001_catalog_checkout_sync.sql',
+  '202609150001_terminal_employee_access.sql', '202609150002_terminal_device_sessions.sql',
+  '202609150003_team_profile_visibility.sql', '202609160001_customers_and_sale_attachment.sql',
+  '202609170001_change_feed_product_entity.sql', '202609170002_cart_discounts.sql',
+  '202609180001_terminal_name_uniqueness.sql', '202609180002_pos_orders_report_read_access.sql',
+  '202609180002_store_business_details.sql', '202609180003_tax_rate_change_feed.sql',
+  '202609180004_product_images.sql',
+  // 202609180006_stores_country_column.sql is a fix-up for a live-database drift where the real
+  // deployed 202609180002 migration ended up missing `country` -- this repo's copy of
+  // 202609180002 already includes it, so replaying both on a fresh database collides.
+  '202609180005_refunds.sql',
+  '202609190001_audit_log.sql', '202609190001_store_onboarding_status.sql',
+  '202609190002_remove_demo_catalog_seed.sql', '202609190003_store_sync_feed_init.sql',
+  '202609200001_service_role_only_rls_policies.sql', '202609210001_restaurant_foundation.sql',
+  '202609230001_kitchen_display_system.sql', '202609230002_table_waiter_assignment.sql',
+  '202609240001_units_and_recipes.sql', '202609240002_ingredient_inventory.sql',
+  '202609240003_inventory_audit_columns.sql', '202609240004_inventory_terminal_audit.sql',
+  '202609250001_loyalty_foundation.sql', '202609250002_inventory_batch_tracking.sql',
+  '202609250003_promotions.sql', '202609260001_unit_conversion.sql',
+  '202609260002_staff_roles_and_shifts.sql', '202609260003_service_charge.sql',
+  '202609270001_modifiers.sql', '202609280001_inventory_terminal_tenant_fks.sql',
+  '202609280002_delivery_operations.sql', '202609280002_reservations_waitlist.sql',
+  '202609280003_purchasing_vendors.sql', '202609280004_customer_profile_tools.sql',
+  '202609280004_staff_breaks_and_corrections.sql', '202609290002_sellable_combos.sql',
+]) {
+  await db.exec((await readFile(root + `supabase/migrations/${name}`, 'utf8')).replace('create extension if not exists pgcrypto;', ''))
+}
+
+const owner = randomUUID(), store = randomUUID(), taxRate = randomUUID()
+const comboProduct = randomUUID(), friesProduct = randomUUID(), sodaProduct = randomUUID()
+await db.query('insert into auth.users(id) values($1)', [owner])
+await db.query("insert into public.stores(id,name,code,created_by,timezone,currency) values($1,'Demo General','menu-combos-qa',$2,'UTC','USD')", [store, owner])
+await db.query("insert into public.store_memberships(store_id,user_id,role) values($1,$2,'owner')", [store, owner])
+await db.query("insert into public.pos_tax_rates(id,store_id,name,rate_bps) values($1,$2,'Standard',1000)", [taxRate, store])
+for (const [id, sku, name, priceCents] of [[comboProduct, 'COMBO-1', 'Combo Meal', 900], [friesProduct, 'SIDE-1', 'Fries', 300], [sodaProduct, 'BEV-1', 'Soda', 200]] as const) {
+  await db.query('insert into public.pos_products(id,store_id,sku,name,unit_price_cents,tax_rate_id) values($1,$2,$3,$4,$5,$6)', [id, store, sku, name, priceCents, taxRate])
+  await db.query('insert into public.pos_stock(store_id,product_id,current_stock) values($1,$2,20)', [store, id])
+}
+
+let tail = Promise.resolve()
+async function runQueued(sql: string, values?: unknown[]) {
+  const previous = tail; let release!: () => void
+  tail = new Promise<void>(resolve => { release = resolve }); await previous
+  try {
+    const result = await db.query(sql, values)
+    return { rows: result.rows, rowCount: Math.max(result.affectedRows ?? 0, result.rows.length) }
+  } finally { release() }
+}
+const pool = { async connect() {
+  return { query: runQueued, release() {} }
+} } as unknown as Pool
+// apps/api/src/routes/auth.ts's requireStoreMember (and every owner-web router: catalog, orders,
+// kitchen, floor, open-checks, ...) queries the module-level `db` singleton from src/db.js
+// directly -- it never sees createApp()'s injected `pool` option, which only the terminal-auth
+// router uses. db.js throws at import time unless DATABASE_URL is already set, so set a
+// syntactically valid (never dialed) one before importing it, then overwrite its query/connect
+// with the same PGlite queue used above, before dynamically importing app.js so every router
+// downstream shares it.
+process.env.DATABASE_URL = 'postgres://fixture:fixture@127.0.0.1:1/fixture'
+const realDb = (await import('../src/db.js')).db
+realDb.query = runQueued as typeof realDb.query
+realDb.connect = pool.connect as unknown as typeof realDb.connect
+const { createApp } = await import('../src/app.js')
+const user = { id: owner, aud: 'authenticated', role: 'authenticated', email: 'owner@example.test', app_metadata: {}, user_metadata: {}, created_at: new Date().toISOString() }
+const accessToken = `${Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url')}.${Buffer.from(JSON.stringify({ sub: owner, exp: Math.floor(Date.now() / 1000) + 3600, role: 'authenticated' })).toString('base64url')}.test-signature`
+const identity = express()
+identity.use((req, res, next) => { res.set({ 'Access-Control-Allow-Origin': 'http://127.0.0.1:3190', 'Access-Control-Allow-Headers': req.headers['access-control-request-headers'] ?? 'authorization,apikey,content-type,x-client-info,x-supabase-api-version', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' }); next() })
+identity.options('/{*path}', (_req, res) => { res.sendStatus(204) })
+identity.use((req, res, next) => { if (req.headers.authorization !== `Bearer ${accessToken}`) { res.sendStatus(401); return }; next() })
+identity.get('/auth/v1/user', (_req, res) => { res.json(user) })
+identity.get('/rest/v1/store_memberships', (_req, res) => { res.json([{ store_id: store, role: 'owner' }]) })
+identity.get('/rest/v1/stores', (req, res) => {
+  const single = String(req.headers.accept ?? '').includes('vnd.pgrst.object')
+  const row = { id: store, name: 'Demo General', onboarding_completed_at: new Date().toISOString() }
+  res.json(single ? row : [row])
+})
+const identityServer = identity.listen(3191, '127.0.0.1')
+// requireStoreMember (apps/api/src/routes/auth.ts) verifies the bearer token against these two
+// env vars directly, independent of createApp()'s own options -- must point at the same fixture
+// identity server or every owner-web (non-terminal) route 401s.
+process.env.SUPABASE_URL = 'http://127.0.0.1:3191'
+process.env.SUPABASE_PUBLISHABLE_KEY = 'test-publishable'
+const web = express()
+web.use('/api', createApp({ pool, origin: 'http://127.0.0.1:3190', supabaseUrl: 'http://127.0.0.1:3191', supabaseKey: 'test-publishable', secureCookies: false }))
+web.use(express.static(root + 'apps/web/dist'))
+web.get('/{*path}', (_req, res) => { res.sendFile(root + 'apps/web/dist/index.html') })
+const server = web.listen(3190, '127.0.0.1')
+let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined
+try {
+  const build = spawn(process.execPath, [root + 'apps/web/node_modules/vite/bin/vite.js', 'build'], { cwd: root + 'apps/web', env: { ...process.env, VITE_SUPABASE_URL: 'http://127.0.0.1:3191', VITE_SUPABASE_PUBLISHABLE_KEY: 'test-publishable', VITE_API_URL: '/api' }, stdio: 'inherit', windowsHide: true })
+  assert.equal(await new Promise<number | null>(resolve => build.on('exit', resolve)), 0)
+  try { browser = await chromium.launch({ headless: true }) }
+  catch (reason) { if (process.platform !== 'win32') throw reason; browser = await chromium.launch({ headless: true, channel: 'chrome' }) }
+  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
+  await context.route('https://fonts.googleapis.com/**', route => route.fulfill({ contentType: 'text/css', body: '' }))
+  await context.route('https://fonts.gstatic.com/**', route => route.abort())
+  await context.addInitScript(({ accessToken, user }) => {
+    localStorage.setItem('sb-127-auth-token', JSON.stringify({ access_token: accessToken, refresh_token: 'test-owner-refresh', expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, token_type: 'bearer', user }))
+  }, { accessToken, user })
+  const page = await context.newPage()
+  const errors: string[] = []
+  page.on('pageerror', error => errors.push(error.message))
+  page.on('response', response => { if (response.status() >= 400) console.log('Browser response:', response.request().method(), response.status(), new URL(response.url()).pathname + new URL(response.url()).search, '| body:', response.request().postData()) })
+
+  // --- Menu: build a combo on the "Combo Meal" product via the real ComboEditor UI ---
+  await page.goto('http://127.0.0.1:3190/products', { waitUntil: 'domcontentloaded' })
+  await page.getByRole('button', { name: 'Edit Combo Meal', exact: true }).click({ timeout: 30_000 })
+  const comboEditor = page.locator('.combo-editor')
+  await comboEditor.getByRole('button', { name: 'Create first group' }).click()
+  await comboEditor.getByPlaceholder('e.g. Choose a side').fill('Choose a side')
+  await comboEditor.locator('.modifier-option-row select').selectOption({ label: 'Fries' })
+  await comboEditor.getByRole('button', { name: 'Save combo', exact: true }).click()
+  await expect(page.getByText('Combo saved and ready on the register.')).toBeVisible({ timeout: 15_000 })
+
+  // --- Register: the combo product opens a picker instead of adding straight to the cart ---
+  await page.goto('http://127.0.0.1:3190/register', { waitUntil: 'domcontentloaded' })
+  await page.getByRole('button', { name: 'Combo Meal', exact: false }).first().click({ timeout: 30_000 })
+  await expect(page.getByRole('heading', { name: 'Build Combo Meal' })).toBeVisible()
+  // Scoped to the dialog: RegisterScreen's own order-type selector also exposes role="radio"
+  // buttons underneath this modal, so an unscoped getByRole('radio') can hit those instead.
+  const comboPicker = page.getByRole('dialog')
+  await comboPicker.getByRole('radio').first().check()
+  await comboPicker.getByRole('button', { name: 'Add combo', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Build Combo Meal' })).toBeHidden()
+  await expect(page.locator('b').filter({ hasText: '$9.00' })).toBeVisible()
+  for (const width of [390, 768, 1440]) {
+    await page.setViewportSize({ width, height: 1000 })
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true, `Register overflow at ${width}px`)
+    await page.screenshot({ path: screenshots + `/register-combo-cart-${width}.png`, fullPage: true })
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 })
+
+  // --- A validated owner/manager must attach a guest to the check before proceeding to payment ---
+  await page.getByRole('button', { name: 'Select or add a guest (required)' }).click()
+  await expect(page.getByRole('heading', { name: 'Add guest' })).toBeVisible()
+  await page.getByLabel('Guest name').fill('Ayesha Khan')
+  await page.getByRole('button', { name: 'Save guest', exact: true }).click()
+  await expect(page.getByText('Ayesha Khan')).toBeVisible({ timeout: 10_000 })
+
+  // --- Checkout the combo like any other sale ---
+  await page.getByRole('link', { name: 'Proceed to payment' }).click()
+  await expect(page).toHaveURL(/\/payment$/)
+  await page.getByRole('button', { name: 'Exact amount', exact: true }).click()
+  await page.getByRole('button', { name: 'Close check', exact: true }).click()
+  await expect(page).toHaveURL(/\/orders\//, { timeout: 15_000 })
+  await expect(page.getByText('Combo Meal').first()).toBeVisible()
+
+  // --- Kitchen: only the selected component gets its own ticket item, never the combo header ---
+  await page.goto('http://127.0.0.1:3190/kitchen', { waitUntil: 'domcontentloaded' })
+  const ticket = page.locator('.kitchen-ticket-card').first()
+  await expect(ticket).toBeVisible({ timeout: 15_000 })
+  await expect(ticket.getByText('Fries')).toBeVisible()
+  await expect(ticket.getByText('Combo Meal')).toHaveCount(0)
+  for (const width of [390, 768, 1440]) {
+    await page.setViewportSize({ width, height: 1000 })
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true, `Kitchen overflow at ${width}px`)
+    await page.screenshot({ path: screenshots + `/kitchen-combo-component-${width}.png`, fullPage: true })
+  }
+
+  assert.deepEqual(errors, [])
+  console.log('PASS: build a combo group on a real product, pick it on Register, check it out, and confirm only its selected component (not the combo header) reaches the kitchen ticket; screenshots at 390/768/1440px.')
+} finally {
+  await browser?.close()
+  server.close()
+  identityServer.close()
+}
