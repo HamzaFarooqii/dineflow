@@ -4,8 +4,22 @@ import { usePosStore, redeemedReward, type CartItem } from './pos-store'
 
 // Evidence that a manager authorized a discount above the cashier's independent 20% authority.
 export interface ManagerApprovalEvidence { managerId: string; approvedAt: string }
+export type SettlementTender = Omit<LocalPayment, 'order_id'>
 
-export async function completeLocalSale(items: CartItem[], storeId: string, method: 'cash' | 'card', tenderedCents: number, reference: string | null, customerId: string | null = null, employeeId: string | null = null, approval: ManagerApprovalEvidence | null = null, terminal = false) {
+export function validateSettlement(tenders: SettlementTender[], total: number): void {
+  if (!tenders.length || tenders.length > 20) throw new Error('Provide 1 to 20 payments.')
+  if (new Set(tenders.map(tender => tender.id)).size !== tenders.length) throw new Error('Payment IDs must be unique.')
+  for (const tender of tenders) {
+    for (const amount of [tender.amount_cents, tender.tendered_cents, tender.change_cents, tender.tip_cents ?? 0]) boundedInteger(amount, 'Payment amount', 0, MAX_CENTS)
+    if (tender.method !== 'cash' && tender.method !== 'card') throw new Error('Invalid payment method.')
+    const due = tender.amount_cents + (tender.tip_cents ?? 0)
+    if (tender.amount_cents === 0 && (tender.tip_cents ?? 0) > 0) throw new Error('A tip must belong to a positive sale allocation.')
+    if (tender.tendered_cents !== due + tender.change_cents || (tender.method === 'card' && tender.change_cents !== 0)) throw new Error('Each payment must cover its amount and tip; only cash can have change.')
+  }
+  if (tenders.reduce((sum, tender) => sum + tender.amount_cents, 0) !== total) throw new Error('Payment allocations must equal the check total exactly.')
+}
+
+export async function completeLocalSale(items: CartItem[], storeId: string, method: 'cash' | 'card', tenderedCents: number, reference: string | null, customerId: string | null = null, employeeId: string | null = null, approval: ManagerApprovalEvidence | null = null, terminal = false, settlement?: SettlementTender[]) {
   if (!items.length) throw new Error('Add a product before checkout.')
   if (items.some(item => item.storeId !== storeId)) throw new Error('Cart contains a product from another store. Clear the cart and try again.')
   const config = await posDb.store_config.get(storeId)
@@ -28,9 +42,14 @@ export async function completeLocalSale(items: CartItem[], storeId: string, meth
   if (terminal && !approval && lines.some(line => discountNeedsManagerApproval(line.subtotalCents, line.discountAppliedCents))) {
     throw new Error('A discount needs manager approval before this sale can complete.')
   }
+  if (!settlement) {
   boundedInteger(tenderedCents, 'Tender', 0, MAX_CENTS)
   if (tenderedCents < grandTotalCents) throw new Error('Amount received must cover the sale.')
   if (method === 'card' && tenderedCents !== grandTotalCents) throw new Error('Card amount must equal the sale total.')
+  }
+  const tenders = settlement ?? [{ id: crypto.randomUUID(), method, amount_cents: grandTotalCents,
+    tendered_cents: tenderedCents, change_cents: method === 'cash' ? tenderedCents - grandTotalCents : 0, reference, tip_cents: 0 }]
+  validateSettlement(tenders, grandTotalCents)
   const operationId = crypto.randomUUID()
   const now = new Date().toISOString()
   let receiptNumber = ''
@@ -71,9 +90,7 @@ export async function completeLocalSale(items: CartItem[], storeId: string, meth
         discount_value: item.discount ? (item.discount.kind === 'percent' ? item.discount.bps : item.discount.cents) : null,
         discount_applied_cents: lines[index].discountAppliedCents, taxable_cents: lines[index].taxableCents,
         tax_cents: lines[index].taxCents, total_cents: lines[index].totalCents }))
-      const payment: LocalPayment = { id: crypto.randomUUID(), order_id: operationId, method,
-        amount_cents: grandTotalCents, tendered_cents: tenderedCents,
-        change_cents: method === 'cash' ? tenderedCents - grandTotalCents : 0, reference }
+      const payments: LocalPayment[] = tenders.map(tender => ({ ...tender, order_id: operationId }))
       // Day 4 checkout wiring: if a line's discount came from redeeming a reward, tell the server
       // which reward_rule to deduct points for — the discount amount itself already travels as an
       // ordinary line discount above, exactly like a manual one.
@@ -87,7 +104,8 @@ export async function completeLocalSale(items: CartItem[], storeId: string, meth
         const selection = items[index].comboSelection
         return selection?.length ? { ...orderItem, combo_selection: selection.map(entry => ({ group_id: entry.groupId, component_product_id: entry.componentProductId, price_delta_cents: entry.priceDeltaCents })) } : orderItem
       })
-      const payload = { operation_id: operationId, order, items: payloadItems, payment,
+      const payload = { operation_id: operationId, order, items: payloadItems,
+        ...(settlement ? { payments } : { payment: payments[0] }),
         loyalty_redemption: reward ? { reward_rule_id: reward.ruleId } : undefined }
       const outbox: OutboxEntry = { store_id: storeId, operation_id: operationId, order_id: operationId, status: 'pending',
         failure_reason: null, failure_kind: null, reason_code: null, attempt_count: 0,
@@ -98,7 +116,7 @@ export async function completeLocalSale(items: CartItem[], storeId: string, meth
       await posDb.sync_metadata.put({ key: sequenceKey, value: String(sequence) })
       await posDb.orders.add(order)
       await posDb.order_items.bulkAdd(orderItems)
-      await posDb.payments.add(payment)
+      await posDb.payments.bulkAdd(payments)
       // Stock adjustments are keyed by [operation_id+product_id]. The cart may contain the same
       // product on multiple lines (different modifiers, notes, or discounts), so writing one row
       // per cart line would attempt to insert the same IndexedDB key twice and abort checkout.

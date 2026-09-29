@@ -126,6 +126,18 @@ export interface PosStore {
   activeTableId: string | null
   setActiveTableId: (tableId: string | null) => void
 
+  // The open check (lib/open-checks.ts) this cart is currently resuming, if any — null for an
+  // ordinary walk-up sale. Set by loadCheckIntoCart when a held check is resumed from the Open
+  // Checks screen, or right after a fresh check is created by "Hold." activeCheckVersion is the
+  // optimistic-concurrency token the next save/close must send back; cleared together with the
+  // cart (clearCart) since a cleared cart has nothing left to hold a check open for.
+  activeCheckId: string | null
+  activeCheckVersion: number | null
+  setActiveCheck: (checkId: string | null, version: number | null) => void
+  // Populates the cart from a resumed (or freshly created) open check — the one place a cart gets
+  // built from something other than the cashier tapping menu items one at a time.
+  loadCheckIntoCart: (params: { checkId: string; version: number; orderType: OrderType; tableId: string | null; customer: LocalCustomer | null; items: CartItem[] }) => void
+
   // Cart
   items: CartItem[]
   addItem: (product: Omit<CartItem, 'quantity' | 'discount'>) => void
@@ -181,6 +193,14 @@ export const usePosStore = create<PosStore>((set, get) => ({
   activeTableId: null,
   setActiveTableId: tableId => set({ activeTableId: tableId }),
 
+  activeCheckId: null,
+  activeCheckVersion: null,
+  setActiveCheck: (checkId, version) => set({ activeCheckId: checkId, activeCheckVersion: version }),
+  loadCheckIntoCart: ({ checkId, version, orderType, tableId, customer, items }) => set({
+    activeCheckId: checkId, activeCheckVersion: version, orderType, activeTableId: tableId,
+    selectedCustomer: customer, items, managerApproval: null,
+  }),
+
   items: [],
   selectedCustomer: null,
   selectCustomer: customer => set({ selectedCustomer: customer }),
@@ -230,7 +250,7 @@ export const usePosStore = create<PosStore>((set, get) => ({
       }
     }),
 
-  clearCart: () => set({ items: [], selectedCustomer: null, managerApproval: null, orderType: 'dine_in', activeTableId: null }),
+  clearCart: () => set({ items: [], selectedCustomer: null, managerApproval: null, orderType: 'dine_in', activeTableId: null, activeCheckId: null, activeCheckVersion: null }),
 
   // Notes don't affect totals or approval — no managerApproval invalidation needed here, unlike
   // every money-affecting mutation above.

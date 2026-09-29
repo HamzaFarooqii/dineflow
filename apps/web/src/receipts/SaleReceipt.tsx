@@ -1,3 +1,4 @@
+import { Fragment } from 'react'
 import { formatCents } from '../../../../packages/domain/src/money'
 import { ORDER_TYPE_LABELS } from '../../../../packages/domain/src/order-type'
 import { saleDate, type SavedReceipt } from './data'
@@ -22,10 +23,16 @@ export function SaleReceipt({ receipt, duplicate }: { receipt: SavedReceipt; dup
     <dl className="receipt-totals"><div><dt>Subtotal</dt><dd>{money(order.subtotal_cents)}</dd></div>
       {Boolean(order.discount_cents) && <div className="receipt-discount"><dt>Discount</dt><dd>−{money(order.discount_cents!)}</dd></div>}
       <div><dt>Tax</dt><dd>{money(order.tax_cents)}</dd></div><div className="receipt-total"><dt>Total ({order.currency})</dt><dd>{money(order.total_cents)}</dd></div>
+      {Boolean(order.service_charge_cents) && <div><dt>Service charge</dt><dd>{money(order.service_charge_cents!)}</dd></div>}
+      {(receipt.payments ?? [payment]).map(payment => <Fragment key={payment.id}>
       <div><dt>Payment</dt><dd>{payment.method === 'cash' ? 'Cash' : 'Card (external)'}</dd></div>
       <div><dt>Amount paid</dt><dd>{money(payment.amount_cents)}</dd></div><div><dt>Tendered</dt><dd>{money(payment.tendered_cents)}</dd></div>
       <div><dt>Change</dt><dd>{money(payment.change_cents)}</dd></div>
       {payment.method === 'card' && payment.reference && <div><dt>Card reference</dt><dd>{payment.reference}</dd></div>}
+      {Boolean(payment.tip_cents) && <div><dt>Tip</dt><dd>{money(payment.tip_cents!)}</dd></div>}
+      {Boolean(payment.refunded_amount_cents) && <div><dt>Refunded to this tender</dt><dd>{money(payment.refunded_amount_cents!)}</dd></div>}
+      {Boolean(payment.refunded_tip_cents) && <div><dt>Tip refunded</dt><dd>{money(payment.refunded_tip_cents!)}</dd></div>}
+      </Fragment>)}
       {order.manager_id && <div><dt>Manager approval</dt><dd>Recorded {order.manager_approved_at ? new Date(order.manager_approved_at).toLocaleString() : ''}</dd></div>}
     </dl><footer>Thank you for dining with us.</footer>
   </article>

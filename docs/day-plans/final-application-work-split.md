@@ -136,9 +136,47 @@ Acceptance:
 - A refund cannot exceed the remaining refundable amount for any tender.
 - Existing single-cash and single-card workflows remain unchanged for users who do not split.
 
-### A3. Kitchen operations depth — 8 points
+### A3. Kitchen operations depth — 8 points — ✅ done (2026-09-29)
 
 Branch: `feat/kitchen-operations`
+
+Delivered: `supabase/migrations/202609290001_kitchen_operations_depth.sql` (additive: snapshotted
+`course`/`prep_time_target_seconds`/`held_at` on `kitchen_ticket_items`, a new
+`kitchen_course_fire_log` audit table, and a history-pagination index) applied and recorded in
+`APPLIED.md`. `packages/domain/src/course.ts` and `kitchen-sla.ts` (new, with boundary-time tests
+proving calm/warning/late exactly at the 80%/100% thresholds). `orders.ts`'s ticket-creation
+snapshots each item's course/prep-time at creation time and holds main/dessert items `'queued'`
+unless `firesImmediately(course)` says otherwise (a product with no course, or
+appetizer/side/beverage, fires immediately exactly as every item always has — verified against the
+full existing `test:orders` suite, 106/106 green, before and after). `kitchen.ts` adds
+`fireCourseCore`/`holdCourseCore` (idempotent, audit-logged), `getStationSummaryCore` (per-station
+calm/warning/late counts) and `getTicketHistoryCore` (manager-only, date/station/status filtered,
+cursor-paginated) as exported, directly-PGlite-testable core functions, mirroring this repo's own
+"core function, no req/res" convention (`open-checks.ts`'s `createOpenCheckCore`,
+`floor.ts`'s `applyTableStatusTransition`) — the thin HTTP handlers stay manual-QA-only, same as
+`getTickets`/`patchItem` already were. Web: `KitchenTicketCard` shows a per-item SLA chip and a
+course fire/hold bar for any course with queued items; `KitchenScreen` shows a per-station late
+count on its station tabs; a new manager-only `KitchenHistoryScreen` (`/kitchen/history`) exposes
+the history filters/pagination.
+
+Acceptance, verified: `packages/domain/src/kitchen-sla.test.ts` proves calm/warning/late at exact
+boundaries (just-under-80%, exactly-80%, exactly-100%, well past).
+`apps/api/src/routes/kitchen-operations.test.ts` (PGlite) proves a served ticket never appears in
+a `status=cancelled` history filter, that firing (and holding) an already-fired/held course is a
+no-op producing exactly one audit-log row rather than two, and that a wrong-store ticket id is
+rejected. `apps/api/src/routes/kitchen.test.ts`'s existing 8 `consumeRecipeIngredients` tests and
+the rest of the pre-existing `test:orders` suite (106 tests total on this branch, including
+delivery/purchasing/reservations/breaks work already on `develop`) all pass unchanged. Manual
+verification: `cd packages/domain && npm test` (68/68), `cd apps/api && npx tsc --noEmit && npm
+run test:orders` (106/106), `cd apps/web && npm test && npx tsc --noEmit -p tsconfig.app.json &&
+npm run build` (52/52, clean, clean). No interactive browser walkthrough was performed in this
+pass, same limitation flagged on A1/A2's own review notes.
+
+Known limitation, not silently dropped: the Kitchen History screen's station filter dropdown
+populates progressively from whatever stations have appeared in loaded history pages, rather than
+from a dedicated stations-list endpoint — it starts empty on a fresh page load until the first
+page of results arrives. A small, real gap, not a correctness issue (the filter itself, once a
+station option exists, works exactly as the API's `station_id` filter specifies).
 
 Deliver:
 

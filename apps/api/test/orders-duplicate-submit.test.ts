@@ -29,7 +29,8 @@ test('a replayed operation_id with the same payload is a no-op; a reused one wit
       '202609170001_change_feed_product_entity.sql', '202609170002_cart_discounts.sql',
       '202609180001_terminal_name_uniqueness.sql', '202609180002_pos_orders_report_read_access.sql',
       '202609210001_restaurant_foundation.sql', '202609230001_kitchen_display_system.sql', '202609260003_service_charge.sql',
-      '202609270001_modifiers.sql']) {
+      '202609270001_modifiers.sql', '202609180005_refunds.sql', '202609280003_split_settlement.sql',
+      '202609290001_kitchen_operations_depth.sql', '202609290002_sellable_combos.sql']) {
       await database.exec((await readFile(root + `supabase/migrations/${name}`, 'utf8')).replace('create extension if not exists pgcrypto;', ''))
     }
     const owner = randomUUID(), store = randomUUID(), device = randomUUID(), product = randomUUID()

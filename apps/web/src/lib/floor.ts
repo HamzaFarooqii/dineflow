@@ -17,6 +17,12 @@ export interface RestaurantTable {
   // yet (both null) until the register payment finishes. See floor.ts's getFloorPlan comment.
   current_order_id: string | null
   current_order_total_cents: string | null
+  // The table's live, pre-payment open check (open-checks.ts) — at most one per table. Null until
+  // a check is opened against the table; updates as items are added/removed, independent of
+  // current_order_total_cents above (which only ever reflects a *closed* sale).
+  open_check_id: string | null
+  open_check_total_cents: string | null
+  open_check_item_count: number | null
 }
 export interface FloorEmployee { id: string; name: string; role: StaffRole }
 export interface FloorPlan { areas: FloorArea[]; tables: RestaurantTable[]; employees: FloorEmployee[] }

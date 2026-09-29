@@ -4,6 +4,12 @@ Date: **2026-09-28**
 Baseline: five-day scope complete on `develop`; this plan owns only the explicit backlog in
 `docs/MODULE_STATUS.md`.
 
+> **Superseded (same day):** the "Ahmed" and "Hamza" sections below were consolidated into one
+> 40-point solo scope for Ahmad — `docs/day-plans/day6-ahmad-open-checks.md`. That doc's A1 (this
+> plan's running-check architecture + hold/resume item, and the kitchen SLA item duplicated
+> between both sections here) is done; A2 (split payments, this plan's other Hamza item) through
+> A4 continue there. The Bisma section below is unaffected.
+
 The backlog is larger than one safe development day. Today's target is the first shippable slice
 for each developer; later slices are already assigned so nothing becomes ownerless. Every branch
 must preserve the Ember system, tenant-scoped database pattern, existing APIs, and offline order

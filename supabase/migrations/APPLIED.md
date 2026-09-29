@@ -47,16 +47,27 @@ schema no longer matches history, and it needs manual reconciliation, not a sile
 | 202609260003_service_charge.sql | `a8268107e9942418d7f36274ca375690553fad62f3f3c9b66a4cc1e842d34371` | yes | `stores.service_charge_bps` and `pos_orders.service_charge_cents` columns exist |
 | 202609270001_modifiers.sql | `c22d27afa488f5142da526dae806a2157593deffc4ee3acd681c98a7c8658300` | yes | all four modifier tables, RLS, and member-read policies confirmed by `verify-day5-closeout.mjs` |
 | 202609280001_inventory_terminal_tenant_fks.sql | `0152bf0c5cf6106473aef9309e3edfe7d248356d0e98d3f3c27eaee4474b7625` | yes | all four composite inventory-to-terminal-employee foreign keys confirmed by `verify-day5-closeout.mjs` |
+| 202609280002_open_checks.sql | `7ff44ad26a18bb2723224ee4c7a53aa8d280e84657ea30d9e75e8fa2d5e4fc1d` | yes | `public.open_checks`, `public.open_check_items`, `public.open_check_item_modifiers` tables and the `open_checks_one_open_per_table` partial unique index confirmed by `apps/api/scripts/verify-open-checks.mjs` |
+| 202609280003_split_settlement.sql | `a2dea0c1dc075c5448e4d966071e00bdfa0e84ff6fa220bd34e44025adebb7b3` | yes | `pos_payments.tip_cents`, `pos_payments` unique(store_id,id) in place of unique(store_id,order_id), `pos_refunds` unique(store_id,order_id) removed, and `public.pos_refund_tenders` table all confirmed by `apps/api/scripts/verify-split-settlement.mjs` |
+| 202609280004_refund_settlement_integrity.sql | `c397ecd6af9146f848cc3a69c662095d56814a089d56a5135d0a64fd37accdbf` | yes | `pos_refunds.operation_id`/`payload_hash`/`tip_cents`/`service_charge_cents`/`tax_cents`/`merchandise_cents`, `pos_refund_tenders.tip_cents`, and the `pos_refunds_operation` partial unique index all confirmed by `apps/api/scripts/verify-refund-settlement-integrity.mjs`. Explicit authorization given 2026-09-29 (session continuing codex's A2 work) after review of the additive columns and the historical-refund-tender/tax-split backfill queries — see the pending-follow-up row this replaces. |
+| 202609290001_kitchen_operations_depth.sql | `554dd82021abca55b1deabc8460c0e93a545a3dd58f01e0c20c1eb70ae5df22a` | yes | `kitchen_ticket_items.course`/`prep_time_target_seconds`/`held_at`, `public.kitchen_course_fire_log`, and the `kitchen_tickets_by_store_status_created` index confirmed by `apps/api/scripts/verify-kitchen-operations-depth.mjs` |
 | 202609290002_sellable_combos.sql | `6304e688736f5a399a874e96277f1bc0ddb8a48be51d083a358ccf3e766eea0c` | yes | `public.combos`, `public.combo_groups`, `public.combo_group_options`, and `pos_order_items.combo_parent_item_id` confirmed by `apps/api/scripts/verify-sellable-combos.mjs` |
 
-Note: this branch (`feat/menu-combos-variants`, Ahmad's A4 work) numbered its migration
-`202609290002` rather than `...0001` deliberately, to dodge a near-certain collision with
+Note: `feat/menu-combos-variants` (Ahmad's A4 work) deliberately numbered its migration
+`202609290002` rather than `...0001`, to dodge a near-certain collision with
 `202609290001_kitchen_operations_depth.sql` on the sibling `feat/kitchen-operations` branch
-(Ahmad's A3 work), which is not yet merged into `develop` as of this row. If both branches merge
-before either renumbers, this ledger and the two migration filenames stay distinct and correct as
-written; no action needed unless a genuine same-number collision appears at merge time, in which
-case follow the same renumber-and-record-here pattern this ledger already used for
-`202609230002_table_waiter_assignment.sql`.
+(Ahmad's A3 work) -- both have now merged into `develop` and the two filenames/ledger rows above
+stayed distinct exactly as anticipated; no renumbering was needed.
+
+Note: this ledger's rows still stop short of every migration actually in `supabase/migrations/` —
+several 2026-09-28-dated migrations from other feature branches (`delivery_operations`,
+`reservations_waitlist`, `purchasing_vendors`, `customer_profile_tools`,
+`staff_breaks_and_corrections`) are merged into `develop` without their own ledger rows here, and
+two pairs of them share a sequence number (`...0002` used twice, `...0004` used twice). Neither gap
+was introduced by `feat/kitchen-operations` (Ahmad's A3 work), `feat/menu-combos-variants`
+(Ahmad's A4 work), or the open-checks/split-settlement merges above them; flagging for whoever next
+reconciles this ledger, per `RULES.md`'s "Lead renumbers during integration" note on the last time
+this happened (`202609230002_table_waiter_assignment.sql`).
 
 Note: `202609230002_table_waiter_assignment.sql` was renamed from `..._0001_...` (Lead
 integration fixup, PR #4) — it and Ahmed's kitchen-display migration were both authored the
@@ -68,3 +79,6 @@ No pending or applied-but-missing-from-repo migrations were found among the file
 Note: `202609210001_restaurant_foundation.sql` (Day 1) predates this row and was applied outside
 this ledger's original 2026-09-19 pass; it is not yet checked by `verify-migrations.mjs` — a
 pre-existing gap, not introduced here, left for whoever owns that migration to add.
+
+Resolved (2026-09-29): 202609280004_refund_settlement_integrity.sql, previously listed here
+pending explicit authorization, is now applied and recorded in the main table above.

@@ -22,3 +22,9 @@
 .kitchen-item-name{flex:1;min-width:0;font-size:13px;color:var(--mise-ink)}
 .kitchen-item-name small{display:block;color:var(--mise-ink-muted);font-size:11px}
 .kitchen-item-modifiers { display: block; margin-top: 3px; color: var(--mise-orange) !important; font: 600 10px 'Inter', sans-serif !important; }
+
+.kitchen-station-late-count{color:var(--mise-danger);font:600 11px 'JetBrains Mono',monospace}
+
+.kitchen-course-bar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border-radius:var(--mise-r2);background:var(--mise-canvas);border:1px dashed var(--mise-border-strong);font-size:12px;color:var(--mise-ink-secondary)}
+.kitchen-course-bar em{font-style:normal;color:var(--mise-ink-muted);margin-left:4px}
+.kitchen-course-bar-actions{display:flex;gap:6px;flex-shrink:0}

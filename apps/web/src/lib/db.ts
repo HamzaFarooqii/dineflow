@@ -146,6 +146,9 @@ export interface LocalOrder {
   table_id?: string | null
   refunded_at?: string | null         // ISO 8601; set locally right after POST /orders/:id/refund succeeds
   refunded_amount_cents?: number | null // integer cents; the whole-order amount reversed
+  refunded_tax_cents?: number
+  refunded_tip_cents?: number
+  refunded_merchandise_cents?: number
 }
 
 export interface LocalCustomer {
@@ -190,6 +193,9 @@ export interface LocalPayment {
   tendered_cents: number    // integer cents
   change_cents: number      // integer cents
   reference: string | null
+  tip_cents?: number
+  refunded_amount_cents?: number
+  refunded_tip_cents?: number
 }
 
 export type OutboxStatus = 'pending' | 'synced' | 'failed'
@@ -303,6 +309,8 @@ export class DineflowDatabase extends Dexie {
           discount_applied_cents: item.discount_applied_cents ?? 0, taxable_cents: item.taxable_cents ?? item.subtotal_cents })
       }
     })
+    // A2: keep existing receipts while allowing more than one tender per order.
+    this.version(6).stores({ payments: 'id, order_id' })
   }
 }
 
