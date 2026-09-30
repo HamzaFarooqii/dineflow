@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from 'express'
 import { db } from '../db.js'
 import { requireStoreMember, requireStoreManager, sendApiError, ApiError } from './auth.js'
-import { requireCashierTerminal } from '../terminal-auth/routes.js'
+import { requireCashierCapability } from '../terminal-auth/routes.js'
 import { tierForLifetimePoints } from '../../../../packages/domain/src/loyalty.js'
 
 export const loyaltyRouter = Router()
@@ -26,7 +26,7 @@ function idParam(req: Request, name = 'id'): string {
 // reward-rule catalog's writes are owner/manager-only.
 async function requireReader(req: Request, storeId: string, terminal: boolean): Promise<void> {
   if (terminal) {
-    const session = await requireCashierTerminal(req, db)
+    const session = await requireCashierCapability(req, db, 'register')
     if (session.storeId !== storeId) throw new ApiError(403, 'cross_store_reference', 'This terminal belongs to a different store.')
   } else {
     await requireStoreMember(req, storeId)

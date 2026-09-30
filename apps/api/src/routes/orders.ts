@@ -5,7 +5,7 @@ import { ApiError, requireStoreMember, requireStoreManager, sendApiError } from 
 import { boundedInteger, calculateDiscountedLine, calculateServiceCharge, discountNeedsManagerApproval, MAX_CENTS, sumDiscountedLines, type LineDiscount } from '../../../../packages/domain/src/money.js'
 import { ORDER_TYPES, type OrderType } from '../../../../packages/domain/src/order-type.js'
 import { BASE_MULTIPLIER_BPS, pointsEarned, tierForLifetimePoints } from '../../../../packages/domain/src/loyalty.js'
-import { requireCashierTerminal, requireDeviceTerminal } from '../terminal-auth/routes.js'
+import { requireCashierCapability, requireDeviceTerminal } from '../terminal-auth/routes.js'
 import { createDeliveryOrderSnapshot, deliveryDetailsBody } from './delivery.js'
 import { calculateComboPriceCents, validateComboSelection } from '../../../../packages/domain/src/combo.js'
 import { firesImmediately, type Course } from '../../../../packages/domain/src/course.js'
@@ -565,9 +565,19 @@ async function push(req: import('express').Request, res: import('express').Respo
       // Prefer the currently authenticated cashier's identity over whatever the client sent, so a
       // sale can't be attributed to a different employee than the one actually unlocked on this
       // device. A device-only session (queued sale synced after logout) has no cashier to check
-      // against, so it falls back to the client-sent value's best-effort existence check below.
-      try { operation.order.employee_id = (await requireCashierTerminal(req, db)).employeeId }
-      catch { /* no active cashier session on this device right now */ }
+      // against, so it falls back to the client-sent value's best-effort existence check below --
+      // that 401 case is the only one allowed to fall through silently. A cashier session that
+      // DOES exist but whose role lacks 'register' capability (chef, inventory_manager, rider)
+      // must be rejected outright here, never silently downgraded to "treat as a historical
+      // upload" -- that would let a role with no register access submit a live sale merely by
+      // omitting the interactive-role check's own failure from this catch.
+      try {
+        const cashier = await requireCashierCapability(req, db, 'register')
+        operation.order.employee_id = cashier.employeeId
+      } catch (reason) {
+        if (reason instanceof ApiError && reason.status === 401) { /* no active cashier session on this device right now */ }
+        else throw reason
+      }
     } else await requireStoreMember(req, operation.storeId)
     const hash = createHash('sha256').update(JSON.stringify(req.body)).digest('hex')
     const client = await db.connect()
@@ -841,7 +851,7 @@ async function orderDetail(req: import('express').Request, res: import('express'
     const orderId = id(req.params.id, 'Order ID')
     const storeId = id(String(req.query.store_id ?? ''), 'Store ID')
     if (terminal) {
-      const session = await requireCashierTerminal(req, db)
+      const session = await requireCashierCapability(req, db, 'register')
       if (session.storeId !== storeId) throw new ApiError(403, 'cross_store_reference', 'This terminal belongs to a different store.')
     } else {
       await requireStoreManager(req, storeId)

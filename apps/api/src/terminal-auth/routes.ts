@@ -3,7 +3,7 @@ import type { Pool, PoolClient, QueryResultRow } from 'pg'
 import { randomUUID } from 'node:crypto'
 import { digest, fail, HttpError, ITERATIONS, pinValue, string, token, uuid, verifier, verify } from './security.js'
 import { ApiError } from '../routes/auth.js'
-import { STAFF_ROLES, type StaffRole } from '../../../../packages/domain/src/staff-role.js'
+import { STAFF_ROLES, roleHasCapability, type StaffCapability, type StaffRole } from '../../../../packages/domain/src/staff-role.js'
 
 const ROLE_PATTERN = new RegExp(`^(${STAFF_ROLES.join('|')})$`)
 
@@ -23,7 +23,7 @@ function body(req: Request): Record<string, unknown> {
 function cookie(req: Request, name: string) {
   return req.headers.cookie?.split(';').map(part => part.trim()).find(part => part.startsWith(`${name}=`))?.slice(name.length + 1) ?? ''
 }
-export interface CashierTerminalContext { storeId: string; deviceId: string; employeeId: string }
+export interface CashierTerminalContext { storeId: string; deviceId: string; employeeId: string; role: StaffRole }
 export interface DeviceTerminalContext { storeId: string; deviceId: string }
 /** A device may upload sales/customer records after the originating cashier logs out. */
 export async function requireDeviceTerminal(req: Request, pool: Pool): Promise<DeviceTerminalContext> {
@@ -36,13 +36,14 @@ export async function requireDeviceTerminal(req: Request, pool: Pool): Promise<D
   if (!result.rows[0]) throw new ApiError(401, 'authentication_required', 'Terminal access expired. Ask a manager to renew this device.')
   return result.rows[0]
 }
-/** Verifies the two HttpOnly terminal cookies for POS routes. */
+/** Verifies the two HttpOnly terminal cookies for POS routes, and the currently logged-in
+ * employee's server-verified role (never trust a client-supplied role or employee id). */
 export async function requireCashierTerminal(req: Request, pool: Pool): Promise<CashierTerminalContext> {
   const access = cookie(req, 'terminal_access'), cashier = cookie(req, 'terminal_cashier')
   if (!/^[a-f0-9]{64}$/.test(access) || !/^[a-f0-9]{64}$/.test(cashier)) {
     throw new ApiError(401, 'authentication_required', 'Unlock this terminal before selling.')
   }
-  const result = await pool.query<CashierTerminalContext>(`select d.store_id "storeId",d.id "deviceId",e.id "employeeId"
+  const result = await pool.query<CashierTerminalContext>(`select d.store_id "storeId",d.id "deviceId",e.id "employeeId",e.role "role"
     from public.terminal_device_sessions ds
     join public.terminal_devices d on d.id=ds.device_id and d.store_id=ds.store_id and d.revoked_at is null
     join public.terminal_cashier_sessions cs on cs.device_id=d.id and cs.store_id=d.store_id and cs.expires_at>now()
@@ -50,6 +51,18 @@ export async function requireCashierTerminal(req: Request, pool: Pool): Promise<
     where ds.access_hash=$1 and ds.access_expires_at>now() and ds.revoked_at is null and ds.rotated_at is null and cs.token_hash=$2`, [digest(access), digest(cashier)])
   if (!result.rows[0]) throw new ApiError(401, 'authentication_required', 'Terminal access expired. Unlock the terminal again.')
   return result.rows[0]
+}
+/** Shared authorization guard: verifies the terminal session AND that the currently logged-in
+ * employee's server-verified role carries the required capability (packages/domain/src/
+ * staff-role.ts's roleHasCapability) -- manager always passes. Every route that used to call
+ * requireCashierTerminal alone and rely on "some employee is logged in" as its only check should
+ * call this instead whenever the action is role-sensitive, not just store-sensitive. */
+export async function requireCashierCapability(req: Request, pool: Pool, capability: StaffCapability): Promise<CashierTerminalContext> {
+  const session = await requireCashierTerminal(req, pool)
+  if (!roleHasCapability(session.role, capability)) {
+    throw new ApiError(403, 'authorization_failed', `Your role does not have access to this feature.`)
+  }
+  return session
 }
 export function terminalAuthRouter(options: TerminalAuthOptions) {
   const router = Router()

@@ -141,6 +141,13 @@ try {
   const pin = String(100000 + Math.floor(Math.random() * 900000))
   await page.getByLabel('Staff name').fill('Alex Rivera')
   await page.getByLabel('PIN', { exact: true }).fill(pin)
+  // Day 1 (API security): this single demo employee drives every step of the core loop --
+  // seating via Floor, selling via Register, and advancing tickets via Kitchen further below --
+  // which spans capabilities no single line role holds (floor+kitchen together). 'manager' is the
+  // deliberate capability superset (packages/domain/src/staff-role.ts) for exactly this reason;
+  // the form's 'cashier' default no longer has server-side access to any of those now that
+  // requireCashierCapability actually enforces the real role/capability matrix.
+  await page.getByLabel('Floor role').selectOption('manager')
   await page.getByRole('button', { name: 'Add staff member' }).click()
   await expect(page.getByRole('listitem').filter({ hasText: 'Alex Rivera' }).getByRole('button', { name: 'Edit' })).toBeVisible()
 
@@ -176,7 +183,12 @@ try {
   // proceed to payment. ---
   await expect(page.getByRole('button', { name: /Grilled Chicken/ })).toBeEnabled({ timeout: 20_000 })
   await page.getByRole('button', { name: /Grilled Chicken/ }).click()
-  await expect(page.getByText('Open check')).toBeVisible()
+  // Pre-existing, unrelated bug found while verifying this Day 1 change: a plain getByText('Open
+  // check') is ambiguous here -- the cart aside also always renders an "Open Checks ↗" link and a
+  // hint paragraph containing the same substring whenever the cart has items (since the
+  // open-checks feature landed), so Playwright's strict mode correctly refuses to guess. Scoped to
+  // the actual heading; not a role/capability issue.
+  await expect(page.getByRole('heading', { name: 'Open check', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Select or add a guest (required)' }).click()
   await page.getByLabel('Guest name').fill('Priya Sharma')
   await page.getByRole('button', { name: 'Save guest' }).click()

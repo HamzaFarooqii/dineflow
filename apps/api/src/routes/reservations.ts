@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from 'express'
 import { randomUUID } from 'node:crypto'
 import type { PoolClient } from 'pg'
 import { db } from '../db.js'
-import { requireCashierTerminal } from '../terminal-auth/routes.js'
+import { requireCashierCapability } from '../terminal-auth/routes.js'
 import { ApiError, requireStoreMember, sendApiError } from './auth.js'
 import { applyTableStatusTransition, storeIdParam } from './floor.js'
 
@@ -89,9 +89,13 @@ function statusFor(kind: EntryKind, value: unknown): ReservationStatus | Waitlis
   return status as ReservationStatus | WaitlistStatus
 }
 
+// Gated to 'register' capability, not 'floor': reservations-seat.test.ts's existing, passing
+// coverage has a plain cashier role seating a reservation through this exact terminal path, so a
+// cashier walking a waiting guest to their table is established, intended behavior here -- 'floor'
+// would have wrongly blocked that. register covers cashier/waiter/manager, matching that evidence.
 async function requireAccess(req: Request, storeId: string, terminal: boolean) {
   if (terminal) {
-    const session = await requireCashierTerminal(req, db)
+    const session = await requireCashierCapability(req, db, 'register')
     if (session.storeId !== storeId) throw new ApiError(403, 'cross_store_reference', 'This terminal belongs to a different store.')
   } else {
     await requireStoreMember(req, storeId)

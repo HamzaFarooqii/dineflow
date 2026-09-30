@@ -2,7 +2,8 @@ import { createHash, randomUUID } from 'node:crypto'
 import { Router, type Request, type Response } from 'express'
 import { db } from '../db.js'
 import { ApiError, requireStoreMember, sendApiError } from './auth.js'
-import { requireCashierTerminal } from '../terminal-auth/routes.js'
+import { requireCashierCapability } from '../terminal-auth/routes.js'
+import { consumeManagerApproval } from '../terminal-auth/manager-approval.js'
 import { applyTableStatusTransition } from './floor.js'
 import { createPaidOrder, type ValidatedOperation } from './orders.js'
 import { boundedInteger, calculateDiscountedLine, calculateServiceCharge, discountNeedsManagerApproval, MAX_CENTS, sumDiscountedLines, type LineDiscount } from '../../../../packages/domain/src/money.js'
@@ -59,14 +60,14 @@ export function serviceChargeBpsValue(value: unknown): number {
   return value as number
 }
 
-async function requireCheckAccess(req: Request, storeId: string, terminal: boolean): Promise<{ employeeId: string | null }> {
+async function requireCheckAccess(req: Request, storeId: string, terminal: boolean): Promise<{ employeeId: string | null; deviceId: string | null }> {
   if (terminal) {
-    const session = await requireCashierTerminal(req, db)
+    const session = await requireCashierCapability(req, db, 'register')
     if (session.storeId !== storeId) throw new ApiError(403, 'cross_store_reference', 'This terminal belongs to a different store.')
-    return { employeeId: session.employeeId }
+    return { employeeId: session.employeeId, deviceId: session.deviceId }
   }
   await requireStoreMember(req, storeId)
-  return { employeeId: null }
+  return { employeeId: null, deviceId: null }
 }
 
 function isUniqueViolation(reason: unknown): boolean {
@@ -576,19 +577,38 @@ async function getOpenCheck(req: Request, res: Response, terminal = false) {
   } catch (reason) { sendApiError(res, reason) }
 }
 
+// Preferred path: a manager_approval_token the terminal obtained from POST /pos/manager-approvals
+// by having a manager type their PIN, verified live by the server (terminal-auth/manager-
+// approval.ts) and bound to this store/device/action/payload -- open checks are online-only by
+// design (see MODULE_STATUS.md row A), so there's no offline-replay case to preserve here the way
+// orders.ts's register checkout has. Legacy fallback: a client-supplied manager_id +
+// manager_approved_at, kept only so the currently-shipped terminal UI (which does not yet request
+// a token) keeps working -- this never independently proves a PIN was entered for this edit, only
+// that the referenced id belongs to an active manager. See this file's endpoint matrix note.
+async function resolveManagerApproval(storeId: string, deviceId: string | null, action: string, payload: Record<string, unknown>, body: JsonRecord): Promise<{ managerId: string | null; managerApprovedAt: string | null }> {
+  const approvalToken = body.manager_approval_token
+  if (typeof approvalToken === 'string' && approvalToken && deviceId) {
+    const managerId = await consumeManagerApproval(db, { storeId, deviceId, action, payload, token: approvalToken })
+    return { managerId, managerApprovedAt: new Date().toISOString() }
+  }
+  const managerId = optionalId(body.manager_id, 'Manager ID')
+  const managerApprovedAt = body.manager_approved_at === null || body.manager_approved_at === undefined ? null : timestamp(body.manager_approved_at, 'Manager approval time')
+  return { managerId, managerApprovedAt }
+}
+
 async function editOpenCheck(req: Request, res: Response, terminal = false) {
   try {
     const body = record(req.body, 'Request body')
     const storeId = id(body.store_id, 'Store ID')
-    await requireCheckAccess(req, storeId, terminal)
+    const access = await requireCheckAccess(req, storeId, terminal)
     const checkId = id(req.params.id, 'Check ID')
     const expectedVersion = versionValue(body.expected_version)
     const items = parseCheckItems(body.items)
     const serviceChargeBps = serviceChargeBpsValue(body.service_charge_bps)
     const notes = body.notes === null || body.notes === undefined ? null : text(body.notes, 'Notes', 500)
     const customerId = optionalId(body.customer_id, 'Customer ID')
-    const managerId = optionalId(body.manager_id, 'Manager ID')
-    const managerApprovedAt = body.manager_approved_at === null || body.manager_approved_at === undefined ? null : timestamp(body.manager_approved_at, 'Manager approval time')
+    const { managerId, managerApprovedAt } = await resolveManagerApproval(storeId, access.deviceId, 'open_check.edit',
+      { check_id: checkId, expected_version: expectedVersion, service_charge_bps: serviceChargeBps, items: body.items }, body)
     const detail = await editOpenCheckCore(storeId, checkId, { expectedVersion, items, serviceChargeBps, notes, customerId, managerId, managerApprovedAt })
     res.json(detail)
   } catch (reason) { sendApiError(res, reason) }
@@ -598,11 +618,13 @@ async function voidOpenCheck(req: Request, res: Response, terminal = false) {
   try {
     const body = record(req.body, 'Request body')
     const storeId = id(body.store_id, 'Store ID')
-    await requireCheckAccess(req, storeId, terminal)
+    const access = await requireCheckAccess(req, storeId, terminal)
     const checkId = id(req.params.id, 'Check ID')
     const expectedVersion = versionValue(body.expected_version)
-    const voidedByEmployeeId = optionalId(body.voided_by_employee_id, 'Employee ID')
-    const result = await voidOpenCheckCore(storeId, checkId, expectedVersion, voidedByEmployeeId)
+    // The voiding employee is always the authenticated terminal session's own identity, never a
+    // client-supplied field -- a client could otherwise attribute (or fail to attribute) a void to
+    // whichever employee it liked. A web/manager void has no employee concept, same as elsewhere.
+    const result = await voidOpenCheckCore(storeId, checkId, expectedVersion, access.employeeId)
     res.json(result)
   } catch (reason) { sendApiError(res, reason) }
 }

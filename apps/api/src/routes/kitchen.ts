@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from 'express'
 import { db } from '../db.js'
 import { requireStoreMember, requireStoreManager, sendApiError, ApiError } from './auth.js'
-import { requireCashierTerminal } from '../terminal-auth/routes.js'
+import { requireCashierCapability } from '../terminal-auth/routes.js'
 import { deriveTicketStatus, KITCHEN_TICKET_ITEM_TRANSITIONS, KITCHEN_TICKET_STATUSES, type KitchenTicketStatus } from '../../../../packages/domain/src/kitchen-ticket-status.js'
 import { convertQuantity, type RecipeCostUnit } from '../../../../packages/domain/src/recipe-cost.js'
 import { COURSES, type Course } from '../../../../packages/domain/src/course.js'
@@ -90,7 +90,7 @@ async function getTickets(req: Request, res: Response, terminal = false) {
   try {
     const storeId = storeIdParam(req)
     if (terminal) {
-      const session = await requireCashierTerminal(req, db)
+      const session = await requireCashierCapability(req, db, 'kitchen')
       if (session.storeId !== storeId) throw new ApiError(403, 'cross_store_reference', 'This terminal belongs to a different store.')
     } else {
       await requireStoreMember(req, storeId)
@@ -114,7 +114,7 @@ async function patchItem(req: Request, res: Response, terminal = false) {
       throw new ApiError(422, 'validation_failed', 'Status is invalid.')
     }
     if (terminal) {
-      const session = await requireCashierTerminal(req, db)
+      const session = await requireCashierCapability(req, db, 'kitchen')
       if (session.storeId !== storeId) throw new ApiError(403, 'cross_store_reference', 'This terminal belongs to a different store.')
     } else {
       await requireStoreMember(req, storeId)
@@ -227,7 +227,7 @@ async function fireCourse(req: Request, res: Response, terminal = false) {
     const course = courseParam(req.params.course)
     let actor = { employeeId: null as string | null, userId: null as string | null }
     if (terminal) {
-      const session = await requireCashierTerminal(req, db)
+      const session = await requireCashierCapability(req, db, 'kitchen')
       if (session.storeId !== storeId) throw new ApiError(403, 'cross_store_reference', 'This terminal belongs to a different store.')
       actor = { employeeId: session.employeeId, userId: null }
     } else {
@@ -254,7 +254,7 @@ async function holdCourse(req: Request, res: Response, terminal = false) {
     const ticketId = uuidParam(req.params.id, 'Ticket ID')
     const course = courseParam(req.params.course)
     if (terminal) {
-      const session = await requireCashierTerminal(req, db)
+      const session = await requireCashierCapability(req, db, 'kitchen')
       if (session.storeId !== storeId) throw new ApiError(403, 'cross_store_reference', 'This terminal belongs to a different store.')
     } else {
       await requireStoreMember(req, storeId)
@@ -290,7 +290,7 @@ async function getStationSummary(req: Request, res: Response, terminal = false) 
   try {
     const storeId = storeIdParam(req)
     if (terminal) {
-      const session = await requireCashierTerminal(req, db)
+      const session = await requireCashierCapability(req, db, 'kitchen')
       if (session.storeId !== storeId) throw new ApiError(403, 'cross_store_reference', 'This terminal belongs to a different store.')
     } else {
       await requireStoreMember(req, storeId)

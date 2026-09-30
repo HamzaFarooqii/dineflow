@@ -369,13 +369,10 @@ deliveryRouter.patch('/:id/status', ownerTransition)
 // inventory_manager terminal login must never reach these routes even if it somehow knows the URL.
 export interface RiderTerminalContext { storeId: string; deviceId: string; employeeId: string }
 async function requireRiderTerminal(req: Request): Promise<RiderTerminalContext> {
+  // requireCashierTerminal already re-verifies the session against an active employee row and
+  // returns that employee's own server-verified role -- no second query needed to re-check it.
   const session = await requireCashierTerminal(req, db)
-  const employee = await db.query<{ role: StaffRole; active: boolean }>(
-    'select role, active from public.terminal_employees where id=$1 and store_id=$2',
-    [session.employeeId, session.storeId],
-  )
-  const role = employee.rows[0]?.role
-  if (!employee.rows[0]?.active || !role || !isRiderRole(role)) {
+  if (!isRiderRole(session.role)) {
     throw new ApiError(403, 'authorization_failed', 'This terminal session does not have rider access.')
   }
   return session
