@@ -88,7 +88,7 @@ export function CustomerOrderScreen() {
 
   useEffect(() => {
     if (phase !== 'ready' || !session) return
-    const timer = window.setInterval(() => { fetchQrOrders(session.session_token).then(setOrders).catch(handleFailure) }, POLL_MS)
+    const timer = window.setInterval(() => { fetchQrOrders(session.session_token).then(setOrders).catch(error => { if (error instanceof QrApiError && error.sessionEnded) handleFailure(error) }) }, POLL_MS)
     return () => window.clearInterval(timer)
   }, [phase, session, handleFailure])
 

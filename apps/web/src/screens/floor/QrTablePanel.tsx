@@ -19,11 +19,16 @@ export function QrTablePanel({ storeId, tableId, tableLabel }: { storeId: string
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
   const alive = useRef(true)
+  const latest = useRef(0)
 
   async function load() {
-    try { setState((await fetchQrTables(storeId)).find(table => table.id === tableId) ?? null); setError('') }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not load QR settings.') }
-    finally { if (alive.current) setLoading(false) }
+    const ticket = ++latest.current
+    const current = () => alive.current && ticket === latest.current
+    try {
+      const found = (await fetchQrTables(storeId)).find(table => table.id === tableId) ?? null
+      if (current()) { setState(found); setError('') }
+    } catch (reason) { if (current()) setError(reason instanceof Error ? reason.message : 'Could not load QR settings.') }
+    finally { if (current()) setLoading(false) }
   }
   useEffect(() => {
     alive.current = true
