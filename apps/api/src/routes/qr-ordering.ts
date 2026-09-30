@@ -424,7 +424,9 @@ export async function listStaffSubmissions(storeId: string, status: 'pending' | 
   const rows = await db.query<SubmissionRow & { table_label: string; table_status: string }>(
     `select ${SUBMISSION_COLUMNS.split(',').map(column => `s.${column.trim()}`).join(', ')}, t.label as table_label, t.status as table_status
      from public.qr_submissions s join public.restaurant_tables t on t.store_id = s.store_id and t.id = s.table_id
-     where s.store_id=$1 and s.status=$2 order by s.created_at ${status === 'pending' ? 'asc' : 'desc'} limit 100`,
+     where s.store_id=$1 and s.status=$2
+       and (s.status <> 'pending' or exists (select 1 from public.qr_sessions q where q.store_id = s.store_id and q.id = s.session_id and q.revoked_at is null))
+     order by s.created_at ${status === 'pending' ? 'asc' : 'desc'} limit 100`,
     [storeId, status])
   return rows.rows.map(staffView)
 }
@@ -444,6 +446,11 @@ export async function confirmQrSubmission(storeId: string, submissionId: string,
     const row = await loadForDecision(client, storeId, submissionId)
     if (row.status === 'confirmed') return { status: 'confirmed' as const, check_id: row.check_id as string, replayed: true }
     if (row.status === 'rejected') throw new ApiError(409, 'submission_rejected', 'This order was already declined.')
+    // A revoked session means the party that sent this has left (or the code was rotated): confirming now
+    // could put their items on the next party's check. Staff decline it instead.
+    const owner = await client.query<{ revoked_at: Date | null; expired: boolean }>(
+      'select revoked_at, expires_at <= now() as expired from public.qr_sessions where store_id=$1 and id=$2', [storeId, row.session_id])
+    if (owner.rows[0]?.revoked_at) throw new ApiError(409, 'session_ended', 'The guest session for this order has ended. Decline it and ask the table to order again.')
     const tableStatus = (row as SubmissionRow & { tableStatus: string }).tableStatus
     const checkId = await appendToOpenCheck(client, row, tableStatus, actor)
     return { status: 'confirmed' as const, check_id: checkId, replayed: false }

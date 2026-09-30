@@ -383,7 +383,7 @@ test('pending submission cannot be confirmed once the table stops taking orders'
   const p = await phone(t.code)
   const sub = await qr.submitQrOrder(await p.session(), order([{ product_id: fries, quantity: 1 }]))
   await database.query("update public.restaurant_tables set status='available' where id=$1", [t.id])
-  await rejectsWith(qr.confirmQrSubmission(store, sub.submission.id, { employeeId: manager, userId: null, auto: false }), 'table_not_accepting_orders')
+  await rejectsWith(qr.confirmQrSubmission(store, sub.submission.id, { employeeId: manager, userId: null, auto: false }), 'session_ended')
   assert.equal((await qr.rejectQrSubmission(store, sub.submission.id, { employeeId: manager, userId: null, auto: false })).status, 'rejected')
 })
 
@@ -434,4 +434,16 @@ test('tracking is scoped to the session and a table A session cannot act on tabl
   await qr.submitQrOrder(await pb.session(), order([{ product_id: fries, quantity: 3 }]))
   assert.equal((await q('select count(*)::int as n from public.qr_submissions where table_id=$1', [a.id]))[0].n, 1)
   assert.equal((await q('select count(*)::int as n from public.qr_submissions where table_id=$1', [b.id]))[0].n, 1)
+})
+
+test('a pending order from a departed party is never confirmed onto the next party check', async () => {
+  const t = await newTable()
+  const p = await phone(t.code)
+  const sub = await qr.submitQrOrder(await p.session(), order([{ product_id: fries, quantity: 1 }]))
+  await database.query("update public.restaurant_tables set status='available' where id=$1", [t.id])
+  await database.query("update public.restaurant_tables set status='seated' where id=$1", [t.id])
+  assert.equal((await qr.listStaffSubmissions(store, 'pending')).some(row => row.id === sub.submission.id), false, 'orphaned order is not offered to staff')
+  await rejectsWith(qr.confirmQrSubmission(store, sub.submission.id, { employeeId: manager, userId: null, auto: false }), 'session_ended')
+  assert.equal((await q('select count(*)::int as n from public.open_checks where table_id=$1', [t.id]))[0].n, 0)
+  assert.equal((await qr.rejectQrSubmission(store, sub.submission.id, { employeeId: manager, userId: null, auto: false })).status, 'rejected')
 })
