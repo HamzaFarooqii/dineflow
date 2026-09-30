@@ -447,3 +447,88 @@ test('a pending order from a departed party is never confirmed onto the next par
   assert.equal((await q('select count(*)::int as n from public.open_checks where table_id=$1', [t.id]))[0].n, 0)
   assert.equal((await qr.rejectQrSubmission(store, sub.submission.id, { employeeId: manager, userId: null, auto: false })).status, 'rejected')
 })
+
+const staffActor = () => ({ employeeId: manager, userId: null, auto: false })
+
+test('rotating or revoking the code orphans pending orders: hidden from staff, never confirmable', async () => {
+  for (const end of ['rotate', 'revoke'] as const) {
+    const t = await newTable()
+    const p = await phone(t.code)
+    const sub = await qr.submitQrOrder(await p.session(), order([{ product_id: fries, quantity: 1 }]))
+    if (end === 'rotate') await qr.rotateQrCode(store, t.id); else await qr.revokeQrCode(store, t.id)
+    assert.equal((await qr.listStaffSubmissions(store, 'pending')).some(row => row.id === sub.submission.id), false, end)
+    await rejectsWith(qr.confirmQrSubmission(store, sub.submission.id, staffActor()), 'session_ended')
+    assert.equal((await q('select count(*)::int as n from public.open_checks where table_id=$1', [t.id]))[0].n, 0, end)
+  }
+})
+
+test('every state that frees the table orphans the pending order', async () => {
+  for (const status of ['dirty', 'reserved', 'out_of_service']) {
+    const t = await newTable()
+    const p = await phone(t.code)
+    const sub = await qr.submitQrOrder(await p.session(), order([{ product_id: fries, quantity: 1 }]))
+    await database.query('update public.restaurant_tables set status=$2 where id=$1', [t.id, status])
+    await rejectsWith(qr.confirmQrSubmission(store, sub.submission.id, staffActor()), 'session_ended')
+    assert.equal((await q('select count(*)::int as n from public.open_checks where table_id=$1', [t.id]))[0].n, 0, status)
+  }
+})
+
+test('the next party gets a fresh session and its own order; the old party order stays out of the check', async () => {
+  const t = await newTable()
+  const first = await phone(t.code)
+  const old = await qr.submitQrOrder(await first.session(), order([{ product_id: fries, quantity: 5 }]))
+  await database.query("update public.restaurant_tables set status='available' where id=$1", [t.id])
+  await database.query("update public.restaurant_tables set status='seated' where id=$1", [t.id])
+  const second = await phone(t.code)
+  const fresh = await qr.submitQrOrder(await second.session(), order([{ product_id: fries, quantity: 1 }]))
+  const pending = (await qr.listStaffSubmissions(store, 'pending')).map(row => row.id)
+  assert.equal(pending.includes(fresh.submission.id), true)
+  assert.equal(pending.includes(old.submission.id), false)
+  const { check_id } = await qr.confirmQrSubmission(store, fresh.submission.id, staffActor())
+  const items = await q('select quantity from public.open_check_items where check_id=$1', [check_id])
+  assert.deepEqual(items.map(row => Number(row.quantity)), [1])
+  await rejectsWith(qr.confirmQrSubmission(store, old.submission.id, staffActor()), 'session_ended')
+})
+
+test('an expired but never-freed session is the same party: its pending order can still be confirmed', async () => {
+  const t = await newTable()
+  const p = await phone(t.code)
+  const sub = await qr.submitQrOrder(await p.session(), order([{ product_id: fries, quantity: 1 }]))
+  await database.query("update public.qr_sessions set created_at = now() - interval '3 hours', expires_at = now() - interval '1 minute' where table_id=$1", [t.id])
+  assert.equal((await qr.confirmQrSubmission(store, sub.submission.id, staffActor())).status, 'confirmed')
+})
+
+test('confirm and reject replays are idempotent and the opposite decision conflicts', async () => {
+  const t = await newTable()
+  const p = await phone(t.code)
+  const a = await qr.submitQrOrder(await p.session(), order([{ product_id: fries, quantity: 1 }]))
+  const first = await qr.confirmQrSubmission(store, a.submission.id, staffActor())
+  const again = await qr.confirmQrSubmission(store, a.submission.id, staffActor())
+  assert.equal(again.replayed, true)
+  assert.equal(again.check_id, first.check_id)
+  await rejectsWith(qr.rejectQrSubmission(store, a.submission.id, staffActor()), 'submission_confirmed')
+  const b = await qr.submitQrOrder(await p.session(), order([{ product_id: fries, quantity: 2 }]))
+  await qr.rejectQrSubmission(store, b.submission.id, staffActor())
+  await rejectsWith(qr.confirmQrSubmission(store, b.submission.id, staffActor()), 'submission_rejected')
+  const items = await q('select quantity from public.open_check_items where check_id=$1', [first.check_id])
+  assert.deepEqual(items.map(row => Number(row.quantity)), [1])
+})
+
+test('concurrent confirm and reject of one order: exactly one decision wins, never both', async () => {
+  const t = await newTable()
+  const p = await phone(t.code)
+  const sub = await qr.submitQrOrder(await p.session(), order([{ product_id: fries, quantity: 1 }]))
+  const results = await Promise.allSettled([qr.confirmQrSubmission(store, sub.submission.id, staffActor()), qr.rejectQrSubmission(store, sub.submission.id, staffActor())])
+  assert.equal(results.filter(r => r.status === 'fulfilled').length, 1)
+  const final = (await q('select status from public.qr_submissions where id=$1', [sub.submission.id]))[0].status
+  const lines = (await q('select count(*)::int as n from public.open_check_items where qr_submission_id=$1', [sub.submission.id]))[0].n
+  assert.equal(final === 'confirmed' ? lines > 0 : lines === 0, true)
+})
+
+test('a confirm from another store cannot decide this order', async () => {
+  const t = await newTable()
+  const p = await phone(t.code)
+  const sub = await qr.submitQrOrder(await p.session(), order([{ product_id: fries, quantity: 1 }]))
+  await rejectsWith(qr.confirmQrSubmission(otherStore, sub.submission.id, staffActor()), 'not_found')
+  await rejectsWith(qr.rejectQrSubmission(otherStore, sub.submission.id, staffActor()), 'not_found')
+})
