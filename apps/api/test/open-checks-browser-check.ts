@@ -52,7 +52,7 @@ for (const name of [
   '202609250003_promotions.sql', '202609260001_unit_conversion.sql',
   '202609260002_staff_roles_and_shifts.sql', '202609260003_service_charge.sql',
   '202609270001_modifiers.sql', '202609280001_inventory_terminal_tenant_fks.sql',
-  '202609280002_open_checks.sql',
+  '202609280002_open_checks.sql', '202609300001_qr_table_ordering.sql',
 ]) {
   await db.exec((await readFile(root + `supabase/migrations/${name}`, 'utf8')).replace('create extension if not exists pgcrypto;', ''))
 }

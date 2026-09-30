@@ -285,9 +285,9 @@ export async function editOpenCheckCore(storeId: string, checkId: string, params
       )
       for (const modifier of item.modifiers) {
         await client.query(
-          `insert into public.open_check_item_modifiers(store_id,check_item_id,snapshot_group_name,snapshot_option_name,price_delta_cents)
-           values ($1,$2,$3,$4,$5)`,
-          [storeId, item.id, modifier.group_name, modifier.option_name, modifier.price_delta_cents],
+          `insert into public.open_check_item_modifiers(store_id,check_item_id,snapshot_group_name,snapshot_option_name,price_delta_cents,option_id)
+           values ($1,$2,$3,$4,$5,$6)`,
+          [storeId, item.id, modifier.group_name, modifier.option_name, modifier.price_delta_cents, modifier.option_id],
         )
       }
     }
@@ -403,14 +403,14 @@ export async function closeOpenCheckCore(storeId: string, checkId: string, param
     )
     if (!itemsRes.rowCount) throw new ApiError(422, 'validation_failed', 'This check has no items to close.')
     const modifiersRes = await client.query(
-      `select cim.check_item_id, cim.snapshot_group_name, cim.snapshot_option_name, cim.price_delta_cents
+      `select cim.check_item_id, cim.option_id, cim.snapshot_group_name, cim.snapshot_option_name, cim.price_delta_cents
        from public.open_check_item_modifiers cim where cim.store_id=$1 and cim.check_item_id = any($2::uuid[])`,
       [storeId, itemsRes.rows.map(row => row.id)],
     )
     const modifiersByItem = new Map<string, { option_id: string; group_name: string; option_name: string; price_delta_cents: number }[]>()
-    for (const modifier of modifiersRes.rows as { check_item_id: string; snapshot_group_name: string; snapshot_option_name: string; price_delta_cents: number }[]) {
+    for (const modifier of modifiersRes.rows as { check_item_id: string; option_id: string | null; snapshot_group_name: string; snapshot_option_name: string; price_delta_cents: number }[]) {
       const list = modifiersByItem.get(modifier.check_item_id) ?? []
-      list.push({ option_id: modifier.check_item_id, group_name: modifier.snapshot_group_name, option_name: modifier.snapshot_option_name, price_delta_cents: modifier.price_delta_cents })
+      list.push({ option_id: modifier.option_id ?? modifier.check_item_id, group_name: modifier.snapshot_group_name, option_name: modifier.snapshot_option_name, price_delta_cents: modifier.price_delta_cents })
       modifiersByItem.set(modifier.check_item_id, list)
     }
 
