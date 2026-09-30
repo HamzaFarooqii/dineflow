@@ -10,6 +10,7 @@ import { activeStoreId } from '../lib/catalog'
 import { PageHeader } from '../components/PageHeader'
 import { EmptyState } from '../components/EmptyState'
 import { StatusBadge } from '../components/StatusBadge'
+import { QrSubmissionsPanel } from './QrSubmissionsPanel'
 import './open-checks.css'
 
 export function OpenChecksScreen({ terminal = false }: { terminal?: boolean }) {
@@ -79,6 +80,7 @@ export function OpenChecksScreen({ terminal = false }: { terminal?: boolean }) {
 
   return <section className="open-checks-page">
     <PageHeader kicker="HELD ON THE FLOOR" title="Open checks." subtitle="Checks held for later — resume one to keep adding items or take payment, from any authorized terminal." />
+    {storeId && <QrSubmissionsPanel storeId={storeId} terminal={terminal} currency={currency} onChanged={() => void load(storeId)} />}
     {error && <p className="form-notice error" role="alert">{error}</p>}
     {checks === undefined && !error && <p role="status">Loading open checks…</p>}
     {checks?.length === 0 && <EmptyState title="No open checks right now." description="A check held from the register appears here until it's resumed, closed or voided." />}

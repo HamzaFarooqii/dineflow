@@ -33,3 +33,7 @@
 .open-check-card-meta { font-size: 12px; color: var(--mise-ink-secondary); font-family: 'JetBrains Mono', monospace; }
 .open-check-card b { font: 600 20px 'JetBrains Mono', monospace; color: var(--mise-ink); }
 .open-check-card-actions { display: flex; gap: 8px; margin-top: 4px; }
+
+.qr-submissions{margin-top:var(--mise-space-24)}
+.qr-submissions h2{font:600 18px 'Inter',sans-serif;margin:0;color:var(--mise-ink)}
+.qr-submission-lines{margin:0;padding-left:18px;font-size:14px;color:var(--mise-ink)}

@@ -9,6 +9,7 @@ import { posDb } from '../../lib/db'
 import { requireSupabase } from '../../lib/supabase'
 import { usePosStore } from '../../lib/pos-store'
 import { TableCard } from './TableCard'
+import { QrTablePanel } from './QrTablePanel'
 import { PageHeader } from '../../components/PageHeader'
 import { StatusBadge } from '../../components/StatusBadge'
 import { SelectField } from '../../components/SelectField'
@@ -633,6 +634,7 @@ export function FloorScreen({ terminal = false }: { terminal?: boolean }) {
           <button type="button" className="secondary-cta" disabled={tableActionBusy} onClick={() => void handleSaveTable(selectedTable)}>{tableActionBusy ? 'Saving…' : 'Save changes'}</button>
         </div>
       </div>}
+      {!terminal && storeId && <QrTablePanel storeId={storeId} tableId={selectedTable.id} tableLabel={selectedTable.label} />}
       {tableActionError && <p className="form-notice error" role="alert">{tableActionError}</p>}
       {editMode && !editTableOpen && <div className="floor-detail-edit-actions">
         <button type="button" className="secondary-cta" onClick={() => openEditTable(selectedTable)}>Edit table</button>
