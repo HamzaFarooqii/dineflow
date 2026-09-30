@@ -37,3 +37,8 @@
 .qr-submissions{margin-top:var(--mise-space-24)}
 .qr-submissions h2{font:600 18px 'Inter',sans-serif;margin:0;color:var(--mise-ink)}
 .qr-submission-lines{margin:0;padding-left:18px;font-size:14px;color:var(--mise-ink)}
+.qr-submissions .open-checks-list{grid-template-columns:repeat(auto-fill,minmax(min(280px,100%),1fr))}
+.qr-submissions .open-check-card{min-width:0;box-sizing:border-box;overflow-wrap:anywhere}
+.qr-submissions .open-check-card-head{flex-wrap:wrap}
+.qr-submissions .open-check-card-actions{flex-wrap:wrap;align-items:center;max-width:100%}
+.qr-submissions .open-check-card-actions .cta{flex:1 1 auto;min-width:0}
