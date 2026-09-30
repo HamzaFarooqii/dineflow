@@ -367,12 +367,183 @@ paths:
         '401': { $ref: '#/components/responses/Error' }
         '403': { $ref: '#/components/responses/Error' }
         default: { $ref: '#/components/responses/Error' }
+  /public/qr/sessions:
+    post:
+      operationId: createQrSession
+      summary: Exchange a table QR code for a short-lived customer session
+      description: |
+        Public. Disabled (404 feature_disabled) unless QR_ORDERING_ENABLED=true. Store and table are
+        resolved from the QR code; the request carries nothing else. Sessions last 120 minutes, are bound
+        to one table and QR generation, and end when the code rotates or is revoked or the table is
+        cleaned, freed, disabled or paid. Integration point: sessionIssuance rate-limit hook.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [code], additionalProperties: false, properties: { code: { type: string, pattern: '^[a-f0-9]{64}$' } } } } }
+      responses:
+        '201': { description: Session issued. Send session_token as a Bearer token., content: { application/json: { schema: { $ref: '#/components/schemas/QrSessionIssued' } } } }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+        default: { $ref: '#/components/responses/Error' }
+  /public/qr/menu:
+    get:
+      operationId: getQrMenu
+      summary: Public-safe menu projection for the session table
+      description: Excludes combos, unavailable and non-direct-sale products, stock, tax rates and employee data. 403 menu_disabled in waiter_only mode.
+      security: [{ qrSession: [] }]
+      responses:
+        '200': { description: Menu, content: { application/json: { schema: { $ref: '#/components/schemas/QrMenu' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+        default: { $ref: '#/components/responses/Error' }
+  /public/qr/orders:
+    post:
+      operationId: submitQrOrder
+      summary: Submit an order for the session table
+      description: |
+        Strict body: only operation_id, items[product_id, quantity 1-20, modifier_option_ids] and note.
+        Prices, tax, service charge and availability are resolved by the server; any other field is a
+        422 forbidden_field. Replaying an operation_id with the same content returns the original result
+        (200, replayed=true); with different content it is a 409 operation_id_conflict. The order becomes
+        awaiting_confirmation, or is added to the table open check immediately when the table does not
+        require confirmation. No kitchen ticket is created: kitchen tickets are only created when staff
+        close the check.
+      security: [{ qrSession: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/QrOrderRequest' } } }
+      responses:
+        '200': { description: Replay of an earlier submission, content: { application/json: { schema: { $ref: '#/components/schemas/QrOrderResult' } } } }
+        '201': { description: Submission accepted, content: { application/json: { schema: { $ref: '#/components/schemas/QrOrderResult' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+        default: { $ref: '#/components/responses/Error' }
+    get:
+      operationId: listQrOrders
+      summary: Customer-safe status of this session own submissions
+      security: [{ qrSession: [] }]
+      responses:
+        '200': { description: Own submissions only, content: { application/json: { schema: { type: object, required: [orders], properties: { orders: { type: array, items: { $ref: '#/components/schemas/QrCustomerOrder' } } } } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+        default: { $ref: '#/components/responses/Error' }
+  /qr/tables:
+    get:
+      operationId: listQrTables
+      summary: Manager - QR state of every active table
+      security: [{ ownerBearer: [] }]
+      parameters: [{ name: store_id, in: query, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200': { description: Tables, content: { application/json: { schema: { type: object, required: [tables], properties: { tables: { type: array, items: { $ref: '#/components/schemas/QrTable' } } } } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        default: { $ref: '#/components/responses/Error' }
+  /qr/tables/{id}/code:
+    post:
+      operationId: rotateQrCode
+      summary: Manager - generate or rotate a table QR code (the raw code is returned once)
+      description: Revokes every session for the table and invalidates the previous code.
+      security: [{ ownerBearer: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: store_id, in: query, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '201': { description: New code, content: { application/json: { schema: { $ref: '#/components/schemas/QrCodeIssued' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        default: { $ref: '#/components/responses/Error' }
+    delete:
+      operationId: revokeQrCode
+      summary: Manager - disable the table QR code and end its sessions
+      security: [{ ownerBearer: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: store_id, in: query, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Revoked, content: { application/json: { schema: { type: object, required: [status], properties: { status: { type: string, enum: [revoked] } } } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        default: { $ref: '#/components/responses/Error' }
+  /qr/tables/{id}/settings:
+    patch:
+      operationId: updateQrSettings
+      summary: Manager - change ordering mode and/or waiter confirmation for a table
+      description: Takes effect on the next customer request; existing sessions stay valid.
+      security: [{ ownerBearer: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: store_id, in: query, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, additionalProperties: false, properties: { mode: { type: string, enum: [menu_only, menu_and_order, waiter_only] }, require_confirmation: { type: boolean } } } } }
+      responses:
+        '200': { description: Updated settings, content: { application/json: { schema: { $ref: '#/components/schemas/QrTable' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        default: { $ref: '#/components/responses/Error' }
+  /qr/submissions:
+    get:
+      operationId: listQrSubmissions
+      summary: Manager - customer submissions by status (default pending)
+      description: Terminal twin at /pos/qr/submissions (cashier session, store must match the terminal). Integration point - staffConfirmation hook.
+      security: [{ ownerBearer: [] }]
+      parameters:
+        - { name: store_id, in: query, required: true, schema: { type: string, format: uuid } }
+        - { name: status, in: query, schema: { type: string, enum: [pending, confirmed, rejected], default: pending } }
+      responses:
+        '200': { description: Submissions, content: { application/json: { schema: { type: object, required: [submissions], properties: { submissions: { type: array, items: { $ref: '#/components/schemas/QrStaffSubmission' } } } } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        default: { $ref: '#/components/responses/Error' }
+  /qr/submissions/{id}/confirm:
+    post:
+      operationId: confirmQrSubmission
+      summary: Staff - append a pending submission to the table open check (idempotent)
+      description: Terminal twin at /pos/qr/submissions/{id}/confirm. 409 submission_rejected, 409 table_not_accepting_orders (reject it instead).
+      security: [{ ownerBearer: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: store_id, in: query, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Confirmed, content: { application/json: { schema: { type: object, required: [status, check_id, replayed], properties: { status: { type: string, enum: [confirmed] }, check_id: { type: string, format: uuid }, replayed: { type: boolean } } } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        default: { $ref: '#/components/responses/Error' }
+  /qr/submissions/{id}/reject:
+    post:
+      operationId: rejectQrSubmission
+      summary: Staff - decline a pending submission (idempotent)
+      description: Terminal twin at /pos/qr/submissions/{id}/reject. 409 submission_confirmed once it is on the check.
+      security: [{ ownerBearer: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: store_id, in: query, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Rejected, content: { application/json: { schema: { type: object, required: [status, replayed], properties: { status: { type: string, enum: [rejected] }, replayed: { type: boolean } } } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        default: { $ref: '#/components/responses/Error' }
 components:
   securitySchemes:
     ownerBearer: { type: http, scheme: bearer, bearerFormat: Supabase JWT }
     deviceAccess: { type: apiKey, in: cookie, name: terminal_access }
     deviceRefresh: { type: apiKey, in: cookie, name: terminal_refresh }
     cashierSession: { type: apiKey, in: cookie, name: terminal_cashier }
+    qrSession: { type: http, scheme: bearer, description: 'Customer table session from POST /public/qr/sessions. Never a staff or terminal credential.' }
   responses:
     Error:
       description: '400 invalid request; 401 invalid credentials/PIN; 403 origin or manager access denied; 404 entity missing in store; 429 lockout; 500 unavailable. HTTP authentication failures must not fall back to cached login.'
@@ -380,6 +551,124 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
   schemas:
+    QrSessionIssued:
+      type: object
+      required: [session_token, expires_at, store_name, currency, table_label, mode, requires_confirmation]
+      properties:
+        session_token: { type: string, pattern: '^[a-f0-9]{64}$' }
+        expires_at: { type: string, format: date-time }
+        store_name: { type: string }
+        currency: { type: string }
+        table_label: { type: string }
+        mode: { type: string, enum: [menu_only, menu_and_order, waiter_only] }
+        requires_confirmation: { type: boolean }
+    QrMenu:
+      type: object
+      required: [table_label, mode, requires_confirmation, expires_at, ordering_available, categories, products]
+      properties:
+        table_label: { type: string }
+        mode: { type: string, enum: [menu_only, menu_and_order, waiter_only] }
+        requires_confirmation: { type: boolean }
+        expires_at: { type: string, format: date-time }
+        ordering_available: { type: boolean }
+        categories: { type: array, items: { type: object, required: [id, name], properties: { id: { type: string, format: uuid }, name: { type: string } } } }
+        products:
+          type: array
+          items:
+            type: object
+            required: [id, name, category_id, price_cents, image_url, modifier_groups]
+            properties:
+              id: { type: string, format: uuid }
+              name: { type: string }
+              category_id: { type: string, format: uuid, nullable: true }
+              price_cents: { type: integer, minimum: 0 }
+              image_url: { type: string, nullable: true }
+              modifier_groups:
+                type: array
+                items:
+                  type: object
+                  required: [id, name, selection, required, options]
+                  properties:
+                    id: { type: string, format: uuid }
+                    name: { type: string }
+                    selection: { type: string, enum: [single, multi] }
+                    required: { type: boolean }
+                    options: { type: array, items: { type: object, required: [id, name, price_delta_cents], properties: { id: { type: string, format: uuid }, name: { type: string }, price_delta_cents: { type: integer } } } }
+    QrOrderRequest:
+      type: object
+      required: [operation_id, items]
+      additionalProperties: false
+      properties:
+        operation_id: { type: string, format: uuid }
+        note: { type: string, maxLength: 300, nullable: true }
+        items:
+          type: array
+          minItems: 1
+          maxItems: 30
+          items:
+            type: object
+            required: [product_id, quantity]
+            additionalProperties: false
+            properties:
+              product_id: { type: string, format: uuid }
+              quantity: { type: integer, minimum: 1, maximum: 20 }
+              modifier_option_ids: { type: array, maxItems: 20, uniqueItems: true, items: { type: string, format: uuid } }
+    QrCustomerOrder:
+      type: object
+      required: [id, status, created_at, decided_at, note, items, subtotal_cents, tax_cents]
+      description: Customer-safe. awaiting_confirmation then added_to_check or declined. Never claims kitchen preparation.
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [awaiting_confirmation, added_to_check, declined] }
+        created_at: { type: string, format: date-time }
+        decided_at: { type: string, format: date-time, nullable: true }
+        note: { type: string, nullable: true }
+        items: { type: array, items: { type: object, required: [name, quantity, modifiers, total_cents], properties: { name: { type: string }, quantity: { type: integer }, modifiers: { type: array, items: { type: string } }, total_cents: { type: integer } } } }
+        subtotal_cents: { type: integer }
+        tax_cents: { type: integer }
+    QrOrderResult:
+      type: object
+      required: [replayed, submission]
+      properties:
+        replayed: { type: boolean }
+        submission: { $ref: '#/components/schemas/QrCustomerOrder' }
+    QrTable:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        label: { type: string }
+        status: { type: string }
+        qr_enabled: { type: boolean }
+        qr_mode: { type: string, enum: [menu_only, menu_and_order, waiter_only] }
+        qr_require_confirmation: { type: boolean }
+        qr_generation: { type: integer }
+        qr_rotated_at: { type: string, format: date-time, nullable: true }
+    QrCodeIssued:
+      type: object
+      required: [id, label, code]
+      properties:
+        id: { type: string, format: uuid }
+        label: { type: string }
+        code: { type: string, pattern: '^[a-f0-9]{64}$', description: Shown once. Only its sha256 is stored. }
+        qr_mode: { type: string }
+        qr_require_confirmation: { type: boolean }
+        qr_generation: { type: integer }
+    QrStaffSubmission:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        table_id: { type: string, format: uuid }
+        table_label: { type: string }
+        table_status: { type: string }
+        status: { type: string, enum: [pending, confirmed, rejected] }
+        note: { type: string, nullable: true }
+        auto_confirmed: { type: boolean }
+        created_at: { type: string, format: date-time }
+        decided_at: { type: string, format: date-time, nullable: true }
+        check_id: { type: string, format: uuid, nullable: true }
+        items: { type: array, items: { type: object } }
+        subtotal_cents: { type: integer }
+        tax_cents: { type: integer }
     Customer:
       type: object
       required: [id, store_id, name, phone_normalized]
