@@ -313,3 +313,18 @@ test('a legacy consumption movement with no allocation rows is valued from its o
     assert.deepEqual(rows.rows.map(r => [r.cost_source, Number(r.known), r.unknown_cost]), [['legacy_batch_derived', 120, false], ['unknown', 0, true]])
   } finally { await database.close() }
 })
+
+test('legacy float-dust batch remainders are truncated, so draining a batch can never push it below zero', async () => {
+  const database = await seededInventoryDatabase()
+  try {
+    const f = await seedInventoryFixture(database, { stock: 10 })
+    // What pre-Day-2 float consumption left behind: 5 - 0.30000000000000004 = 4.69999999999999996
+    const batch = await addBatch(database, f, f.ingredient, { quantity: 5, remaining: 4.69999999999999996, costCents: 100 })
+    await database.query('update public.ingredient_batches set remaining_quantity = 4.69999999999999996 where id=$1', [batch])
+    const { product, itemId } = await addKitchenItem(database, f, f.ingredient, f.kg, 6)
+    await assert.doesNotReject(consumeRecipeIngredients(clientFor(database), f.store, itemId, product, 1))
+    assert.ok(await remainingOf(database, batch) >= 0, 'the batch is drained, not driven negative')
+    const allocations = await allocationsFor(database, f.ingredient)
+    assert.deepEqual(allocations.map(a => [a.batch_id, a.quantity, a.cost_basis]), [[batch, '4.699999', 'batch'], [null, '1.300001', 'estimated_ingredient_cost']])
+  } finally { await database.close() }
+})

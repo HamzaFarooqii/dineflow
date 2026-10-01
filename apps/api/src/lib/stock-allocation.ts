@@ -32,8 +32,11 @@ export async function lockIngredient(client: Queryable, storeId: string, ingredi
  * or another ingredient simply is not found.
  */
 export async function loadBatchSources(client: Queryable, storeId: string, ingredientId: string, onlyBatchId: string | null = null): Promise<AllocationSource[]> {
-  const result = await client.query<{ id: string; remaining_quantity: string; cost_per_unit_cents: number }>(
-    `select id, remaining_quantity::text as remaining_quantity, cost_per_unit_cents
+  // remaining is TRUNCATED to micro-units (floor), never rounded: pre-Day-2 consumption stored
+  // float-derived quantities such as 4.69999999999999996, and rounding that up to 4.7 would let an
+  // allocation take more than the batch holds and trip remaining_quantity >= 0 mid-service.
+  const result = await client.query<{ id: string; remaining_micro: string; cost_per_unit_cents: number }>(
+    `select id, floor(remaining_quantity * 1000000)::text as remaining_micro, cost_per_unit_cents
      from public.ingredient_batches
      where store_id = $1 and ingredient_id = $2 and remaining_quantity > 0 and ($3::uuid is null or id = $3)
      order by expires_at asc nulls last, received_at asc, id asc
@@ -41,7 +44,7 @@ export async function loadBatchSources(client: Queryable, storeId: string, ingre
     [storeId, ingredientId, onlyBatchId],
   )
   return result.rows.map(row => ({
-    sourceId: row.id, batchId: row.id, remainingMicro: toMicro(row.remaining_quantity),
+    sourceId: row.id, batchId: row.id, remainingMicro: BigInt(row.remaining_micro),
     unitCostCents: row.cost_per_unit_cents, basis: 'batch' as const,
   }))
 }
