@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import {
-  createIngredient, fetchExpiringBatchCount, fetchIngredientBatches, fetchIngredients, fetchStockMovements,
-  type Ingredient, type IngredientBatch, type StockMovement,
+  createIngredient, fetchExpiringBatchCount, fetchIngredientBatches, fetchIngredients, fetchStockMovements, fetchWastagePolicy,
+  type Ingredient, type IngredientBatch, type StockMovement, type WastagePolicy,
 } from '../../lib/inventory'
 import { loadRecipeData, createUnit } from '../menu/recipe-api'
 import type { RecipeUnit } from '../menu/recipe-draft'
 import { posDb } from '../../lib/db'
 import { requireSupabase } from '../../lib/supabase'
 import { currentAccess, refreshTerminal, type TerminalCache } from '../../terminal-auth/cache'
-import { ManagerApprovalModal, type ManagerApprovalEvidence } from '../../terminal-auth/ManagerApprovalModal'
+import { ManagerApprovalModal, type ManagerApprovalEvidence, type OnlineApprovalBinding } from '../../terminal-auth/ManagerApprovalModal'
 import { InventorySummary } from './InventorySummary'
 import { InventoryToolbar, type InventoryFilter, type InventorySort } from './InventoryToolbar'
 import { IngredientList } from './IngredientList'
@@ -39,6 +39,8 @@ export function InventoryScreen({ terminal = false }: { terminal?: boolean }) {
   const [detailError, setDetailError] = useState('')
   const [receiveOpen, setReceiveOpen] = useState(false)
   const [wastageOpen, setWastageOpen] = useState(false)
+  const [wastagePolicy, setWastagePolicy] = useState<WastagePolicy | null>(null)
+  const [wastagePolicyError, setWastagePolicyError] = useState('')
 
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<InventoryFilter>('all')
@@ -59,6 +61,7 @@ export function InventoryScreen({ terminal = false }: { terminal?: boolean }) {
   // a stale closure.
   const [approvalOpen, setApprovalOpen] = useState(false)
   const [approvalReason, setApprovalReason] = useState('')
+  const [approvalBinding, setApprovalBinding] = useState<OnlineApprovalBinding | undefined>()
   const pendingWrite = useRef<((approval: ManagerApprovalEvidence) => Promise<void>) | null>(null)
   const [accessRefreshBusy, setAccessRefreshBusy] = useState(false)
   const [accessRefreshError, setAccessRefreshError] = useState('')
@@ -66,10 +69,13 @@ export function InventoryScreen({ terminal = false }: { terminal?: boolean }) {
   const unitsById = useMemo(() => new Map(units.map(unit => [unit.id, unit])), [units])
   const selectedUnit = selected ? unitsById.get(selected.unit_id) : undefined
 
-  async function withApproval(reason: string, action: (approval: ManagerApprovalEvidence | null) => Promise<void>) {
+  // `online` asks the modal to have the SERVER verify the PIN for one exact action + payload and hand
+  // back a single-use token (Day 1 manager approvals); without it the modal keeps its offline check.
+  async function withApproval(reason: string, action: (approval: ManagerApprovalEvidence | null) => Promise<void>, online?: OnlineApprovalBinding) {
     if (!terminal) { await action(null); return }
     pendingWrite.current = action
     setApprovalReason(reason)
+    setApprovalBinding(online)
     setApprovalOpen(true)
   }
 
@@ -123,6 +129,12 @@ export function InventoryScreen({ terminal = false }: { terminal?: boolean }) {
           loadRecipeData(id),
           fetchExpiringBatchCount(id, terminal).catch(() => null),
         ])
+        // Loaded separately and never fatal: the form still works (the server enforces the policy
+        // either way), it just can't preview whether an entry will need a verified approval.
+        fetchWastagePolicy(id, terminal).then(
+          policy => { if (active) setWastagePolicy(policy) },
+          reason => { if (active) setWastagePolicyError(reason instanceof Error ? reason.message : 'Could not load the approval policy.') },
+        )
         if (active) {
           setIngredients(list)
           setUnits(recipeData.units)
@@ -269,10 +281,10 @@ export function InventoryScreen({ terminal = false }: { terminal?: boolean }) {
             <BatchList batches={batches} unit={selectedUnit} currency={currency} />
 
             {wastageOpen && <WastageForm key={selected.id} storeId={storeId} ingredient={selected} unit={selectedUnit} batches={batches}
-              terminal={terminal} requestApproval={withApproval} onRecorded={updated => void handleWastageRecorded(updated)} />}
+              movements={movements} currency={currency} policy={wastagePolicy} policyError={wastagePolicyError} terminal={terminal} requestApproval={withApproval} onRecorded={updated => void handleWastageRecorded(updated)} />}
 
             <h3>Stock Activity</h3>
-            <StockLedger movements={movements} currentStock={Number(selected.current_stock)} unit={selectedUnit} />
+            <StockLedger movements={movements} currentStock={Number(selected.current_stock)} unit={selectedUnit} currency={currency} />
           </>}
         </div>}
       </div>
@@ -315,6 +327,7 @@ export function InventoryScreen({ terminal = false }: { terminal?: boolean }) {
       title="Manager approval required"
       reason={approvalReason}
       actionLabel="Approve"
+      onlineApproval={approvalBinding}
       onClose={() => { setApprovalOpen(false); pendingWrite.current = null }}
       onApprove={evidence => {
         setApprovalOpen(false)
