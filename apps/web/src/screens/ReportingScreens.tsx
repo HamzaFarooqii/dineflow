@@ -24,8 +24,8 @@ import { configuredApiUrl, loadCatalog } from '../lib/catalog'
 import { classifySyncState, type SyncState } from '../lib/order-sync-core'
 import {
   fetchCustomerReport, fetchDailySummary, fetchFoodCostReport, fetchInventoryReport, fetchKitchenPerformanceReport, fetchOrdersPage, fetchOversold, fetchShifts,
-  fetchBreaks, downloadTimekeepingCsv, correctShift, correctBreak, fetchProfitabilityReport,
-  type CustomerReport, type FoodCostReport, type InventoryReport, type KitchenPerformanceReport, type ServerOversoldProduct, type ShiftRow, type BreakRow,
+  fetchBreaks, fetchEmployeeTips, downloadTimekeepingCsv, correctShift, correctBreak, fetchProfitabilityReport,
+  type CustomerReport, type FoodCostReport, type InventoryReport, type KitchenPerformanceReport, type ServerOversoldProduct, type ShiftRow, type BreakRow, type EmployeeTipRow,
   type ProfitabilityReport, type ProfitabilityDay,
 } from '../lib/server-reports'
 import { fetchFloorPlan, type FloorPlan } from '../lib/floor'
@@ -779,7 +779,7 @@ function DailySalesReport({ tabs }: { tabs?: ReactNode }) {
 type ReportTab = 'sales' | 'guests' | 'profitability' | 'food-cost' | 'kitchen' | 'inventory' | 'hours'
 
 interface HoursWorkedRow {
-  employeeId: string
+  employeeId: string | null
   name: string
   role: string
   totalMs: number
@@ -788,17 +788,22 @@ interface HoursWorkedRow {
   paidBreakMs: number
   unpaidBreakMs: number
   openBreak: BreakRow | null
+  tipOrderCount: number
+  grossTipCents: number
+  refundedTipCents: number
+  netTipCents: number
 }
 
-// Break minutes are grouped the same way as shifts: an open break (ended_at === null) is shown
-// separately from closed totals rather than folded in, so an in-progress break never silently
-// depresses the "hours worked" number while it's still running.
-function groupHoursWorked(shifts: ShiftRow[], breaks: BreakRow[]): HoursWorkedRow[] {
+// Break minutes are grouped the same way as shifts: an open break is shown separately from
+// closed totals. Tips are sale attribution from the server, not payroll payout or tip-pool data.
+function groupHoursWorked(shifts: ShiftRow[], breaks: BreakRow[], tips: EmployeeTipRow[]): HoursWorkedRow[] {
   const rows = new Map<string, HoursWorkedRow>()
-  function rowFor(employeeId: string, name: string, role: string): HoursWorkedRow {
-    return rows.get(employeeId) ?? {
+  function rowFor(employeeId: string | null, name: string, role: string): HoursWorkedRow {
+    const key = employeeId ?? 'unattributed'
+    return rows.get(key) ?? {
       employeeId, name, role,
       totalMs: 0, closedShifts: 0, openShift: null, paidBreakMs: 0, unpaidBreakMs: 0, openBreak: null,
+      tipOrderCount: 0, grossTipCents: 0, refundedTipCents: 0, netTipCents: 0,
     }
   }
   for (const shift of shifts) {
@@ -817,13 +822,23 @@ function groupHoursWorked(shifts: ShiftRow[], breaks: BreakRow[]): HoursWorkedRo
       if (brk.paid) row.paidBreakMs += ms; else row.unpaidBreakMs += ms
     } else row.openBreak = brk
   }
-  // The panel's own subtitle says "net of unpaid breaks" -- totalMs above is each closed shift's
-  // full clock-in-to-clock-out span, so unpaid break time (already tallied above) must come back
-  // out here, once per employee, rather than being counted as hours worked.
+  for (const tip of tips) {
+    const key = tip.employeeId ?? 'unattributed'
+    const row = rowFor(tip.employeeId, tip.employeeName, tip.employeeRole ?? 'No employee')
+    row.tipOrderCount = tip.orderCount
+    row.grossTipCents = tip.grossTipCents
+    row.refundedTipCents = tip.refundedTipCents
+    row.netTipCents = tip.netTipCents
+    rows.set(key, row)
+  }
+  // Unpaid breaks reduce worked time exactly once; paid breaks remain part of paid time.
   for (const row of rows.values()) row.totalMs = Math.max(0, row.totalMs - row.unpaidBreakMs)
-  return Array.from(rows.values()).sort((a, b) => Number(Boolean(b.openShift)) - Number(Boolean(a.openShift)) || b.totalMs - a.totalMs || a.name.localeCompare(b.name))
+  return Array.from(rows.values()).sort((a, b) =>
+    Number(Boolean(b.openShift?.potentially_missed_clock_out)) - Number(Boolean(a.openShift?.potentially_missed_clock_out))
+      || Number(Boolean(b.openShift)) - Number(Boolean(a.openShift))
+      || b.totalMs - a.totalMs
+      || a.name.localeCompare(b.name))
 }
-
 function hoursLabel(ms: number): string {
   const minutes = Math.round(ms / 60_000)
   return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m`
@@ -930,8 +945,11 @@ function CorrectionDialog({ storeId, record, onClose, onSaved }: {
   </Dialog>
 }
 
-function HoursReport({ rows, storeId, from, to, onCorrected }: { rows: HoursWorkedRow[]; storeId: string; from: string; to: string; onCorrected: () => void }) {
+function HoursReport({ rows, storeId, from, to, currency, onCorrected }: { rows: HoursWorkedRow[]; storeId: string; from: string; to: string; currency: string; onCorrected: () => void }) {
   const totalMs = rows.reduce((sum, row) => sum + row.totalMs, 0)
+  const netTips = rows.reduce((sum, row) => sum + row.netTipCents, 0)
+  const unattributedTips = rows.find(row => row.employeeId === null)?.netTipCents ?? 0
+  const needsReview = rows.filter(row => row.openShift?.potentially_missed_clock_out).length
   const [correcting, setCorrecting] = useState<{ type: 'shift'; row: ShiftRow } | { type: 'break'; row: BreakRow } | null>(null)
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState('')
@@ -945,33 +963,41 @@ function HoursReport({ rows, storeId, from, to, onCorrected }: { rows: HoursWork
 
   return <>
     <div className="metric-grid report-kpi-grid">
-      <MetricCard label="Closed hours" value={hoursLabel(totalMs)} detail="Completed shifts in range" featured />
-      <MetricCard label="Team members" value={rows.length} detail="With shift activity" />
+      <MetricCard label="Closed hours" value={hoursLabel(totalMs)} detail={`${rows.filter(row => row.employeeId).length} team members in range`} featured />
+      <MetricCard label="Sale-attributed tips" value={<Money cents={netTips} currency={currency} />} detail={`${formatCents(unattributedTips, currency)} unattributed`} />
       <MetricCard label="On shift now" value={rows.filter(row => row.openShift).length} detail="Open shifts are not added to totals" />
-      <MetricCard label="Closed shifts" value={rows.reduce((sum, row) => sum + row.closedShifts, 0)} detail="Clocked out successfully" />
+      <MetricCard label="Needs review" value={needsReview} detail="Open for 16 hours or more" className={needsReview ? 'rejected' : ''} />
     </div>
     <section className="dashboard-panel report-data-panel">
       <div className="panel-header">
-        <div><h2><Clock aria-hidden="true" size={16} className="panel-icon" />Hours worked</h2><small>Closed-shift totals grouped by employee, net of unpaid breaks</small></div>
-        <button type="button" className="secondary-cta" onClick={() => void exportCsv()} disabled={exporting} aria-label="Export payroll-ready CSV for this date range">{exporting ? 'Preparing…' : 'Export payroll CSV'}</button>
+        <div><h2><Clock aria-hidden="true" size={16} className="panel-icon" />Hours, breaks & tips</h2><small>Worked time is net of unpaid breaks. Tips follow the employee recorded on each sale and are not payroll payout or tip-pool entitlement.</small></div>
+        <button type="button" className="secondary-cta" onClick={() => void exportCsv()} disabled={exporting} aria-label="Export time and sale-attributed tips CSV for this date range">{exporting ? 'Preparing…' : 'Export time & tips CSV'}</button>
       </div>
+      {needsReview > 0 && <p className="form-notice warning" role="status">{needsReview} shift{needsReview === 1 ? '' : 's'} may be missing a clock-out. DineFlow never closes shifts automatically; use the audited correction action after confirming the time.</p>}
       {exportError && <p className="form-notice error" role="alert">{exportError}</p>}
       {rows.length ? <div className="table-wrapper"><table className="dashboard-table report-table"><thead><tr>
         <th>Employee</th><th>Role</th><th>Status</th><th className="num">Closed shifts</th><th className="num">Hours</th>
-        <th className="num">Paid break</th><th className="num">Unpaid break</th><th>Correct</th>
-      </tr></thead><tbody>{rows.map(row => <tr key={row.employeeId}>
-        <td><strong>{row.name}</strong></td>
+        <th className="num">Paid break</th><th className="num">Unpaid break</th><th className="num">Attributed tips</th><th>Correct</th>
+      </tr></thead><tbody>{rows.map(row => <tr key={row.employeeId ?? 'unattributed'}>
+        <td><strong>{row.name}</strong>{row.tipOrderCount > 0 && <small>{row.tipOrderCount} tipped sale{row.tipOrderCount === 1 ? '' : 's'}</small>}</td>
         <td className="report-role">{row.role.replaceAll('_', ' ')}</td>
-        <td>{row.openShift ? <StatusBadge tone="success">On shift now</StatusBadge> : <StatusBadge tone="muted">Off shift</StatusBadge>}{row.openBreak && <StatusBadge tone="warning">{row.openBreak.paid ? 'Paid' : 'Unpaid'} break in progress</StatusBadge>}</td>
+        <td>{row.employeeId === null
+          ? <StatusBadge tone="warning">Unattributed sales</StatusBadge>
+          : row.openShift?.potentially_missed_clock_out
+            ? <StatusBadge tone="danger">Possible missed clock-out - {hoursLabel((row.openShift.open_duration_minutes ?? 0) * 60_000)}</StatusBadge>
+            : row.openShift
+              ? <StatusBadge tone="success">On shift now</StatusBadge>
+              : <StatusBadge tone="muted">Off shift</StatusBadge>}{row.openBreak && <StatusBadge tone="warning">{row.openBreak.paid ? 'Paid' : 'Unpaid'} break in progress</StatusBadge>}</td>
         <td className="num">{row.closedShifts}</td>
         <td className="num"><strong>{hoursLabel(row.totalMs)}</strong></td>
         <td className="num">{hoursLabel(row.paidBreakMs)}</td>
         <td className="num">{hoursLabel(row.unpaidBreakMs)}</td>
+        <td className="num"><strong><Money cents={row.netTipCents} currency={currency} /></strong>{row.refundedTipCents > 0 && <small>{formatCents(row.refundedTipCents, currency)} refunded</small>}</td>
         <td>{row.openShift
           ? <button type="button" className="secondary-cta" onClick={() => setCorrecting({ type: 'shift', row: row.openShift as ShiftRow })} aria-label={`Correct ${row.name}'s open shift`}>Correct…</button>
           : <span className="empty-panel-copy">—</span>}
         </td>
-      </tr>)}</tbody></table></div> : <p className="empty-panel-copy">No shifts started in this date range.</p>}
+      </tr>)}</tbody></table></div> : <p className="empty-panel-copy">No shifts or tipped sales in this date range.</p>}
     </section>
     {correcting && <CorrectionDialog storeId={storeId} record={correcting} onClose={() => setCorrecting(null)} onSaved={() => { setCorrecting(null); onCorrected() }} />}
   </>
@@ -1098,7 +1124,8 @@ export function ReportsScreen() {
               : Promise.all([
                 fetchShifts(state.storeId, calendarDayBoundsUtc(from, state.config.timezone).startUtc, calendarDayBoundsUtc(to, state.config.timezone).endUtc),
                 fetchBreaks(state.storeId, calendarDayBoundsUtc(from, state.config.timezone).startUtc, calendarDayBoundsUtc(to, state.config.timezone).endUtc),
-              ]).then(([shifts, breaks]) => { if (active) setHoursRows(groupHoursWorked(shifts, breaks)) })
+                fetchEmployeeTips(state.storeId, calendarDayBoundsUtc(from, state.config.timezone).startUtc, calendarDayBoundsUtc(to, state.config.timezone).endUtc),
+              ]).then(([shifts, breaks, tipReport]) => { if (active) setHoursRows(groupHoursWorked(shifts, breaks, tipReport.tips)) })
     void load.catch(reason => { if (active) setOperationalError(reason instanceof Error ? reason.message : 'This report could not be loaded.') })
       .finally(() => { if (active) setOperationalLoading(false) })
     return () => { active = false }
@@ -1136,7 +1163,7 @@ export function ReportsScreen() {
     {state && tab === 'profitability' && !operationalLoading && !operationalError && profitabilityReport && <ProfitabilityReportView report={profitabilityReport} currency={state.config.currency} />}
     {state && tab === 'food-cost' && !operationalLoading && !operationalError && foodCostReport && <FoodCostReportView report={foodCostReport} currency={state.config.currency} />}
     {state && tab === 'kitchen' && !operationalLoading && !operationalError && kitchenReport && <KitchenPerformanceView report={kitchenReport} />}
-    {state && tab === 'hours' && !operationalLoading && !operationalError && hoursRows && <HoursReport rows={hoursRows} storeId={state.storeId} from={from} to={to} onCorrected={() => setOperationalReload(value => value + 1)} />}
+    {state && tab === 'hours' && !operationalLoading && !operationalError && hoursRows && <HoursReport rows={hoursRows} storeId={state.storeId} from={from} to={to} currency={state.config.currency} onCorrected={() => setOperationalReload(value => value + 1)} />}
   </section>
 }
 

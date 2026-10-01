@@ -3,6 +3,7 @@ import { db } from '../db.js'
 import { requireStoreManager, sendApiError, ApiError } from './auth.js'
 import { requireCashierTerminal } from '../terminal-auth/routes.js'
 import { calendarDayBoundsUtc } from '../lib/timezone.js'
+import { allocateTipEventsToShifts, summarizeTipEvents, type TipEvent } from './staff-reporting.js'
 
 // B5: breaks (paid/unpaid) against an open shift, manager corrections with an immutable audit
 // trail, and a payroll-ready CSV export. Extends shifts.ts's clock-in/out model rather than
@@ -203,6 +204,78 @@ function csvField(value: string | number): string {
 function minutesBetween(startIso: string, endIso: string): number {
   return Math.floor((Date.parse(endIso) - Date.parse(startIso)) / 60_000)
 }
+interface TipEventDbRow {
+  order_id: string
+  employee_id: string | null
+  employee_name: string | null
+  employee_role: string | null
+  sold_at: string
+  gross_tip_cents: string
+  refunded_tip_cents: string
+}
+
+// Payment and refund tenders are each collapsed to one row per order before attribution. This is
+// essential for split tenders: joining raw payments to raw refund tenders would multiply tips.
+// Refunds are tied back to the selected sale regardless of when the refund was recorded, making
+// this a sale-attribution report rather than a cash-timing or payroll-payout report.
+async function loadTipEvents(storeId: string, from: Date | string | null, to: Date | string | null): Promise<TipEvent[]> {
+  const result = await db.query<TipEventDbRow>(
+    `with payment_totals as (
+       select order_id, sum(tip_cents)::text as gross_tip_cents
+       from public.pos_payments where store_id = $1 group by order_id
+     ), refund_totals as (
+       select p.order_id, sum(rt.tip_cents)::text as refunded_tip_cents
+       from public.pos_refund_tenders rt
+       join public.pos_payments p on p.store_id = rt.store_id and p.id = rt.payment_id
+       where rt.store_id = $1 group by p.order_id
+     )
+     select o.id as order_id, o.employee_id, e.name as employee_name, e.role as employee_role,
+            o.client_generated_at::text as sold_at,
+            coalesce(pt.gross_tip_cents, '0') as gross_tip_cents,
+            coalesce(rt.refunded_tip_cents, '0') as refunded_tip_cents
+     from public.pos_orders o
+     left join payment_totals pt on pt.order_id = o.id
+     left join refund_totals rt on rt.order_id = o.id
+     left join public.terminal_employees e on e.store_id = o.store_id and e.id = o.employee_id
+     where o.store_id = $1
+       and ($2::timestamptz is null or o.client_generated_at >= $2)
+       and ($3::timestamptz is null or o.client_generated_at < $3)
+       and (coalesce(pt.gross_tip_cents, '0')::bigint <> 0 or coalesce(rt.refunded_tip_cents, '0')::bigint <> 0)
+     order by o.client_generated_at, o.id`,
+    [storeId, from, to],
+  )
+  return result.rows.map(row => {
+    const grossTipCents = Number(row.gross_tip_cents)
+    const refundedTipCents = Number(row.refunded_tip_cents)
+    return {
+      orderId: row.order_id,
+      employeeId: row.employee_id,
+      employeeName: row.employee_name,
+      employeeRole: row.employee_role,
+      soldAt: row.sold_at,
+      grossTipCents,
+      refundedTipCents,
+      netTipCents: grossTipCents - refundedTipCents,
+    }
+  })
+}
+
+async function listAttributedTips(req: Request, res: Response) {
+  try {
+    const storeId = storeIdParam(req)
+    await requireStoreManager(req, storeId)
+    const from = req.query.from ? new Date(String(req.query.from)) : null
+    const to = req.query.to ? new Date(String(req.query.to)) : null
+    if ((req.query.from && Number.isNaN(from?.getTime())) || (req.query.to && Number.isNaN(to?.getTime()))) {
+      throw new ApiError(422, 'validation_failed', 'from/to must be valid timestamps.')
+    }
+    const events = await loadTipEvents(storeId, from, to)
+    res.json({
+      tips: summarizeTipEvents(events),
+      definition: 'Tips attributed to the employee recorded on each sale, net of tip refunds. Not payroll payout or tip-pool entitlement.',
+    })
+  } catch (reason) { sendApiError(res, reason) }
+}
 
 // GET /shifts/export.csv — payroll-ready CSV: one row per closed shift, with integer
 // minute totals (worked minutes net of unpaid break minutes, paid break minutes, unpaid break
@@ -222,7 +295,7 @@ async function exportTimekeepingCsv(req: Request, res: Response) {
     const store = await db.query<{ timezone: string }>('select timezone from public.stores where id=$1', [storeId])
     if (!store.rowCount) throw new ApiError(404, 'not_found', 'Store not found.')
     const timezone = store.rows[0].timezone
-    const { startUtc, endUtc } = calendarDayBoundsUtc(fromDate, timezone)
+    const { startUtc } = calendarDayBoundsUtc(fromDate, timezone)
     const { endUtc: rangeEnd } = calendarDayBoundsUtc(toDate, timezone)
 
     const shifts = await db.query<{
@@ -253,16 +326,28 @@ async function exportTimekeepingCsv(req: Request, res: Response) {
       }
     }
 
-    const header = ['employee_name', 'employee_role', 'shift_id', 'clocked_in_at', 'clocked_out_at', 'gross_minutes', 'paid_break_minutes', 'unpaid_break_minutes', 'net_paid_minutes']
+    const tipEvents = await loadTipEvents(storeId, startUtc, rangeEnd)
+    const allocation = allocateTipEventsToShifts(tipEvents, shifts.rows)
+    const header = ['row_kind', 'employee_name', 'employee_role', 'shift_id', 'order_id', 'clocked_in_at', 'clocked_out_at', 'gross_minutes', 'paid_break_minutes', 'unpaid_break_minutes', 'net_paid_minutes', 'gross_sale_attributed_tip_cents', 'refunded_tip_cents', 'net_sale_attributed_tip_cents', 'tip_attribution_note']
     const lines = [header.join(',')]
     for (const shift of shifts.rows) {
       const grossMinutes = minutesBetween(shift.clocked_in_at, shift.clocked_out_at)
       const totals = breaksByShift.get(shift.id) ?? { paidMinutes: 0, unpaidMinutes: 0 }
       const netPaidMinutes = grossMinutes - totals.unpaidMinutes
+      const tips = allocation.byShift.get(shift.id) ?? { grossTipCents: 0, refundedTipCents: 0, netTipCents: 0 }
       lines.push([
-        csvField(shift.employee_name), csvField(shift.employee_role), csvField(shift.id),
+        'shift', csvField(shift.employee_name), csvField(shift.employee_role), csvField(shift.id), '',
         csvField(shift.clocked_in_at), csvField(shift.clocked_out_at),
         csvField(grossMinutes), csvField(totals.paidMinutes), csvField(totals.unpaidMinutes), csvField(netPaidMinutes),
+        csvField(tips.grossTipCents), csvField(tips.refundedTipCents), csvField(tips.netTipCents),
+        csvField('Sale attribution only; not payroll payout or tip-pool entitlement.'),
+      ].join(','))
+    }
+    for (const event of allocation.unallocated) {
+      lines.push([
+        'unallocated_tip', csvField(event.employeeName ?? 'Unattributed sales'), csvField(event.employeeRole ?? ''), '', csvField(event.orderId),
+        '', '', '', '', '', '', csvField(event.grossTipCents), csvField(event.refundedTipCents), csvField(event.netTipCents),
+        csvField(event.employeeId ? 'No closed employee shift contains this sale; not payroll payout.' : 'Sale has no employee attribution; not payroll payout.'),
       ].join(','))
     }
     const csv = lines.join('\r\n') + '\r\n'
@@ -272,6 +357,7 @@ async function exportTimekeepingCsv(req: Request, res: Response) {
   } catch (reason) { sendApiError(res, reason) }
 }
 
+timekeepingRouter.get('/tips', listAttributedTips)
 timekeepingRouter.get('/breaks', listBreaks)
 timekeepingRouter.get('/corrections', listCorrections)
 timekeepingRouter.post('/:id/correct', correctShift)
