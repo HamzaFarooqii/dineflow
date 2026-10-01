@@ -73,6 +73,7 @@ const chain = [
   '202609280004_refund_settlement_integrity.sql',
   '202609290001_kitchen_operations_depth.sql',
   '202609290002_sellable_combos.sql',
+  '202609300001_qr_table_ordering.sql',
 ]
 
 test('open checks: full lifecycle against real Postgres semantics (PGlite)', async () => {

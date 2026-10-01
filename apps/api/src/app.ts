@@ -19,6 +19,7 @@ import { purchasingRouter } from './routes/purchasing.js'
 
 import { reservationsRouter, terminalReservationsRouter } from './routes/reservations.js'
 import { timekeepingRouter, terminalTimekeepingRouter } from './routes/timekeeping.js'
+import { publicQrRouter, qrRouter, terminalQrRouter } from './routes/qr-ordering.js'
 import { terminalAuthRouter, type TerminalAuthOptions } from './terminal-auth/routes.js'
 import { managerApprovalRouter } from './terminal-auth/manager-approval.js'
 
@@ -42,6 +43,8 @@ export function createApp(options: TerminalAuthOptions) {
   app.use('/loyalty', loyaltyRouter)
   app.use('/shifts', shiftsRouter)
   app.use('/open-checks', openChecksRouter)
+  app.use('/qr', qrRouter)
+  app.use('/public/qr', publicQrRouter)
   app.use('/delivery', deliveryRouter)
 
   app.use('/purchasing', purchasingRouter)
@@ -62,6 +65,7 @@ export function createApp(options: TerminalAuthOptions) {
   app.use('/pos/promotions', terminalPromotionsRouter)
   app.use('/pos/shifts', terminalShiftsRouter)
   app.use('/pos/open-checks', terminalOpenChecksRouter)
+  app.use('/pos/qr', terminalQrRouter)
   app.use('/pos/delivery', terminalDeliveryRouter)
   app.use('/pos/reservations', terminalReservationsRouter)
   app.use('/pos/shifts', terminalTimekeepingRouter)

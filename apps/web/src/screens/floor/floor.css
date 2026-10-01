@@ -216,3 +216,14 @@
   .floor-manager-fields{grid-template-columns:1fr}
   .floor-manager-form{grid-template-columns:1fr}
 }
+
+.qr-panel{display:grid;gap:12px;margin:0 0 16px;padding:16px;border:1px solid var(--mise-border-hairline);border-radius:var(--mise-r3);background:var(--mise-canvas)}
+.qr-panel h3{margin:0;font:600 15px 'Inter',sans-serif;color:var(--mise-ink)}
+.qr-panel-state{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0;font-size:12px;color:var(--mise-ink-secondary)}
+.qr-panel-check{display:flex;gap:8px;align-items:flex-start;font-size:13px;color:var(--mise-ink)}
+.qr-panel-actions{display:flex;justify-content:space-between;gap:8px}
+.qr-panel-issued{display:grid;gap:8px;justify-items:start}
+.qr-image{width:200px;max-width:100%;background:#fff;border-radius:var(--mise-r2,8px);padding:4px}
+.qr-image svg{display:block;width:100%;height:auto}
+.qr-panel-note{margin:0;font-size:12px;color:var(--mise-ink-secondary)}
+.qr-panel-link{width:100%;font:12px 'JetBrains Mono',monospace;padding:8px;border:1px solid var(--mise-border-hairline);border-radius:var(--mise-r2,8px);background:var(--mise-surface);color:var(--mise-ink)}
