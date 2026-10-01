@@ -1,5 +1,57 @@
 # Module Status
 
+> **Day 1 of the next sprint, 2026-10-01: `feature/hamza/day1-api-security` and
+> `feature/bisma/day1-qr-ordering` reviewed and merged into `develop` in that order**, per
+> `RULES.md`'s "security foundations before features that depend on them." Both were independently
+> rebuilt and re-run from their own PRs (not trusted on reported test counts alone): packages/domain
+> 90/90, apps/api build clean, `npm test` 9/9, `test:integration` 55/55, `test:orders` 127/127,
+> `test:browser:core-loop` 6/6 for the security branch standalone; 3/3, 48/48, 152/152 (25 of them
+> QR-specific), `test:browser:qr` pass for the QR branch standalone. The QR branch's own
+> `test:browser:core-loop` failure was confirmed to be a real, pre-existing bug on `develop` (a
+> `getByText('Open check')` strict-mode locator ambiguity in the Register cart aside, unrelated to
+> either branch) that the security branch happened to fix while adding its own, unrelated fix (the
+> core-loop's demo employee needed `manager`, not `cashier`, once role capability enforcement went
+> live) — both fixes compose cleanly post-merge, confirmed by a full 6/6 core-loop pass on the
+> merged branch.
+>
+> **Integration fix required and made**: `feature/bisma/day1-qr-ordering` shipped its public
+> surface (`qr-ordering.ts`) behind hook points (`qr-security-hooks.ts`) that default to allow-all
+> by design, explicitly for the security branch to wire — `qr-security-integration.ts` (new) builds
+> the real hooks from the security branch's own primitives (`requireCashierCapability` for staff
+> role enforcement on confirm/reject/list, `checkRateLimit`/`RATE_LIMIT_BUDGETS` for the public
+> session/order/poll limits) rather than a parallel QR-specific copy, and `server.ts` installs them
+> once before the app starts listening. A pre-existing grep-based test
+> (`rate-limit.test.ts`, "nothing in this codebase mounts [the limiter] on an authenticated route")
+> had to be narrowed to allow this file and `qr-ordering.ts`/`qr-security-hooks.ts` by name — it
+> still fails for every other route file. A new test
+> (`apps/api/test/qr-security-integration.test.ts`) proves the real wiring by HTTP request: a
+> `chef`/`rider` terminal session gets `403 authorization_failed` confirming/rejecting/listing QR
+> submissions (no `register` capability), a `cashier` succeeds, and both the session-creation and
+> order-submission public endpoints return real `429 rate_limited` once their budget is exceeded.
+> Full suite re-run clean after the fix: `test:integration` 56/56, `test:orders` 152/152,
+> `test:browser:core-loop` 6/6, `test:browser:qr` pass, apps/web 57/57 + clean typecheck + clean
+> build.
+>
+> **Not done as part of this merge, by design**: the QR migration
+> (`202609300001_qr_table_ordering.sql`) is not applied to any live database and has no
+> `APPLIED.md` row — merging code into `develop` does not apply a live migration (see `RULES.md`
+> §3), and `QR_ORDERING_ENABLED` must stay unset in every environment until that migration is
+> applied there. The security branch's own two migrations
+> (`202610010001_terminal_manager_approvals.sql`, `202610010002_public_rate_limits.sql`) carry
+> `APPLIED.md` rows claiming they were applied and verified against "the configured database" at
+> authoring time; this review had no live database credentials to independently re-confirm that
+> claim (only isolated PGlite fixtures, per every automated test above) — re-run
+> `apps/api/scripts/verify-migrations.mjs` against the real database before trusting those two rows.
+> Separately, `lib/rate-limit.ts`'s own public-endpoint key (`byStoreAndRemoteAddress`/the plain
+> remote-address key `qr-security-integration.ts` uses for session issuance) reads the raw TCP
+> peer address and deliberately never trusts `X-Forwarded-For` without `app.set('trust proxy', ...)`
+> being configured (that file's own comment explains why) — correct as shipped, but on `01_tech_stack
+> .md`'s documented Railway API hosting, a reverse proxy sits in front of the app, so every guest at
+> a store would collapse onto one shared bucket (the proxy's own address) unless whoever deploys QR
+> ordering also sets `trust proxy` to match Railway's actual hop count and updates the key to use
+> `req.ip`. This degrades to an overly-strict, store-wide shared limit (fails safe, not open) rather
+> than a security hole, but is a real deployment prerequisite, not yet done.
+>
 > **Current baseline: `develop`, 2026-09-29.** Days 1-5 are closed. Ahmed's four Day 5
 > deliverables and Bisma's three Day 5 deliverables are present on `develop`. Since the
 > 2026-09-28 baseline, five more PRs merged same-day (reservations/waitlist, staff timekeeping,

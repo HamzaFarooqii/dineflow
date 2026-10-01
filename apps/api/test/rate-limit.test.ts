@@ -116,17 +116,22 @@ test('the Express middleware returns 429 with Retry-After once the budget is spe
   } finally { server?.closeAllConnections(); server?.close(); await database.close() }
 })
 
-test('public rate limiting never gates staff/terminal or sync traffic -- it is a standalone primitive nothing in this codebase mounts on an authenticated route', async () => {
-  // This is a documentation-as-test assertion: grep every route file for accidental use of
-  // rateLimiter/checkRateLimit outside this test and lib/rate-limit.ts itself. If a future change
-  // wires it directly into a terminal/staff/device router, that would violate "keep public limits
-  // separate from legitimate staff traffic and historical sync" -- this test catches that early.
+test('public rate limiting never gates staff/terminal or sync traffic -- the only route files allowed to import it are the public QR surface itself', async () => {
+  // This is a documentation-as-test assertion: grep every route file for use of
+  // rateLimiter/checkRateLimit outside this test, lib/rate-limit.ts itself, and the public QR
+  // surface it was built for (see that file's own header comment). If a future change wires it
+  // directly into a terminal/staff/device router, that would violate "keep public limits separate
+  // from legitimate staff traffic and historical sync" -- this test catches that early. Integration
+  // note: qr-security-integration.ts is where feature/hamza/day1-api-security's rate limiter was
+  // actually wired to feature/bisma/day1-qr-ordering's hook points (qr-security-hooks.ts) once both
+  // branches merged -- the QR_ORDERING_ENABLED flag made that wiring load-bearing, not optional.
+  const QR_PUBLIC_SURFACE = new Set(['qr-ordering.ts', 'qr-security-hooks.ts', 'qr-security-integration.ts'])
   const { readdir } = await import('node:fs/promises')
   const routesDir = fileURLToPath(new URL('../src/routes/', import.meta.url))
   const files = await readdir(routesDir)
   for (const file of files) {
-    if (!file.endsWith('.ts') || file.endsWith('.test.ts')) continue
+    if (!file.endsWith('.ts') || file.endsWith('.test.ts') || QR_PUBLIC_SURFACE.has(file)) continue
     const content = await readFile(routesDir + file, 'utf8')
-    assert.equal(content.includes('rate-limit.js'), false, `${file} should not import the public rate limiter -- it is for the new public QR surface only`)
+    assert.equal(content.includes('rate-limit.js'), false, `${file} should not import the public rate limiter -- it is for the public QR surface only`)
   }
 })
