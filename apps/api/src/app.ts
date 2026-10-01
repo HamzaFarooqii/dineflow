@@ -20,6 +20,7 @@ import { purchasingRouter } from './routes/purchasing.js'
 import { reservationsRouter, terminalReservationsRouter } from './routes/reservations.js'
 import { timekeepingRouter, terminalTimekeepingRouter } from './routes/timekeeping.js'
 import { terminalAuthRouter, type TerminalAuthOptions } from './terminal-auth/routes.js'
+import { managerApprovalRouter } from './terminal-auth/manager-approval.js'
 
 export function createApp(options: TerminalAuthOptions) {
   const app = express()
@@ -27,6 +28,7 @@ export function createApp(options: TerminalAuthOptions) {
   app.use(express.json({ limit: '64kb' }))
   app.get('/health', (_req, res) => { res.json({ status: 'ok', ts: new Date().toISOString() }) })
   app.use(terminalAuthRouter(options))
+  app.use('/pos/manager-approvals', managerApprovalRouter)
   app.use('/catalog', catalogRouter)
   app.use('/orders', ordersRouter)
   app.use('/customers', customersRouter)

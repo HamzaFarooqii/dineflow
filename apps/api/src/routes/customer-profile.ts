@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from 'express'
 import type { PoolClient } from 'pg'
 import { db } from '../db.js'
-import { requireCashierTerminal } from '../terminal-auth/routes.js'
+import { requireCashierCapability } from '../terminal-auth/routes.js'
 import { customerName, normalizedPhone } from '../../../../packages/domain/src/customer.js'
 import { ApiError, requireStoreManager, sendApiError } from './auth.js'
 
@@ -140,7 +140,7 @@ export async function loadPreferenceState(storeId: string, customerId: string) {
 
 async function listPreferences(req: Request, res: Response, terminal = false) {
   try {
-    const storeId = terminal ? (await requireCashierTerminal(req, db)).storeId : storeIdQuery(req)
+    const storeId = terminal ? (await requireCashierCapability(req, db, 'register')).storeId : storeIdQuery(req)
     if (!terminal) await requireManager(req, storeId)
     const customerId = validUuid(req.params.id, 'Customer ID')
     await loadCustomer(storeId, customerId)

@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from 'express'
 import type { PoolClient } from 'pg'
 import { db } from '../db.js'
 import { requireStoreMember, requireStoreManager, sendApiError, ApiError } from './auth.js'
-import { requireCashierTerminal } from '../terminal-auth/routes.js'
+import { requireCashierCapability } from '../terminal-auth/routes.js'
 import type { TableStatus } from '../../../../packages/domain/src/table-status.js'
 
 export const floorRouter = Router()
@@ -32,7 +32,7 @@ async function getFloorPlan(req: Request, res: Response, terminal = false) {
   try {
     const storeId = storeIdParam(req)
     if (terminal) {
-      const session = await requireCashierTerminal(req, db)
+      const session = await requireCashierCapability(req, db, 'floor')
       if (session.storeId !== storeId) throw new ApiError(403, 'cross_store_reference', 'This terminal belongs to a different store.')
     } else {
       await requireStoreMember(req, storeId)
@@ -107,7 +107,7 @@ const TRANSITIONS: Record<TableStatus, readonly TableStatus[]> = {
 // this endpoint entirely. But the kitchen can't always be relied on to be the one source of
 // truth (an item never rung through the KDS, a mistake in the ticket, a walked-in side dish) —
 // a manager can also mark a table served by hand from the Floor screen. A cashier terminal
-// cannot: only the manager/owner web route (requireStoreManager, not requireCashierTerminal)
+// cannot: only the manager/owner web route (requireStoreManager, not requireCashierCapability)
 // is allowed to use this map — see updateTableStatus's `managerCapable` argument below.
 const MANAGER_ONLY_TRANSITIONS: Partial<Record<TableStatus, readonly TableStatus[]>> = {
   ordering: ['served'],
@@ -201,7 +201,7 @@ async function updateTableStatus(req: Request, res: Response, terminal = false) 
     const storeId = storeIdParam(req)
     const tableId = idParam(req)
     if (terminal) {
-      const session = await requireCashierTerminal(req, db)
+      const session = await requireCashierCapability(req, db, 'floor')
       if (session.storeId !== storeId) throw new ApiError(403, 'cross_store_reference', 'This terminal belongs to a different store.')
     } else {
       await requireStoreManager(req, storeId)
@@ -504,7 +504,7 @@ async function requireFloorServiceAccess(req: Request, storeId: string, terminal
     await requireStoreManager(req, storeId)
     return
   }
-  const session = await requireCashierTerminal(req, db)
+  const session = await requireCashierCapability(req, db, 'floor')
   if (session.storeId !== storeId) throw new ApiError(403, 'cross_store_reference', 'This terminal belongs to a different store.')
 }
 

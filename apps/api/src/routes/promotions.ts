@@ -3,7 +3,7 @@ import { db } from '../db.js'
 import { requireStoreManager, sendApiError, ApiError } from './auth.js'
 import { MAX_CENTS } from '../../../../packages/domain/src/money.js'
 import { activePromotions, type Promotion as DomainPromotion } from '../../../../packages/domain/src/promotions.js'
-import { requireCashierTerminal } from '../terminal-auth/routes.js'
+import { requireCashierCapability } from '../terminal-auth/routes.js'
 
 export const promotionsRouter = Router()
 export const terminalPromotionsRouter = Router()
@@ -161,7 +161,7 @@ function toRow(promotion: DomainPromotion): PromotionRow {
 async function listActivePromotions(req: Request, res: Response) {
   try {
     const storeId = storeIdParam(req)
-    const session = await requireCashierTerminal(req, db)
+    const session = await requireCashierCapability(req, db, 'register')
     if (session.storeId !== storeId) throw new ApiError(403, 'cross_store_reference', 'This terminal belongs to a different store.')
     const result = await db.query<PromotionRow>(
       `select id, store_id, name, discount_kind, discount_value, starts_at, ends_at, active

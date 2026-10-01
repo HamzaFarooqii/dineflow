@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { Router, type Request, type Response } from 'express'
 import { db } from '../db.js'
-import { requireCashierTerminal, requireDeviceTerminal } from '../terminal-auth/routes.js'
+import { requireCashierCapability, requireDeviceTerminal } from '../terminal-auth/routes.js'
 import { customerName, normalizedPhone } from '../../../../packages/domain/src/customer.js'
 import { ApiError, requireStoreMember, sendApiError } from './auth.js'
 
@@ -63,7 +63,7 @@ function cursor(value: unknown): { id: string } | null {
 }
 async function search(req: Request, res: Response, terminal = false) {
   try {
-    const storeId = terminal ? (await requireCashierTerminal(req, db)).storeId : validUuid(req.query.store_id, 'Store ID')
+    const storeId = terminal ? (await requireCashierCapability(req, db, 'register')).storeId : validUuid(req.query.store_id, 'Store ID')
     if (!terminal) await ownerStore(req, storeId)
     if (terminal && req.query.store_id !== undefined && req.query.store_id !== storeId) throw new ApiError(403, 'cross_store_reference', 'This terminal belongs to a different store.')
     const phoneTerm = phone(req.query.phone)
@@ -192,7 +192,7 @@ export async function loadCustomerSummary(storeId: string, customerId: string): 
 
 async function summary(req: Request, res: Response, terminal = false) {
   try {
-    const storeId = terminal ? (await requireCashierTerminal(req, db)).storeId : validUuid(req.query.store_id, 'Store ID')
+    const storeId = terminal ? (await requireCashierCapability(req, db, 'register')).storeId : validUuid(req.query.store_id, 'Store ID')
     if (!terminal) await ownerStore(req, storeId)
     const customerId = validUuid(req.params.id, 'Customer ID')
     res.json(await loadCustomerSummary(storeId, customerId))

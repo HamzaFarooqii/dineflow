@@ -1,7 +1,8 @@
 import { Router, type Request, type Response } from 'express'
 import { db } from '../db.js'
 import { requireStoreMember, requireStoreManager, sendApiError, ApiError } from './auth.js'
-import { requireCashierTerminal } from '../terminal-auth/routes.js'
+import { requireCashierCapability } from '../terminal-auth/routes.js'
+import { consumeManagerApproval } from '../terminal-auth/manager-approval.js'
 
 export const inventoryRouter = Router()
 export const terminalInventoryRouter = Router()
@@ -42,19 +43,31 @@ function isUniqueViolation(reason: unknown): boolean {
   return Boolean(reason && typeof reason === 'object' && 'code' in reason && (reason as { code?: string }).code === '23505')
 }
 
-// --- Auth: owner/manager web session, or a cashier terminal with manager PIN evidence -------
+// --- Auth: owner/manager web session, or a cashier terminal with a verified manager approval ---
 //
-// Every write also works from a cashier terminal, but a cashier's own authority stops at
-// viewing stock — actually changing it (adding an ingredient, receiving a batch, wastage) needs
-// a manager's PIN, verified entirely client-side and never transmitted; only manager_id +
-// manager_approved_at cross the wire, exactly like pos_orders' over-authority-discount evidence
-// (see orders.ts). The paired-or-both-null check mirrors that same convention.
+// Every write also works from a cashier terminal, but the initiating employee needs the
+// 'inventory' capability (inventory_manager/manager), and actually changing stock (adding an
+// ingredient, receiving a batch, wastage) additionally needs a manager's approval for that exact
+// action. Preferred path: manager_approval_token, a short-lived single-use token the terminal
+// obtained from POST /pos/manager-approvals by having a manager type their PIN, verified live by
+// the server against that employee's own stored PBKDF2 hash (terminal-auth/manager-approval.ts)
+// and bound to this store/device/action/payload. Legacy fallback: manager_id + manager_approved_at
+// supplied directly by the client, kept only so the currently-shipped terminal UI (which does not
+// yet request a token) keeps working -- this never independently proves a PIN was entered for
+// this action, only that the referenced id belongs to an active manager. Closing this gap for
+// good means updating the Inventory screens to request and send a token instead; see this file's
+// endpoint matrix note and the PR's follow-up list.
 interface WriterContext { employeeId: string | null; managerId: string | null; managerApprovedAt: string | null }
 
-async function requireTerminalWriter(req: Request, storeId: string): Promise<WriterContext> {
-  const session = await requireCashierTerminal(req, db)
+async function requireTerminalWriter(req: Request, storeId: string, action: string, payload: Record<string, unknown>): Promise<WriterContext> {
+  const session = await requireCashierCapability(req, db, 'inventory')
   if (session.storeId !== storeId) throw new ApiError(403, 'cross_store_reference', 'This terminal belongs to a different store.')
   const body = req.body as Record<string, unknown>
+  const approvalToken = body.manager_approval_token
+  if (typeof approvalToken === 'string' && approvalToken) {
+    const managerId = await consumeManagerApproval(db, { storeId, deviceId: session.deviceId, action, payload, token: approvalToken })
+    return { employeeId: session.employeeId, managerId, managerApprovedAt: new Date().toISOString() }
+  }
   const managerId = body.manager_id === null || body.manager_id === undefined ? null : String(body.manager_id)
   const managerApprovedAt = body.manager_approved_at === null || body.manager_approved_at === undefined ? null : String(body.manager_approved_at)
   if (managerId !== null && !UUID_RE.test(managerId)) throw new ApiError(422, 'validation_failed', 'A valid manager_id is required.')
@@ -71,8 +84,8 @@ async function requireTerminalWriter(req: Request, storeId: string): Promise<Wri
 
 // The web path (owner/manager signed in directly) has no separate "employee"/"manager" —
 // the signed-in user is both the actor and the authority, matching requireStoreManager elsewhere.
-async function requireWriter(req: Request, storeId: string, terminal: boolean): Promise<{ userId: string | null } & WriterContext> {
-  if (terminal) return { userId: null, ...await requireTerminalWriter(req, storeId) }
+async function requireWriter(req: Request, storeId: string, terminal: boolean, action: string, payload: Record<string, unknown>): Promise<{ userId: string | null } & WriterContext> {
+  if (terminal) return { userId: null, ...await requireTerminalWriter(req, storeId, action, payload) }
   const userId = await requireStoreManager(req, storeId)
   return { userId, employeeId: null, managerId: null, managerApprovedAt: null }
 }
@@ -118,7 +131,7 @@ async function listIngredients(req: Request, res: Response, terminal = false) {
   try {
     const storeId = storeIdParam(req)
     if (terminal) {
-      const session = await requireCashierTerminal(req, db)
+      const session = await requireCashierCapability(req, db, 'inventory')
       if (session.storeId !== storeId) throw new ApiError(403, 'cross_store_reference', 'This terminal belongs to a different store.')
     } else {
       await requireStoreMember(req, storeId)
@@ -150,8 +163,9 @@ async function fetchIngredientById(storeId: string, ingredientId: string): Promi
 async function createIngredient(req: Request, res: Response, terminal = false) {
   try {
     const storeId = storeIdParam(req)
-    const writer = await requireWriter(req, storeId, terminal)
     const body = req.body as Record<string, unknown>
+    const writer = await requireWriter(req, storeId, terminal, 'inventory.ingredient.create',
+      { name: body.name, unit_id: body.unit_id, cost_per_unit_cents: body.cost_per_unit_cents, reorder_threshold: body.reorder_threshold ?? null })
     const name = nonEmptyText(body.name, 'Ingredient name', 120)
     const unitId = String(body.unit_id ?? '')
     if (!UUID_RE.test(unitId)) throw new ApiError(422, 'validation_failed', 'A valid unit_id is required.')
@@ -176,9 +190,10 @@ async function createIngredient(req: Request, res: Response, terminal = false) {
 async function updateIngredient(req: Request, res: Response, terminal = false) {
   try {
     const storeId = storeIdParam(req)
-    await requireWriter(req, storeId, terminal)
     const ingredientId = idParam(req)
     const body = req.body as Record<string, unknown>
+    await requireWriter(req, storeId, terminal, 'inventory.ingredient.update',
+      { ingredient_id: ingredientId, name: body.name, unit_id: body.unit_id, cost_per_unit_cents: body.cost_per_unit_cents, reorder_threshold: body.reorder_threshold })
     const updates: string[] = []
     const values: unknown[] = []
     let index = 1
@@ -212,8 +227,8 @@ async function updateIngredient(req: Request, res: Response, terminal = false) {
 async function deactivateIngredient(req: Request, res: Response, terminal = false) {
   try {
     const storeId = storeIdParam(req)
-    await requireWriter(req, storeId, terminal)
     const ingredientId = idParam(req)
+    await requireWriter(req, storeId, terminal, 'inventory.ingredient.deactivate', { ingredient_id: ingredientId })
     const result = await db.query<{ id: string }>(
       `update public.ingredients set active = false where id = $1 and store_id = $2 and active = true returning id`,
       [ingredientId, storeId],
@@ -228,8 +243,8 @@ async function deactivateIngredient(req: Request, res: Response, terminal = fals
 async function reactivateIngredient(req: Request, res: Response, terminal = false) {
   try {
     const storeId = storeIdParam(req)
-    await requireWriter(req, storeId, terminal)
     const ingredientId = idParam(req)
+    await requireWriter(req, storeId, terminal, 'inventory.ingredient.reactivate', { ingredient_id: ingredientId })
     const result = await db.query<{ id: string }>(
       `update public.ingredients set active = true where id = $1 and store_id = $2 and active = false returning id`,
       [ingredientId, storeId],
@@ -302,9 +317,12 @@ async function recordBatch(req: Request, res: Response, terminal = false) {
   const client = await db.connect()
   try {
     const storeId = storeIdParam(req)
-    const writer = await requireWriter(req, storeId, terminal)
     const ingredientId = idParam(req)
     const body = req.body as Record<string, unknown>
+    const writer = await requireWriter(req, storeId, terminal, 'inventory.batch.receive', {
+      ingredient_id: ingredientId, quantity: body.quantity, cost_per_unit_cents: body.cost_per_unit_cents,
+      expires_at: body.expires_at ?? null, received_at: body.received_at ?? null, reference: body.reference ?? null,
+    })
     const quantity = positiveNumber(body.quantity, 'quantity')
     const costPerUnitCents = nonNegativeInt(body.cost_per_unit_cents, 'cost_per_unit_cents')
     const expiresAt = body.expires_at !== undefined && body.expires_at !== null ? String(body.expires_at) : null
@@ -349,7 +367,7 @@ async function listBatches(req: Request, res: Response, terminal = false) {
   try {
     const storeId = storeIdParam(req)
     if (terminal) {
-      const session = await requireCashierTerminal(req, db)
+      const session = await requireCashierCapability(req, db, 'inventory')
       if (session.storeId !== storeId) throw new ApiError(403, 'cross_store_reference', 'This terminal belongs to a different store.')
     } else {
       await requireStoreMember(req, storeId)
@@ -390,7 +408,7 @@ async function listMovements(req: Request, res: Response, terminal = false) {
   try {
     const storeId = storeIdParam(req)
     if (terminal) {
-      const session = await requireCashierTerminal(req, db)
+      const session = await requireCashierCapability(req, db, 'inventory')
       if (session.storeId !== storeId) throw new ApiError(403, 'cross_store_reference', 'This terminal belongs to a different store.')
     } else {
       await requireStoreMember(req, storeId)
@@ -463,9 +481,10 @@ async function recordWastage(req: Request, res: Response, terminal = false) {
   const client = await db.connect()
   try {
     const storeId = storeIdParam(req)
-    const writer = await requireWriter(req, storeId, terminal)
     const ingredientId = idParam(req)
     const body = req.body as Record<string, unknown>
+    const writer = await requireWriter(req, storeId, terminal, 'inventory.wastage.record',
+      { ingredient_id: ingredientId, quantity: body.quantity, note: body.note ?? null, batch_id: body.batch_id ?? null })
     const quantity = positiveNumber(body.quantity, 'quantity')
     const note = body.note !== undefined && body.note !== null ? nonEmptyText(body.note, 'note', 500) : null
     const explicitBatchId = body.batch_id !== undefined && body.batch_id !== null ? String(body.batch_id) : null
@@ -523,7 +542,7 @@ async function getExpiringBatchCount(req: Request, res: Response, terminal = fal
   try {
     const storeId = storeIdParam(req)
     if (terminal) {
-      const session = await requireCashierTerminal(req, db)
+      const session = await requireCashierCapability(req, db, 'inventory')
       if (session.storeId !== storeId) throw new ApiError(403, 'cross_store_reference', 'This terminal belongs to a different store.')
     } else {
       await requireStoreMember(req, storeId)
