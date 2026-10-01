@@ -13,6 +13,9 @@ export const DELIVERY_STATUS_TONE: Record<DeliveryStatus, BadgeTone> = {
   pending: 'warning', accepted: 'info', picked_up: 'info', out_for_delivery: 'saffron', delivered: 'success', failed: 'danger',
 }
 
+export type KitchenTicketStatus = 'queued' | 'preparing' | 'ready' | 'served' | 'cancelled'
+export type EtaBasis = 'configured' | 'historical_average' | 'unavailable'
+
 export interface DeliveryOrder {
   id: string
   store_id: string
@@ -35,6 +38,14 @@ export interface DeliveryOrder {
   out_for_delivery_at: string | null
   delivered_at: string | null
   failed_at: string | null
+  // Derived server-side (delivery.ts) from the order's actual kitchen ticket -- never inferred
+  // client-side from the delivery's own age or status. kitchen_status is null only when no
+  // kitchen ticket exists at all (should not happen for a real order, but is handled honestly).
+  kitchen_status?: KitchenTicketStatus | null
+  kitchen_ready?: boolean
+  // Honest ETA: null means "no estimate available" (eta_basis explains why), never a guess.
+  estimated_delivery_at?: string | null
+  eta_basis?: EtaBasis
 }
 
 export interface DeliveryStatusEvent {
@@ -117,12 +128,22 @@ export async function assignRider(storeId: string, deliveryId: string, riderId: 
 
 // Manager-driven transition (e.g. marking a delivery failed by hand). expectedStatus/operationId
 // follow the same optimistic-concurrency + idempotency contract as the rider-side one below.
+// proofCode is required by the server when status is 'delivered' -- there is no manager override
+// that skips it, since that would defeat proof-of-delivery's entire purpose.
 export async function ownerTransitionDelivery(
-  storeId: string, deliveryId: string, expectedStatus: DeliveryStatus, status: DeliveryStatus, operationId: string, failureReason?: string,
+  storeId: string, deliveryId: string, expectedStatus: DeliveryStatus, status: DeliveryStatus, operationId: string, failureReason?: string, proofCode?: string,
 ): Promise<DeliveryOrder> {
   return deliveryRequest<DeliveryOrder>(`/${deliveryId}/status`, storeId, 'PATCH', {
-    expected_status: expectedStatus, status, operation_id: operationId, failure_reason: failureReason ?? undefined,
+    expected_status: expectedStatus, status, operation_id: operationId, failure_reason: failureReason ?? undefined, proof_code: proofCode ?? undefined,
   })
+}
+
+// Manager-only: issues a brand-new proof-of-delivery code, invalidating any still-active one --
+// for a lost code or an attempt-locked one. Returns the plaintext code exactly once; relay it to
+// the customer the same way the original was meant to reach them (phone/in person).
+export async function reissueDeliveryProof(storeId: string, deliveryId: string): Promise<string> {
+  const result = await deliveryRequest<{ proof_code: string }>(`/${deliveryId}/proof/reissue`, storeId, 'POST', {})
+  return result.proof_code
 }
 
 // --- Rider terminal ---------------------------------------------------------------------------
@@ -143,10 +164,10 @@ export async function fetchMyDeliveries(storeId: string): Promise<DeliveryOrder[
 // conflict to the rider (e.g. "Someone already marked this delivered — refresh"), never retry
 // blindly with the same expectedStatus.
 export async function advanceMyDelivery(
-  storeId: string, deliveryId: string, expectedStatus: DeliveryStatus, status: DeliveryStatus, operationId: string, failureReason?: string,
+  storeId: string, deliveryId: string, expectedStatus: DeliveryStatus, status: DeliveryStatus, operationId: string, failureReason?: string, proofCode?: string,
 ): Promise<DeliveryOrder> {
   return deliveryRequest<DeliveryOrder>(`/${deliveryId}/status`, storeId, 'PATCH', {
-    expected_status: expectedStatus, status, operation_id: operationId, failure_reason: failureReason ?? undefined,
+    expected_status: expectedStatus, status, operation_id: operationId, failure_reason: failureReason ?? undefined, proof_code: proofCode ?? undefined,
   }, true)
 }
 

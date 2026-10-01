@@ -53,6 +53,8 @@ const chain = [
   '202609290002_sellable_combos.sql',
   '202610010001_terminal_manager_approvals.sql',
   '202610010002_public_rate_limits.sql',
+  '202610020001_delivery_target_minutes.sql',
+  '202610020002_delivery_proofs.sql',
 ]
 
 const digest = (value: string) => createHash('sha256').update(value).digest('hex')

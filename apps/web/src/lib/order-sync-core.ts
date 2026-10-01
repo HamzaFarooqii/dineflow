@@ -32,7 +32,7 @@ export function canRetrySync(entry: Pick<OutboxEntry, 'status' | 'failure_kind'>
 export type PushReply = {
   ok: boolean
   status: number
-  body: { status?: string; operation_id?: string; accepted_checkpoint?: string; code?: string; message?: string }
+  body: { status?: string; operation_id?: string; accepted_checkpoint?: string; code?: string; message?: string; delivery_confirmation_code?: string }
 }
 export type SendOperation = (entry: OutboxEntry) => Promise<PushReply>
 
@@ -80,7 +80,7 @@ async function claimOne(storeId: string): Promise<OutboxEntry | undefined> {
   })
 }
 async function finish(entry: OutboxEntry, accepted: boolean, code: string | null, message: string | null,
-  checkpoint: string | null, failureKind: OutboxEntry['failure_kind']) {
+  checkpoint: string | null, failureKind: OutboxEntry['failure_kind'], deliveryConfirmationCode: string | null = null) {
   await posDb.transaction('rw', posDb.outbox, posDb.orders, posDb.customers, posDb.stock_adjustments, posDb.sync_metadata, async () => {
     const current = await posDb.outbox.get(entry.id!)
     if (!current || current.lease_owner !== owner) return
@@ -92,7 +92,8 @@ async function finish(entry: OutboxEntry, accepted: boolean, code: string | null
       const payload = JSON.parse(entry.payload) as { customer: { id: string } }
       await posDb.customers.update(payload.customer.id, { sync_status: accepted ? 'synced' : failureKind === 'validation' ? 'failed' : 'pending', failure_reason: message })
     } else await posDb.orders.update(entry.order_id, { sync_status: accepted ? 'synced' : failureKind === 'validation' ? 'failed' : 'pending',
-      accepted_checkpoint: checkpoint, failure_reason: message })
+      accepted_checkpoint: checkpoint, failure_reason: message,
+      ...(deliveryConfirmationCode !== null ? { delivery_confirmation_code: deliveryConfirmationCode } : {}) })
     if (accepted) {
       const adjustments = await posDb.stock_adjustments.where('operation_id').equals(entry.operation_id).toArray()
       for (const adjustment of adjustments) await posDb.stock_adjustments.put({ ...adjustment, accepted_checkpoint: checkpoint })
@@ -120,7 +121,7 @@ export async function pushOrdersForStore(storeId: string, send: SendOperation): 
       const body = response.body
       if (response.ok && (body.status === 'accepted' || body.status === 'replayed') && body.operation_id === entry.operation_id &&
         typeof body.accepted_checkpoint === 'string' && /^\d+$/.test(body.accepted_checkpoint)) {
-        await finish(entry, true, null, null, body.accepted_checkpoint, null)
+        await finish(entry, true, null, null, body.accepted_checkpoint, null, body.delivery_confirmation_code ?? null)
         accepted += 1
       } else if (response.status === 401 || response.status === 403) {
         await finish(entry, false, body.code ?? 'authentication_required', body.message ?? 'Sign in to resume sync.', null, 'authentication')

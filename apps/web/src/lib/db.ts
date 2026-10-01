@@ -149,6 +149,10 @@ export interface LocalOrder {
   refunded_tax_cents?: number
   refunded_tip_cents?: number
   refunded_merchandise_cents?: number
+  // Set once, from the push response, the first time a delivery order's checkout syncs
+  // (delivery.ts's createDeliveryOrderSnapshot issues it server-side; never regenerated here).
+  // Shown once on this screen for whoever took the order to relay to the customer.
+  delivery_confirmation_code?: string | null
 }
 
 export interface LocalCustomer {

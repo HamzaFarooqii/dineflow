@@ -16,6 +16,7 @@ const NEXT_STEP: Partial<Record<DeliveryStatus, { to: DeliveryStatus; label: str
 const STATUS_LABEL: Record<DeliveryStatus, string> = {
   pending: 'New', accepted: 'Accepted', picked_up: 'Picked up', out_for_delivery: 'Out for delivery', delivered: 'Delivered', failed: 'Failed',
 }
+const PROOF_CODE_RE = /^\d{6}$/
 
 // Rider terminal: exactly the three capabilities the Rider role has — view assigned deliveries,
 // accept, and advance one's own delivery through the lifecycle. No listing of other riders' or
@@ -55,12 +56,12 @@ export function RiderDeliveryScreen() {
     return () => { active = false; window.clearInterval(interval) }
   }, [storeId])
 
-  const advance = async (delivery: DeliveryOrder, toStatus: DeliveryStatus, failureReason?: string) => {
+  const advance = async (delivery: DeliveryOrder, toStatus: DeliveryStatus, failureReason?: string, proofCode?: string) => {
     setBusyId(delivery.id)
     setError('')
     setConflict('')
     try {
-      await advanceMyDelivery(storeId, delivery.id, delivery.status, toStatus, newOperationId(), failureReason)
+      await advanceMyDelivery(storeId, delivery.id, delivery.status, toStatus, newOperationId(), failureReason, proofCode)
       await load(storeId)
     } catch (reason) {
       if (reason instanceof DeliveryConflictError) {
@@ -80,6 +81,16 @@ export function RiderDeliveryScreen() {
     await advance(delivery, 'failed', reason.trim())
   }
 
+  // The customer gives this code back at the door (it was read to them when the order was taken
+  // -- no SMS/push provider exists here to send it any other way). Server-verified, attempt-
+  // limited and single-use; a manager can reissue one from Dispatch if it's lost or locked out.
+  const markDelivered = async (delivery: DeliveryOrder) => {
+    const code = window.prompt('Enter the customer\'s 6-digit proof-of-delivery code:')
+    if (!code) return
+    if (!PROOF_CODE_RE.test(code.trim())) { setError('That code must be exactly 6 digits.'); return }
+    await advance(delivery, 'delivered', undefined, code.trim())
+  }
+
   return <section className="rider-page">
     <PageHeader kicker="RIDER TERMINAL" title="My deliveries" subtitle="Deliveries assigned to you right now." />
     {error && <p className="form-notice error" role="alert">{error}</p>}
@@ -90,6 +101,12 @@ export function RiderDeliveryScreen() {
       {deliveries.map(delivery => {
         const next = NEXT_STEP[delivery.status]
         const terminal = delivery.status === 'delivered' || delivery.status === 'failed'
+        // Pickup is blocked ahead of a rejected request whenever the server already told us the
+        // kitchen isn't ready (kitchen_ready is undefined only on a stale cached row, in which
+        // case we let the tap through and let the server's own gate answer authoritatively).
+        const pickupBlocked = delivery.status === 'accepted' && delivery.kitchen_ready === false
+        const nextDisabled = busyId === delivery.id || pickupBlocked
+        const onNext = () => next && void (next.to === 'delivered' ? markDelivered(delivery) : advance(delivery, next.to))
         return <article className="rider-card" key={delivery.id}>
           <div className="rider-card-head">
             <span className="rider-card-receipt">{delivery.receipt_number ?? delivery.order_id.slice(0, 8)}</span>
@@ -98,8 +115,9 @@ export function RiderDeliveryScreen() {
           <p className="rider-card-field"><b>{delivery.recipient_name_snapshot}</b> · {delivery.contact_phone_snapshot}</p>
           <p className="rider-card-field">{delivery.address_snapshot}</p>
           {delivery.delivery_instructions_snapshot && <p className="rider-card-field">Note: {delivery.delivery_instructions_snapshot}</p>}
+          {pickupBlocked && <p className="rider-card-field">Waiting on the kitchen ({delivery.kitchen_status ?? 'not started'}) before this can be picked up.</p>}
           {!terminal && <div className="rider-card-actions">
-            {next && <button type="button" disabled={busyId === delivery.id} onClick={() => void advance(delivery, next.to)}>{next.label}</button>}
+            {next && <button type="button" disabled={nextDisabled} title={pickupBlocked ? 'The kitchen has not finished preparing this order yet.' : undefined} onClick={onNext}>{next.label}</button>}
             <button type="button" className="danger" disabled={busyId === delivery.id} onClick={() => void markFailed(delivery)}>Mark failed</button>
           </div>}
         </article>

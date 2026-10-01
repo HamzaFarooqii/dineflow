@@ -10,7 +10,7 @@ async function getStore(req: import('express').Request, res: import('express').R
     if (!UUID_RE.test(storeId)) throw new ApiError(400, 'validation_failed', 'A valid store ID is required.')
     await requireStoreMember(req, storeId)
     const result = await db.query(
-      'select id, name, timezone, currency, address, country, service_charge_bps from public.stores where id=$1',
+      'select id, name, timezone, currency, address, country, service_charge_bps, delivery_target_minutes from public.stores where id=$1',
       [storeId],
     )
     if (!result.rows[0]) throw new ApiError(404, 'not_found', 'Store not found.')
@@ -73,6 +73,16 @@ async function patchStore(req: import('express').Request, res: import('express')
       }
       updates.push(`service_charge_bps = $${index++}`); values.push(serviceChargeBps)
     }
+    // Explicit ETA configuration (delivery.ts's loadEtaBasis prefers this over a historical
+    // average when set). null clears it, falling back to that historical average again -- not
+    // the same as 0, which would claim every delivery arrives instantly.
+    if (body.delivery_target_minutes !== undefined) {
+      const deliveryTargetMinutes = body.delivery_target_minutes === null ? null : Number(body.delivery_target_minutes)
+      if (deliveryTargetMinutes !== null && (!Number.isInteger(deliveryTargetMinutes) || deliveryTargetMinutes < 1 || deliveryTargetMinutes > 360)) {
+        throw new ApiError(422, 'validation_failed', 'delivery_target_minutes must be an integer between 1 and 360, or null to clear it.')
+      }
+      updates.push(`delivery_target_minutes = $${index++}`); values.push(deliveryTargetMinutes)
+    }
     if (!updates.length) throw new ApiError(422, 'validation_failed', 'No fields to update were provided.')
 
     const changingCurrency = newCurrency !== null && newCurrency !== currentCurrency
@@ -93,7 +103,7 @@ async function patchStore(req: import('express').Request, res: import('express')
       values.push(storeId)
       const result = await client.query(
         `update public.stores set ${updates.join(', ')}, updated_at = now() where id = $${index}
-         returning id, name, timezone, currency, address, country, service_charge_bps`,
+         returning id, name, timezone, currency, address, country, service_charge_bps, delivery_target_minutes`,
         values,
       )
       if (!result.rows[0]) throw new ApiError(404, 'not_found', 'Store not found.')

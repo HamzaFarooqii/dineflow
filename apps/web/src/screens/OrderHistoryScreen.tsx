@@ -138,6 +138,9 @@ export function OrderHistoryScreen({ terminal = false }: { terminal?: boolean })
           <Link className="receipt-detail-link" to={`${terminal ? '/pos/orders' : '/orders'}/${encodeURIComponent(order.id)}`}>View check / print</Link>
           {canRetry && <button type="button" disabled={busy} onClick={() => void sync(order.id)}>Retry now</button>}
           {failureMsg && <p className="history-reason">{failureMsg}</p>}
+          {order.order_type === 'delivery' && order.delivery_confirmation_code && (
+            <p className="history-reason">Delivery code: <b>{order.delivery_confirmation_code}</b> — relay to the customer now (shown once, not stored elsewhere).</p>
+          )}
         </article>
       )
     })}</div>

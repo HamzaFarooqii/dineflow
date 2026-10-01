@@ -279,6 +279,7 @@ export type ValidatedOperation = ReturnType<typeof validateOperation>
 // Caller is responsible for the operation-ledger replay check (see push() below) and for holding
 // this all inside a single `client` transaction that it begins/commits/rolls back itself.
 export async function createPaidOrder(client: import('pg').PoolClient, operation: ValidatedOperation, payloadHash: string) {
+      let deliveryConfirmationCode: string | null = null
       const store = await client.query('select name,timezone,currency from public.stores where id=$1', [operation.storeId])
       if (!store.rows[0]) throw new ApiError(422, 'cross_store_reference', 'Store no longer exists.')
       const productIds = [...new Set(operation.items.map(item => item.product_id))]
@@ -417,11 +418,15 @@ export async function createPaidOrder(client: import('pg').PoolClient, operation
           operation.order.employee_id, operation.order.manager_id, operation.order.manager_approved_at,
           operation.order.order_type, operation.order.table_id])
       if (operation.deliveryDetails) {
-        await createDeliveryOrderSnapshot(client, {
+        const delivery = await createDeliveryOrderSnapshot(client, {
           storeId: operation.storeId, orderId: operation.operationId,
           recipientName: operation.deliveryDetails.recipientName, contactPhone: operation.deliveryDetails.contactPhone,
           address: operation.deliveryDetails.address, instructions: operation.deliveryDetails.instructions,
         })
+        // Surfaced once, in this same checkout response, for whoever is taking this (phone) order
+        // to read to the customer right now -- see delivery.ts's own comment on why this is the
+        // chosen channel (no SMS/push provider exists here) and its offline-sync caveat.
+        deliveryConfirmationCode = delivery.proofCode
       }
       for (const item of items) {
         await client.query(`insert into public.pos_order_items(id,store_id,order_id,product_id,snapshot_name,snapshot_sku,
@@ -550,7 +555,13 @@ export async function createPaidOrder(client: import('pg').PoolClient, operation
       await client.query(`insert into public.pos_change_feed(store_id,position,entity_type,entity_id,payload)
         values ($1,$2,'order',$3,$4)`, [operation.storeId, position.toString(), operation.operationId, { receipt_number: operation.order.receipt_number }])
       await client.query('update public.pos_sync_feed_state set last_position=$2 where store_id=$1', [operation.storeId, position.toString()])
-      const result = { status: 'accepted', operation_id: operation.operationId, accepted_checkpoint: position.toString() }
+      const result = {
+        status: 'accepted', operation_id: operation.operationId, accepted_checkpoint: position.toString(),
+        // Present (and only ever present) on a delivery order's first successful sync -- never
+        // regenerated here, so a replay of this same operation_id (the hash-matched early-return
+        // in push(), above) returns this exact persisted result_json, same code, every time.
+        ...(deliveryConfirmationCode !== null ? { delivery_confirmation_code: deliveryConfirmationCode } : {}),
+      }
       await client.query(`insert into public.pos_operation_ledger(store_id,operation_id,payload_hash,status,result_json,accepted_checkpoint)
         values ($1,$2,$3,'accepted',$4,$5)`, [operation.storeId, operation.operationId, payloadHash, result, position.toString()])
       return result

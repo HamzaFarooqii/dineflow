@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { deriveTicketStatus, KITCHEN_TICKET_ITEM_TRANSITIONS, type KitchenTicketStatus } from './kitchen-ticket-status.ts'
+import { deriveTicketStatus, isTicketReadyForHandoff, KITCHEN_TICKET_ITEM_TRANSITIONS, type KitchenTicketStatus } from './kitchen-ticket-status.ts'
 
 test('a ticket with no items yet, or all-queued items, is queued', () => {
   assert.equal(deriveTicketStatus([]), 'queued')
@@ -21,6 +21,13 @@ test('the ticket is served only once every active item is served', () => {
 test('cancelled items are ignored unless every item on the ticket is cancelled', () => {
   assert.equal(deriveTicketStatus(['served', 'cancelled']), 'served')
   assert.equal(deriveTicketStatus(['cancelled', 'cancelled']), 'cancelled')
+})
+test('handoff readiness is true only for ready/served, never for a wholly-cancelled ticket', () => {
+  assert.equal(isTicketReadyForHandoff('ready'), true)
+  assert.equal(isTicketReadyForHandoff('served'), true)
+  assert.equal(isTicketReadyForHandoff('queued'), false)
+  assert.equal(isTicketReadyForHandoff('preparing'), false)
+  assert.equal(isTicketReadyForHandoff('cancelled'), false)
 })
 test('item transitions are forward-only, ending at served, with cancellation available until then', () => {
   const statuses: KitchenTicketStatus[] = ['queued', 'preparing', 'ready', 'served', 'cancelled']

@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useState } from 'react'
 import { requireSupabase } from '../../lib/supabase'
 import {
-  assignRider, fetchDispatchKpis, fetchDispatchList, fetchDeliveryTimeline, newOperationId, ownerTransitionDelivery,
+  assignRider, fetchDispatchKpis, fetchDispatchList, fetchDeliveryTimeline, newOperationId, ownerTransitionDelivery, reissueDeliveryProof,
   DeliveryConflictError, DELIVERY_STATUS_TONE, type DeliveryKpis, type DeliveryOrder, type DeliveryStatus, type DeliveryStatusEvent,
 } from '../../lib/delivery'
 import { PageHeader } from '../../components/PageHeader'
@@ -11,6 +11,9 @@ import './delivery.css'
 const POLL_MS = 20_000
 const STATUS_LABEL: Record<DeliveryStatus, string> = {
   pending: 'Pending', accepted: 'Accepted', picked_up: 'Picked up', out_for_delivery: 'Out for delivery', delivered: 'Delivered', failed: 'Failed',
+}
+const KITCHEN_LABEL: Record<string, string> = {
+  queued: 'Queued', preparing: 'Preparing', ready: 'Ready', served: 'Served', cancelled: 'Cancelled',
 }
 interface RiderOption { id: string; name: string }
 
@@ -104,6 +107,19 @@ export function DispatchScreen() {
     try { setTimeline(await fetchDeliveryTimeline(storeId, delivery.id)) } catch { setTimeline([]) }
   }
 
+  // Manager-only escape hatch for a lost or attempt-locked proof-of-delivery code (delivery.ts's
+  // reissueProof invalidates the old one). The new code is only ever shown once, here, right after
+  // issuance -- relay it to the customer the same way the original was meant to reach them.
+  const onReissueProof = async (delivery: DeliveryOrder) => {
+    setBusyId(delivery.id)
+    setError('')
+    try {
+      const code = await reissueDeliveryProof(storeId, delivery.id)
+      window.alert(`New proof-of-delivery code for ${delivery.receipt_number ?? delivery.order_id.slice(0, 8)}: ${code}\n\nRelay this to the customer now.`)
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not reissue a proof code.') }
+    finally { setBusyId(null) }
+  }
+
   return <section className="delivery-page">
     <PageHeader kicker="DELIVERY" title="Dispatch" subtitle="Every delivery-type order for this store, and who's carrying it." />
     {error && <p className="form-notice error" role="alert">{error}</p>}
@@ -121,7 +137,7 @@ export function DispatchScreen() {
     {!loading && !error && deliveries.length === 0 && <p className="delivery-empty">No delivery orders yet.</p>}
     {!loading && deliveries.length > 0 && <div className="dispatch-table-wrap">
       <table className="dispatch-table">
-        <thead><tr><th>Order</th><th>Recipient</th><th>Address</th><th>Status</th><th>Rider</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Order</th><th>Recipient</th><th>Address</th><th>Status</th><th>Kitchen</th><th>ETA</th><th>Rider</th><th>Actions</th></tr></thead>
         <tbody>
           {deliveries.map(delivery => <Fragment key={delivery.id}>
             <tr>
@@ -129,6 +145,8 @@ export function DispatchScreen() {
               <td>{delivery.recipient_name_snapshot}<br /><small>{delivery.contact_phone_snapshot}</small></td>
               <td>{delivery.address_snapshot}</td>
               <td><StatusBadge tone={DELIVERY_STATUS_TONE[delivery.status]}>{STATUS_LABEL[delivery.status]}</StatusBadge></td>
+              <td>{delivery.kitchen_status ? KITCHEN_LABEL[delivery.kitchen_status] : '—'}</td>
+              <td>{delivery.estimated_delivery_at ? new Date(delivery.estimated_delivery_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '—'}</td>
               <td>
                 <select value={delivery.rider_id ?? ''} disabled={busyId === delivery.id || !['pending', 'accepted'].includes(delivery.status)}
                   onChange={event => void onAssign(delivery, event.target.value)}>
@@ -139,11 +157,14 @@ export function DispatchScreen() {
               <td>
                 <button type="button" onClick={() => void toggleTimeline(delivery)}>{timelineFor === delivery.id ? 'Hide' : 'Timeline'}</button>
                 {' '}
-                {delivery.status !== 'delivered' && delivery.status !== 'failed' &&
-                  <button type="button" disabled={busyId === delivery.id} onClick={() => void onForceStatus(delivery, 'failed')}>Mark failed</button>}
+                {delivery.status !== 'delivered' && delivery.status !== 'failed' && <>
+                  <button type="button" disabled={busyId === delivery.id} onClick={() => void onForceStatus(delivery, 'failed')}>Mark failed</button>
+                  {' '}
+                  <button type="button" disabled={busyId === delivery.id} onClick={() => void onReissueProof(delivery)}>Reissue proof code</button>
+                </>}
               </td>
             </tr>
-            {timelineFor === delivery.id && <tr><td colSpan={6}>
+            {timelineFor === delivery.id && <tr><td colSpan={8}>
               <ul className="dispatch-timeline">
                 {timeline.map(event => <li key={event.id}>{event.created_at} — {event.from_status ?? '∅'} → {event.to_status} ({event.actor_type}){event.note ? ` — ${event.note}` : ''}</li>)}
                 {timeline.length === 0 && <li>No transitions recorded yet.</li>}

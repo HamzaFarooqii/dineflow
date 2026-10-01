@@ -24,6 +24,7 @@ interface StoreRecord {
   address: string | null
   country: string | null
   service_charge_bps: number
+  delivery_target_minutes: number | null
 }
 
 export function StoreDetails() {
@@ -81,12 +82,23 @@ export function StoreDetails() {
         setSaving(false)
         return
       }
+      const deliveryTargetRaw = String(form.get('delivery_target_minutes') ?? '').trim()
+      let deliveryTargetMinutes: number | null = null
+      if (deliveryTargetRaw !== '') {
+        deliveryTargetMinutes = Math.round(Number(deliveryTargetRaw))
+        if (!Number.isFinite(deliveryTargetMinutes) || deliveryTargetMinutes < 1 || deliveryTargetMinutes > 360) {
+          setError('Delivery target must be between 1 and 360 minutes, or left blank.')
+          setSaving(false)
+          return
+        }
+      }
       const body = {
         currency,
         timezone: String(form.get('timezone')).trim(),
         address: String(form.get('address')).trim() || null,
         country: String(form.get('country')).trim().toUpperCase() || null,
         service_charge_bps: serviceChargeBps,
+        delivery_target_minutes: deliveryTargetMinutes,
       }
       const token = await accessToken()
       const response = await fetch(`${configuredApiUrl()}/stores/${storeId}`, {
@@ -192,6 +204,18 @@ export function StoreDetails() {
                   defaultValue={store.service_charge_bps ? (store.service_charge_bps / 100).toFixed(2) : ''} placeholder="0" style={{ maxWidth: 160 }} />
               </div>
               <p className="pc-field-hint">Added to every sale on top of tax, e.g. 10 for a 10% service charge. Leave blank or 0 for none.</p>
+            </div>
+
+            <div className="pc-group">
+              <p className="pc-group-label">Delivery</p>
+              <div className="pc-field">
+                <label htmlFor="sf-delivery-target">
+                  Target delivery time <span className="pc-opt">optional, minutes</span>
+                </label>
+                <input id="sf-delivery-target" name="delivery_target_minutes" type="number" min={1} max={360} step="1"
+                  defaultValue={store.delivery_target_minutes ?? ''} placeholder="e.g. 35" style={{ maxWidth: 160 }} />
+              </div>
+              <p className="pc-field-hint">Used to show riders and Dispatch an estimated delivery time. Leave blank to estimate from this restaurant's own delivery history instead.</p>
             </div>
 
             <div className="pc-group">

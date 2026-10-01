@@ -55,3 +55,15 @@ export function deriveTicketStatus(itemStatuses: readonly KitchenTicketStatus[])
   if (active.some(status => status === 'preparing' || status === 'ready' || status === 'served')) return 'preparing'
   return 'queued'
 }
+
+// Dispatch (delivery.ts) gates a rider's pickup on this, rather than inferring readiness from a
+// delivery-side timer or the order's age: a ticket is only safe to hand off once every item that
+// will ever leave the kitchen has actually left it. Deliberately excludes 'cancelled' — a ticket
+// where every item was cancelled has nothing to hand off, which is a distinct problem the caller
+// must surface (e.g. "contact a manager"), never silently treat as "ready". A held course (items
+// still 'queued' with held_at set) or a course still 'preparing' both correctly read as not ready
+// here, with no extra case needed: holding only ever keeps an item's status at 'queued', it never
+// introduces a status of its own.
+export function isTicketReadyForHandoff(ticketStatus: KitchenTicketStatus): boolean {
+  return ticketStatus === 'ready' || ticketStatus === 'served'
+}
