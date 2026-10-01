@@ -52,6 +52,7 @@ schema no longer matches history, and it needs manual reconciliation, not a sile
 | 202609280004_refund_settlement_integrity.sql | `c397ecd6af9146f848cc3a69c662095d56814a089d56a5135d0a64fd37accdbf` | yes | `pos_refunds.operation_id`/`payload_hash`/`tip_cents`/`service_charge_cents`/`tax_cents`/`merchandise_cents`, `pos_refund_tenders.tip_cents`, and the `pos_refunds_operation` partial unique index all confirmed by `apps/api/scripts/verify-refund-settlement-integrity.mjs`. Explicit authorization given 2026-09-29 (session continuing codex's A2 work) after review of the additive columns and the historical-refund-tender/tax-split backfill queries — see the pending-follow-up row this replaces. |
 | 202609290001_kitchen_operations_depth.sql | `554dd82021abca55b1deabc8460c0e93a545a3dd58f01e0c20c1eb70ae5df22a` | yes | `kitchen_ticket_items.course`/`prep_time_target_seconds`/`held_at`, `public.kitchen_course_fire_log`, and the `kitchen_tickets_by_store_status_created` index confirmed by `apps/api/scripts/verify-kitchen-operations-depth.mjs` |
 | 202609290002_sellable_combos.sql | `6304e688736f5a399a874e96277f1bc0ddb8a48be51d083a358ccf3e766eea0c` | yes | `public.combos`, `public.combo_groups`, `public.combo_group_options`, and `pos_order_items.combo_parent_item_id` confirmed by `apps/api/scripts/verify-sellable-combos.mjs` |
+| 202609300001_qr_table_ordering.sql | `9ac094ddac0be6b8323ff0d63878426217d29938cba59edcc85ba1440a634b1a` | yes | `public.qr_sessions`, `public.qr_submissions`, `restaurant_tables.qr_code_hash`/`qr_mode`/`qr_require_confirmation`/`qr_generation`/`qr_rotated_at`, and `open_check_item_modifiers.option_id` all confirmed present against the live database (2026-10-01, Day 1 integration review) |
 | 202610010001_terminal_manager_approvals.sql | `c9f55d4d886367579baa33eacf5769c908ea7864a6015c4142c0193f6c23f61b` | yes | `public.terminal_manager_approvals` table exists, confirmed via `to_regclass('public.terminal_manager_approvals')` against the live database after `node scripts/apply-migration.mjs` |
 | 202610010002_public_rate_limits.sql | `fc66667e47dfe57be1a4461a3e8e0f4f825d9724b95fadf213b0f582148b42e2` | yes | `public.rate_limit_buckets` table exists, confirmed via `to_regclass('public.rate_limit_buckets')` against the live database after `node scripts/apply-migration.mjs` |
 
@@ -84,3 +85,13 @@ pre-existing gap, not introduced here, left for whoever owns that migration to a
 
 Resolved (2026-09-29): 202609280004_refund_settlement_integrity.sql, previously listed here
 pending explicit authorization, is now applied and recorded in the main table above.
+
+Resolved (2026-10-01): `202609300001_qr_table_ordering.sql`'s own PR (`feature/bisma/day1-qr-
+ordering`) stated it was "not applied here, no APPLIED.md row, lead applies it" — but it was
+already live on the shared database when this ledger was checked during Day 1 integration review,
+with real session/submission rows from the author's own manual testing (store "My Restaurant",
+table F01, 2026-09-30) proving the schema was exercised, not just created. This row records that
+reality rather than re-applying it (the migration has no `if not exists` guards, so re-running it
+would fail against an already-applied schema) or leaving it unrecorded. The QR feature itself
+remains inert for real customers regardless: `QR_ORDERING_ENABLED` is unset in every environment,
+and the public routes 404 while it is.
