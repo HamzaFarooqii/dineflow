@@ -133,6 +133,34 @@ export function fetchFoodCostReport(storeId: string, from: string, to: string): 
   return request<FoodCostReport>(`/reports/food-cost?${params.toString()}`)
 }
 
+export interface ProfitabilityDay {
+  date: string
+  grossMerchandiseSalesCents: number
+  discountCents: number
+  merchandiseRefundsCents: number
+  netMerchandiseRevenueCents: number
+  estimatedCostOfGoodsCents: number
+  costCoverageBps: number | null
+  wastageValueCents: number
+  grossProfitCents: number
+  wastageAdjustedGrossProfitCents: number
+  grossMarginBps: number | null
+  taxCents: number
+  tipsCents: number
+  serviceChargeCents: number
+}
+export interface ProfitabilityReport {
+  from: string; to: string
+  costBasis: 'estimated_recipe' | 'actual_batch'
+  actualCostAvailable: boolean
+  totals: ProfitabilityDay
+  days: ProfitabilityDay[]
+}
+export function fetchProfitabilityReport(storeId: string, from: string, to: string): Promise<ProfitabilityReport> {
+  const params = new URLSearchParams({ store_id: storeId, from, to })
+  return request<ProfitabilityReport>(`/reports/profitability?${params.toString()}`)
+}
+
 export interface KitchenStationPerformance {
   stationId: string | null; stationName: string; itemCount: number; completedCount: number; openCount: number
   averagePrepSeconds: number | null; averageServeSeconds: number | null

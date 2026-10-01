@@ -567,6 +567,270 @@ export async function loadKitchenPerformanceReport(storeId: string, from: string
     averagePrepSeconds: completedItems ? Math.round(weightedPrep / completedItems) : null, stations }
 }
 
+// --- Profitability -------------------------------------------------------------------------
+//
+// A consolidated reconciliation report: gross merchandise sales down to gross profit, with tax,
+// tips, and service charge kept as separate reference figures (never folded into any margin
+// calculation, since their treatment relative to profit is not yet an agreed product decision).
+//
+// Refund-event policy (explicit, not left implicit): revenue, discounts, and units sold are
+// recognized in the calendar day of the ORIGINAL SALE (order.client_generated_at). A refund is
+// recognized -- and reduces net merchandise revenue -- in the calendar day of the REFUND ITSELF
+// (pos_refunds.created_at), never restated back onto the original sale's day. A refund issued in a
+// later period than its sale therefore reduces that LATER period, matching standard point-of-sale
+// practice of never rewriting an already-closed period. This is also why a day's net merchandise
+// revenue (and gross profit) can legitimately be negative -- e.g. a quiet day whose only activity
+// is refunding an earlier day's sale -- and that is reported honestly, not clamped or hidden.
+//
+// Cost of goods is ESTIMATED from each sold product's current recipe (costRecipe/foodCostBps, the
+// same primitives loadFoodCostReport already uses), applied to the quantity actually sold that
+// day -- never reduced for a later refund, because refunding a sale does not un-consume the
+// ingredients already used to prepare it (kitchen.ts's consumeRecipeIngredients runs once, at
+// serve time, and nothing ever reverses it). This is also the fix for the Food Cost report's own
+// pre-existing bug this report deliberately does not copy: that query excludes an order's entire
+// item set from costing after ANY refund on it, even a one-cent partial one, silently undercounting
+// both revenue and cost for the untouched portion of that order. Here, revenue is reduced by
+// exactly the refunded amount (pos_refunds.merchandise_cents, store-wide and date-bucketed by
+// refund date, never by excluding whole orders), and cost of goods is entirely unaffected by
+// refund status, matching physical reality.
+//
+// `actualCostAdapter` is the integration seam for a teammate's independent batch-cost work: given
+// the same (storeId, from, to), it may resolve a Map<productId, actualCostPerUnitCents> to replace
+// the recipe estimate per product, or null to mean "not available" (the default,
+// noActualCostAdapter, always returns null). Never stubbed with invented numbers: until a real
+// adapter is wired in, every response honestly reports costBasis: 'estimated_recipe' and
+// actualCostAvailable: false.
+
+export type ActualCostAdapter = (storeId: string, from: string, to: string) => Promise<Map<string, number> | null>
+export const noActualCostAdapter: ActualCostAdapter = async () => null
+
+export interface ProfitabilityDay {
+  date: string
+  grossMerchandiseSalesCents: number
+  discountCents: number
+  merchandiseRefundsCents: number
+  netMerchandiseRevenueCents: number
+  estimatedCostOfGoodsCents: number
+  /** Share of that day's item revenue covered by a complete cost (recipe or actual), in bps. Null when the day has no item revenue at all. */
+  costCoverageBps: number | null
+  wastageValueCents: number
+  grossProfitCents: number
+  wastageAdjustedGrossProfitCents: number
+  grossMarginBps: number | null
+  taxCents: number
+  tipsCents: number
+  serviceChargeCents: number
+}
+
+export interface ProfitabilityReport {
+  from: string
+  to: string
+  costBasis: 'estimated_recipe' | 'actual_batch'
+  actualCostAvailable: boolean
+  totals: ProfitabilityDay
+  days: ProfitabilityDay[]
+}
+
+function marginBps(profitCents: number, revenueCents: number): number | null {
+  if (revenueCents <= 0) return null
+  return Math.round((profitCents * 10_000) / revenueCents)
+}
+
+// Pure calendar-date arithmetic on the already-validated YYYY-MM-DD strings -- no timezone
+// conversion here, matching apps/web/src/screens/ReportingScreens.tsx's own shiftDay. Ensures
+// every day in [from, to] appears in the trend, even one with zero activity, so a chart has no
+// gaps and a quiet day is visibly zero rather than silently missing.
+function dateRangeList(from: string, to: string): string[] {
+  const [fy, fm, fd] = from.split('-').map(Number)
+  const [ty, tm, td] = to.split('-').map(Number)
+  const dates: string[] = []
+  let cursor = Date.UTC(fy, fm - 1, fd)
+  const end = Date.UTC(ty, tm - 1, td)
+  while (cursor <= end) {
+    dates.push(new Date(cursor).toISOString().slice(0, 10))
+    cursor += 86_400_000
+  }
+  return dates
+}
+
+export async function loadProfitabilityReport(storeId: string, from: string, to: string, actualCostAdapter: ActualCostAdapter = noActualCostAdapter): Promise<ProfitabilityReport> {
+  const { startUtc, endUtc } = await reportRange(storeId, from, to)
+  const timezone = await storeTimezone(storeId)
+  const dates = dateRangeList(from, to)
+
+  const [orderDays, refundDays, tipDays, itemDays, wastageDays, products, recipeLines, actualCosts] = await Promise.all([
+    // Order-level figures only -- never joined to order_items/payments in this same query, which
+    // would multiply these per-order sums by however many item/payment rows that order has.
+    db.query<{ day: string; gross: string; discount: string; tax: string; service_charge: string }>(`
+      select (client_generated_at at time zone $4)::date::text as day,
+        coalesce(sum(subtotal_cents),0)::text as gross, coalesce(sum(discount_cents),0)::text as discount,
+        coalesce(sum(tax_cents),0)::text as tax, coalesce(sum(service_charge_cents),0)::text as service_charge
+      from public.pos_orders
+      where store_id=$1 and client_generated_at >= $2 and client_generated_at < $3
+      group by 1`, [storeId, startUtc, endUtc, timezone]),
+    // Refund-event bucketing: by the refund's OWN created_at, not the original order's sale time.
+    // pos_refunds already carries its merchandise/tax/tip/service-charge split directly (split-
+    // settlement/refund-integrity migrations), so no join to pos_refund_tenders is needed here.
+    db.query<{ day: string; merchandise: string; tax: string; tip: string; service_charge: string }>(`
+      select (created_at at time zone $4)::date::text as day,
+        coalesce(sum(merchandise_cents),0)::text as merchandise, coalesce(sum(tax_cents),0)::text as tax,
+        coalesce(sum(tip_cents),0)::text as tip, coalesce(sum(service_charge_cents),0)::text as service_charge
+      from public.pos_refunds
+      where store_id=$1 and created_at >= $2 and created_at < $3
+      group by 1`, [storeId, startUtc, endUtc, timezone]),
+    // Tips live on pos_payments (one or more tenders per order, each snapshotting the order's own
+    // sale time) -- grouped directly, with no join to pos_orders at all, so a multi-tender split
+    // sale can never multiply anything on the orders side.
+    db.query<{ day: string; tips: string }>(`
+      select (client_generated_at at time zone $4)::date::text as day, coalesce(sum(tip_cents),0)::text as tips
+      from public.pos_payments
+      where store_id=$1 and client_generated_at >= $2 and client_generated_at < $3
+      group by 1`, [storeId, startUtc, endUtc, timezone]),
+    // Item-level quantity and revenue (taxable_cents: post-discount, pre-tax, exactly the
+    // per-line merchandise revenue basis), by day and product -- grouping at the (day, product)
+    // grain means joining to pos_orders only to read its client_generated_at per row, never to sum
+    // an order-level column, so this cannot multiply either. Unlike Food Cost's own product list,
+    // this is never filtered by a refund existing on the order: see this function's header note.
+    db.query<{ day: string; product_id: string; quantity: string; revenue: string }>(`
+      select (o.client_generated_at at time zone $4)::date::text as day, oi.product_id,
+        sum(oi.quantity)::text as quantity, sum(oi.taxable_cents)::text as revenue
+      from public.pos_order_items oi join public.pos_orders o on o.store_id=oi.store_id and o.id=oi.order_id
+      where oi.store_id=$1 and o.client_generated_at >= $2 and o.client_generated_at < $3
+      group by 1, 2`, [storeId, startUtc, endUtc, timezone]),
+    // Same wastage valuation formula as loadInventoryReport's own wastage query (batch cost when
+    // known, else the ingredient's current cost), bucketed by day instead of totaled for the range.
+    db.query<{ day: string; value: string }>(`
+      select (m.created_at at time zone $4)::date::text as day,
+        round(sum(abs(m.delta) * coalesce(b.cost_per_unit_cents, i.cost_per_unit_cents)))::text as value
+      from public.stock_movements m
+      join public.ingredients i on i.store_id=m.store_id and i.id=m.ingredient_id
+      left join public.ingredient_batches b on b.store_id=m.store_id and b.id=m.batch_id
+      where m.store_id=$1 and m.reason='wastage' and m.created_at >= $2 and m.created_at < $3
+      group by 1`, [storeId, startUtc, endUtc, timezone]),
+    // Every product ever sold, active or not -- historical sales of a since-deactivated product
+    // must still be included, unlike Food Cost's own product list (which is active=true only).
+    db.query<{ product_id: string; recipe_id: string | null; yield_quantity: string | null }>(`
+      select p.id as product_id, r.id as recipe_id, r.yield_quantity::text as yield_quantity
+      from public.pos_products p left join public.recipes r on r.store_id=p.store_id and r.product_id=p.id
+      where p.store_id=$1`, [storeId]),
+    db.query<{
+      recipe_id: string; quantity: string; line_unit_id: string; line_kind: RecipeCostUnit['kind']; line_factor: number | null
+      ingredient_unit_id: string; ingredient_kind: RecipeCostUnit['kind']; ingredient_factor: number | null; cost_per_unit_cents: number
+    }>(`
+      select ri.recipe_id, ri.quantity::text as quantity,
+        lu.id as line_unit_id, lu.kind as line_kind, lu.factor_to_base::float8 as line_factor,
+        iu.id as ingredient_unit_id, iu.kind as ingredient_kind, iu.factor_to_base::float8 as ingredient_factor,
+        i.cost_per_unit_cents
+      from public.recipe_ingredients ri
+      join public.ingredients i on i.store_id=ri.store_id and i.id=ri.ingredient_id
+      join public.units lu on lu.store_id=ri.store_id and lu.id=ri.unit_id
+      join public.units iu on iu.store_id=i.store_id and iu.id=i.unit_id
+      where ri.store_id=$1`, [storeId]),
+    actualCostAdapter(storeId, from, to),
+  ])
+
+  const linesByRecipe = new Map<string, typeof recipeLines.rows>()
+  for (const line of recipeLines.rows) linesByRecipe.set(line.recipe_id, [...(linesByRecipe.get(line.recipe_id) ?? []), line])
+  const estimatedCostByProduct = new Map<string, { cents: number; complete: boolean }>()
+  for (const product of products.rows) {
+    const lines = product.recipe_id ? linesByRecipe.get(product.recipe_id) ?? [] : []
+    // costRecipe throws on a non-positive line quantity/yield rather than returning an uncostable
+    // status -- one malformed recipe must not fail this whole report, same guard loadFoodCostReport
+    // already uses; treated exactly like any other uncostable recipe (shows as incomplete).
+    let recipe: ReturnType<typeof costRecipe> | null = null
+    if (product.recipe_id && product.yield_quantity && lines.length) {
+      try {
+        recipe = costRecipe(lines.map(line => ({ quantity: Number(line.quantity),
+          unit: { id: line.line_unit_id, kind: line.line_kind, factorToBase: line.line_factor },
+          ingredient: { unit: { id: line.ingredient_unit_id, kind: line.ingredient_kind, factorToBase: line.ingredient_factor }, costPerUnitCents: line.cost_per_unit_cents } })), Number(product.yield_quantity))
+      } catch { recipe = null }
+    }
+    estimatedCostByProduct.set(product.product_id, { cents: recipe?.portionCostCents ?? 0, complete: Boolean(recipe?.complete) })
+  }
+  const actualCostAvailable = actualCosts !== null
+  function costFor(productId: string): { cents: number; complete: boolean } {
+    if (actualCostAvailable && actualCosts!.has(productId)) return { cents: actualCosts!.get(productId)!, complete: true }
+    return estimatedCostByProduct.get(productId) ?? { cents: 0, complete: false }
+  }
+
+  const orderByDay = new Map(orderDays.rows.map(row => [row.day, row]))
+  const refundByDay = new Map(refundDays.rows.map(row => [row.day, row]))
+  const tipsByDay = new Map(tipDays.rows.map(row => [row.day, row]))
+  const wastageByDay = new Map(wastageDays.rows.map(row => [row.day, row]))
+  const itemsByDay = new Map<string, typeof itemDays.rows>()
+  for (const row of itemDays.rows) itemsByDay.set(row.day, [...(itemsByDay.get(row.day) ?? []), row])
+
+  let totalCostedRevenue = 0, totalItemRevenue = 0
+  const days: ProfitabilityDay[] = dates.map(date => {
+    const order = orderByDay.get(date)
+    const refund = refundByDay.get(date)
+    const wastage = wastageByDay.get(date)
+    const items = itemsByDay.get(date) ?? []
+
+    const grossMerchandiseSalesCents = Number(order?.gross ?? 0)
+    const discountCents = Number(order?.discount ?? 0)
+    const merchandiseRefundsCents = Number(refund?.merchandise ?? 0)
+    const netMerchandiseRevenueCents = grossMerchandiseSalesCents - discountCents - merchandiseRefundsCents
+
+    let estimatedCostOfGoodsCents = 0, dayCostedRevenue = 0, dayItemRevenue = 0
+    for (const item of items) {
+      const quantity = Number(item.quantity), revenue = Number(item.revenue)
+      dayItemRevenue += revenue
+      const cost = costFor(item.product_id)
+      estimatedCostOfGoodsCents += cost.cents * quantity
+      if (cost.complete) dayCostedRevenue += revenue
+    }
+    totalCostedRevenue += dayCostedRevenue
+    totalItemRevenue += dayItemRevenue
+
+    const wastageValueCents = Number(wastage?.value ?? 0)
+    const grossProfitCents = netMerchandiseRevenueCents - estimatedCostOfGoodsCents
+
+    return {
+      date, grossMerchandiseSalesCents, discountCents, merchandiseRefundsCents, netMerchandiseRevenueCents,
+      estimatedCostOfGoodsCents, costCoverageBps: dayItemRevenue > 0 ? Math.round((dayCostedRevenue * 10_000) / dayItemRevenue) : null,
+      wastageValueCents, grossProfitCents, wastageAdjustedGrossProfitCents: grossProfitCents - wastageValueCents,
+      grossMarginBps: marginBps(grossProfitCents, netMerchandiseRevenueCents),
+      taxCents: Number(order?.tax ?? 0) - Number(refund?.tax ?? 0),
+      tipsCents: Number(tipsByDay.get(date)?.tips ?? 0) - Number(refund?.tip ?? 0),
+      serviceChargeCents: Number(order?.service_charge ?? 0) - Number(refund?.service_charge ?? 0),
+    }
+  })
+
+  const zero = (field: Exclude<keyof ProfitabilityDay, 'date' | 'costCoverageBps' | 'grossMarginBps'>) => days.reduce((sum, day) => sum + day[field], 0)
+  const totalNetRevenue = zero('netMerchandiseRevenueCents')
+  const totalGrossProfit = zero('grossProfitCents')
+  const totals: ProfitabilityDay = {
+    date: `${from}..${to}`,
+    grossMerchandiseSalesCents: zero('grossMerchandiseSalesCents'),
+    discountCents: zero('discountCents'),
+    merchandiseRefundsCents: zero('merchandiseRefundsCents'),
+    netMerchandiseRevenueCents: totalNetRevenue,
+    estimatedCostOfGoodsCents: zero('estimatedCostOfGoodsCents'),
+    // Recomputed from the whole range's costed/total item revenue, not an average of per-day bps
+    // (which would weight a zero-revenue day the same as the store's busiest day).
+    costCoverageBps: totalItemRevenue > 0 ? Math.round((totalCostedRevenue * 10_000) / totalItemRevenue) : null,
+    wastageValueCents: zero('wastageValueCents'),
+    grossProfitCents: totalGrossProfit,
+    wastageAdjustedGrossProfitCents: zero('wastageAdjustedGrossProfitCents'),
+    grossMarginBps: marginBps(totalGrossProfit, totalNetRevenue),
+    taxCents: zero('taxCents'),
+    tipsCents: zero('tipsCents'),
+    serviceChargeCents: zero('serviceChargeCents'),
+  }
+
+  return { from, to, costBasis: actualCostAvailable ? 'actual_batch' : 'estimated_recipe', actualCostAvailable, totals, days }
+}
+
+async function profitabilityReportHandler(req: Request, res: Response) {
+  try {
+    const storeId = storeIdParam(req); await requireReportAccess(req, storeId)
+    const { from, to } = rangeParam(req)
+    res.json(await loadProfitabilityReport(storeId, from, to))
+  } catch (reason) { sendApiError(res, reason) }
+}
+reportsRouter.get('/profitability', (req, res) => void profitabilityReportHandler(req, res))
+
 async function kitchenPerformanceHandler(req: Request, res: Response) {
   try {
     const storeId = storeIdParam(req); await requireReportAccess(req, storeId)

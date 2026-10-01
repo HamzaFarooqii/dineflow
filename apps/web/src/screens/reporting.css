@@ -459,6 +459,10 @@ h2 .panel-icon {
 .report-table{min-width:680px}
 .report-table td,.report-table th{padding-top:12px;padding-bottom:12px}
 .report-table .num{font-family:var(--mise-font-mono);font-variant-numeric:tabular-nums}
+.profitability-reference-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:12px}
+.profitability-reference-grid>div{display:flex;flex-direction:column;gap:4px;padding:10px 12px;border:1px solid var(--mise-border-hairline);border-radius:var(--mise-r3);background:var(--mise-surface)}
+.profitability-reference-grid span{font-size:11px;color:var(--mise-ink-muted)}
+.profitability-reference-grid strong{font-family:var(--mise-font-mono);font-variant-numeric:tabular-nums;font-size:14px}
 .report-role{text-transform:capitalize}
 
 @media(max-width:760px){

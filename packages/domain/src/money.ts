@@ -97,7 +97,11 @@ export function parseCents(input: string): number {
   return boundedInteger(Number(units) * 100 + Number(fraction.padEnd(2, '0')), 'Tender', 0, MAX_CENTS)
 }
 
+// Negative amounts are legitimate here (a net loss, a refund-heavy period's net revenue) and must
+// format honestly rather than throw -- Intl.NumberFormat already renders a negative currency
+// value correctly (e.g. "-$12.34"). Every other money helper in this file keeps its 0 floor:
+// this is purely a display formatter, not a validator of an amount that was just computed.
 export function formatCents(cents: number, currency = 'USD'): string {
-  boundedInteger(cents, 'Amount', 0, MAX_CENTS)
+  boundedInteger(cents, 'Amount', -MAX_CENTS, MAX_CENTS)
   return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(cents / 100)
 }
