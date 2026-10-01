@@ -43,6 +43,10 @@ export function BatchList({ batches, unit, currency }: { batches: IngredientBatc
       const remaining = Number(batch.remaining_quantity)
       const usedPct = original > 0 ? Math.min(100, Math.max(0, Math.round(((original - remaining) / original) * 100))) : 0
       const totalCostCents = Math.round(original * batch.cost_per_unit_cents)
+      const remainingValueCents = Math.round(remaining * batch.cost_per_unit_cents)
+      const itemised = Number(batch.consumed_quantity) + Number(batch.wasted_quantity)
+      // Draw-downs before Day 2's allocation snapshots were never itemised; say so instead of implying the numbers are complete.
+      const unitemised = Math.round((original - remaining - itemised) * 1_000_000) / 1_000_000
       return <article key={batch.id} className="batch-card">
         <div className="batch-card-top">
           <span className="batch-card-id">{batchLabel(batch.id)}</span>
@@ -58,6 +62,13 @@ export function BatchList({ batches, unit, currency }: { batches: IngredientBatc
         <div className="batch-card-costs">
           <span>{unit ? `${formatCents(batch.cost_per_unit_cents, currency)} / ${unit.abbreviation}` : formatCents(batch.cost_per_unit_cents, currency)}</span>
           <span>{formatCents(totalCostCents, currency)} total</span>
+        </div>
+        <div className="batch-card-draw">
+          <span>Left on shelf worth <strong>{formatCents(remainingValueCents, currency)}</strong></span>
+          {batch.allocation_count > 0
+            ? <span>Drawn down: <Quantity value={batch.consumed_quantity} unit={unit} /> served · <Quantity value={batch.wasted_quantity} unit={unit} /> wasted, costed at {formatCents(Math.round(Number(batch.allocated_cost_cents)), currency)} ({batch.allocation_count} movement{batch.allocation_count === 1 ? '' : 's'})</span>
+            : <span>No itemised draw-downs yet</span>}
+          {unitemised > 0.0005 && <span className="batch-card-draw-note">{formatQuantityNumber(String(unitemised))} {unit?.abbreviation ?? ''} was drawn down before cost snapshots began and isn’t itemised.</span>}
         </div>
         <div className="batch-card-meta">
           <span>Received {new Date(batch.received_at).toLocaleDateString()}{batch.received_by_name ? ` by ${batch.received_by_name}` : ''}</span>

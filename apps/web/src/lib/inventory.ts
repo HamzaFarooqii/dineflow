@@ -1,4 +1,5 @@
 import type { StockMovementReason } from '../../../../packages/domain/src/stock-movement-reason'
+import type { WastageCategory, WastageStockEffect } from '../../../../packages/domain/src/wastage-category'
 import { authenticatedFetch, configuredApiUrl } from './catalog'
 import type { ManagerApprovalEvidence } from '../terminal-auth/ManagerApprovalModal'
 
@@ -29,7 +30,23 @@ export interface IngredientBatch {
   cost_per_unit_cents: number
   reference: string | null
   received_by_name: string | null
+  // Drawn from this batch by cost-snapshot allocations (Day 2). Draw-downs recorded before
+  // snapshots existed are not itemised, so these can be lower than quantity - remaining_quantity.
+  allocation_count: number
+  consumed_quantity: string
+  wasted_quantity: string
+  allocated_cost_cents: string
 }
+
+export type CostBasis = 'batch' | 'estimated_ingredient_cost'
+export interface MovementAllocation {
+  batch_id: string | null
+  quantity: string
+  unit_cost_cents: number
+  cost_cents: string
+  cost_basis: CostBasis
+}
+export type ApprovalMethod = 'web_manager_session' | 'terminal_verified_token' | 'terminal_legacy_evidence'
 
 export interface StockMovement {
   id: string
@@ -43,6 +60,18 @@ export interface StockMovement {
   created_at: string
   created_by_user_id: string | null
   created_by_name: string | null
+  // Day 2. wastage_category/stock_effect are null on rows recorded before categories existed;
+  // cost_source 'unknown' means no cost evidence (never priced at today's ingredient cost).
+  wastage_category: WastageCategory | null
+  stock_effect: WastageStockEffect | null
+  approval_method: ApprovalMethod | null
+  approval_required: boolean | null
+  approval_threshold_cents: number | null
+  approved_by_name: string | null
+  cost_source: 'allocation_snapshot' | 'legacy_batch_derived' | 'unknown' | null
+  known_cost_cents: string | null
+  estimated_cost_cents: string | null
+  allocations: MovementAllocation[]
 }
 
 export interface StockMovementsPage { movements: StockMovement[]; next_cursor: string | null }
@@ -53,6 +82,9 @@ export interface StockMovementsPage { movements: StockMovement[]; next_cursor: s
 // (manager_id + manager_approved_at); the PIN itself is verified client-side and never sent —
 // see ManagerApprovalModal/verifyOffline.
 function managerEvidenceBody(approval: ManagerApprovalEvidence | null): Record<string, unknown> {
+  // A server-verified approval token (Day 1) is the strong evidence and wins when present; the
+  // legacy manager_id/manager_approved_at pair stays only for the actions that have not moved over.
+  if (approval?.approvalToken) return { manager_approval_token: approval.approvalToken }
   return { manager_id: approval?.managerId ?? null, manager_approved_at: approval?.approvedAt ?? null }
 }
 
@@ -71,13 +103,19 @@ async function inventoryRequest<T>(path: string, method: string, storeId: string
   })
   const parsed = await response.json().catch(() => ({})) as T & { message?: string; code?: string }
   if (!response.ok) {
-    if (response.status === 422) throw new WastageValidationError((parsed as { message?: string }).message ?? 'This entry is invalid.')
-    throw new Error((parsed as { message?: string }).message ?? `Request failed (${response.status}).`)
+    const message = (parsed as { message?: string }).message
+    const code = (parsed as { code?: string }).code ?? null
+    if (response.status === 422) throw new WastageValidationError(message ?? 'This entry is invalid.', response.status, code)
+    throw new InventoryRequestError(message ?? `Request failed (${response.status}).`, response.status, code)
   }
   return parsed
 }
 
-export class WastageValidationError extends Error {}
+/** A failed inventory request. `code` is the API's machine-readable reason (e.g. operation_conflict). */
+export class InventoryRequestError extends Error {
+  constructor(message: string, readonly status: number, readonly code: string | null) { super(message) }
+}
+export class WastageValidationError extends InventoryRequestError {}
 
 export async function fetchIngredients(storeId: string, terminal = false, includeInactive = false): Promise<Ingredient[]> {
   const query = new URLSearchParams({ store_id: storeId })
@@ -128,8 +166,43 @@ export async function fetchStockMovements(storeId: string, ingredientId: string,
   return { movements: body.movements ?? [], next_cursor: body.next_cursor ?? null }
 }
 
-export async function recordWastage(storeId: string, ingredientId: string, input: { quantity: number; note?: string | null; batch_id?: string | null }, terminal = false, approval: ManagerApprovalEvidence | null = null): Promise<{ movement: StockMovement; ingredient: Ingredient }> {
+export interface WastageInput {
+  /** Stable per attempt: a retry of the same entry reuses it, so it can only ever be recorded once. */
+  operation_id: string
+  quantity: number
+  wastage_category: WastageCategory
+  stock_effect?: WastageStockEffect
+  note?: string | null
+  batch_id?: string | null
+  kitchen_ticket_item_id?: string | null
+}
+
+export async function recordWastage(storeId: string, ingredientId: string, input: WastageInput, terminal = false, approval: ManagerApprovalEvidence | null = null): Promise<{ movement: StockMovement; ingredient: Ingredient; replayed: boolean }> {
   return inventoryRequest(`/ingredients/${ingredientId}/wastage`, 'POST', storeId, terminal, { ...input, ...(terminal ? managerEvidenceBody(approval) : {}) })
+}
+
+export interface WastagePolicy { wastage_approval_threshold_cents: number; is_default: boolean }
+
+export async function fetchWastagePolicy(storeId: string, terminal = false): Promise<WastagePolicy> {
+  const query = new URLSearchParams({ store_id: storeId })
+  const response = await inventoryFetch(`${configuredApiUrl()}${terminal ? '/pos/inventory' : '/inventory'}/wastage-policy?${query}`, terminal, { signal: AbortSignal.timeout(15_000) })
+  const body = await response.json().catch(() => ({})) as Partial<WastagePolicy> & { message?: string }
+  if (!response.ok) throw new Error(body.message ?? `The wastage approval policy could not be loaded (${response.status}).`)
+  return { wastage_approval_threshold_cents: body.wastage_approval_threshold_cents ?? 0, is_default: body.is_default ?? true }
+}
+
+/**
+ * Asks the server to verify a manager's PIN for ONE exact action and payload (POST /pos/manager-approvals,
+ * Day 1) and returns the single-use approval token. The PIN goes to the server and is never stored here.
+ */
+export async function requestManagerApprovalToken(managerId: string, pin: string, action: string, payload: unknown): Promise<{ token: string; expiresAt: string }> {
+  const response = await fetch(`${configuredApiUrl()}/pos/manager-approvals`, {
+    method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ manager_id: managerId, pin, action, payload }), signal: AbortSignal.timeout(15_000),
+  })
+  const body = await response.json().catch(() => ({})) as { approval_token?: string; expires_at?: string; message?: string }
+  if (!response.ok || !body.approval_token) throw new Error(body.message ?? `The manager PIN could not be verified (${response.status}).`)
+  return { token: body.approval_token, expiresAt: body.expires_at ?? '' }
 }
 
 export async function fetchExpiringBatchCount(storeId: string, terminal = false): Promise<number> {

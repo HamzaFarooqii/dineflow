@@ -34,6 +34,7 @@ const chain = [
   '202609250002_inventory_batch_tracking.sql',
   '202609260001_unit_conversion.sql',
   '202609270001_modifiers.sql',
+  '202610020001_wastage_categories_batch_valuation.sql',
 ]
 
 async function seededDatabase() {
@@ -203,7 +204,7 @@ test('consumeRecipeIngredients is a no-op for a product with no recipe', async (
   }
 })
 
-test('consumeRecipeIngredients depletes the soonest-expiring batch (FEFO) when it fully covers the quantity', async () => {
+test('consumeRecipeIngredients spans batches in picking order and snapshots each batch cost', async () => {
   const database = await seededDatabase()
   try {
     const { store, product, ingredient, itemId } = await seedRecipeFixture(database, { currentStock: 10, quantitySold: 3 })
@@ -220,11 +221,16 @@ test('consumeRecipeIngredients depletes the soonest-expiring batch (FEFO) when i
     const later = await database.query<{ remaining_quantity: string }>('select remaining_quantity::text as remaining_quantity from public.ingredient_batches where id=$1', [laterBatch])
     const movement = await database.query<{ batch_id: string | null }>('select batch_id from public.stock_movements where ingredient_id=$1', [ingredient])
 
-    // 6kg needed exceeds either single batch's 5kg, so neither batch alone covers it -- the
-    // consumption must fall back to ingredient-level tracking only, not split across both.
-    assert.equal(Number(soon.rows[0].remaining_quantity), 5, 'a batch is never partially depleted when it cannot cover the full quantity alone')
-    assert.equal(Number(later.rows[0].remaining_quantity), 5)
+    // 6kg needed exceeds either single batch's 5kg: the soonest-expiring batch is drained, the
+    // remaining 1kg comes from the next one, and the movement itself carries no single batch_id
+    // (the per-batch truth is in its allocation rows).
+    assert.equal(Number(soon.rows[0].remaining_quantity), 0)
+    assert.equal(Number(later.rows[0].remaining_quantity), 4)
     assert.equal(movement.rows[0].batch_id, null)
+    const allocations = await database.query<{ batch_id: string; quantity: string; unit_cost_cents: number; cost_cents: string; cost_basis: string }>(
+      'select batch_id, quantity::text as quantity, unit_cost_cents, cost_cents::text as cost_cents, cost_basis from public.stock_movement_allocations order by sequence')
+    assert.deepEqual(allocations.rows.map(row => [row.batch_id, Number(row.quantity), row.unit_cost_cents, Number(row.cost_cents), row.cost_basis]),
+      [[soonBatch, 5, 50, 250, 'batch'], [laterBatch, 1, 50, 50, 'batch']])
   } finally {
     await database.close()
   }

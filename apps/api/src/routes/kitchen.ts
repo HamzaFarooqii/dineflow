@@ -7,6 +7,8 @@ import { convertQuantity, type RecipeCostUnit } from '../../../../packages/domai
 import { COURSES, type Course } from '../../../../packages/domain/src/course.js'
 import { deriveSlaState, DEFAULT_PREP_TARGET_SECONDS, type SlaState } from '../../../../packages/domain/src/kitchen-sla.js'
 import { applyTableStatusTransition } from './floor.js'
+import { toMicro } from '../../../../packages/domain/src/stock-allocation.js'
+import { commitStockOut, loadBatchSources, lockIngredient, planStockOut } from '../lib/stock-allocation.js'
 
 export const kitchenRouter = Router()
 export const terminalKitchenRouter = Router()
@@ -398,50 +400,45 @@ export async function consumeRecipeIngredients(client: import('pg').PoolClient, 
     [storeId, recipeRow.id],
   )
 
+  // Unit conversion is explicit and happens exactly once, here: the recipe line's unit is converted
+  // to the ingredient's stored unit with convertQuantity (a line whose units can't be related is
+  // skipped, never guessed at 1:1), the result is rounded to 6 decimal places (toMicro) and every
+  // later step -- batch picking, cost snapshots, stock arithmetic -- works in that integer
+  // micro-unit quantity, so fractional kg/L never accumulate floating-point drift.
+  // A recipe that lists the same ingredient on two lines consumes the SUM once: the one-consumption-
+  // per-item-and-ingredient unique index (and the idempotency check below) would otherwise treat
+  // the second line as a duplicate and silently drop it.
+  const perIngredient = new Map<string, bigint>()
   for (const line of lines.rows) {
     const converted = convertQuantity(1,
       { id: line.line_unit_id, kind: line.line_kind, factorToBase: line.line_factor },
       { id: line.ingredient_unit_id, kind: line.ingredient_kind, factorToBase: line.ingredient_factor })
     if (converted === null) continue
+    const quantityMicro = toMicro(((Number(line.line_quantity) * converted) / yieldQuantity) * quantitySold)
+    if (quantityMicro > 0n) perIngredient.set(line.ingredient_id, (perIngredient.get(line.ingredient_id) ?? 0n) + quantityMicro)
+  }
 
-    // Defensive: the served transition is one-way (KITCHEN_TICKET_ITEM_TRANSITIONS['served'] is
-    // empty) so this item can't be re-served, but a duplicate consumption row is cheap to guard
-    // against directly rather than relying solely on that.
+  // Ascending ingredient id: two items served at once can never lock the same two ingredients in
+  // opposite orders (lock order is documented in lib/stock-allocation.ts).
+  for (const [ingredientId, quantityMicro] of [...perIngredient.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    const ingredient = await lockIngredient(client, storeId, ingredientId)
+    if (!ingredient) continue
+
+    // Idempotency, checked AFTER taking the ingredient lock so a concurrent duplicate waits for the
+    // first transaction to commit and then sees its row. The partial unique index
+    // stock_movements_one_consumption_per_item_ingredient is the backstop beneath this check.
     const already = await client.query(
       `select 1 from public.stock_movements where kitchen_ticket_item_id=$1 and ingredient_id=$2 and reason='consumption'`,
-      [kitchenTicketItemId, line.ingredient_id],
+      [kitchenTicketItemId, ingredientId],
     )
     if (already.rowCount) continue
 
-    // converted is per unit of line_quantity, so scale it the same way line_quantity itself is used.
-    const consumeQuantity = ((Number(line.line_quantity) * converted) / yieldQuantity) * quantitySold
-    // Best-effort FEFO batch depletion, same single-batch-only rule as inventory.ts's
-    // selectWastageBatch: only associate a specific batch when it alone can cover the quantity,
-    // since splitting one consumption across several batches would need multi-batch accounting
-    // this schema doesn't have. Never blocks or errors -- if no batch qualifies, the movement is
-    // still recorded at the ingredient level exactly as it always was.
-    const candidateBatch = await client.query<{ id: string; remaining_quantity: string }>(
-      `select id, remaining_quantity::text as remaining_quantity from public.ingredient_batches
-       where store_id=$1 and ingredient_id=$2 and remaining_quantity > 0
-       order by expires_at asc nulls last, received_at asc
-       limit 1 for update`,
-      [storeId, line.ingredient_id],
-    )
-    const batchRow = candidateBatch.rows[0]
-    const batchId = batchRow && consumeQuantity <= Number(batchRow.remaining_quantity) ? batchRow.id : null
-
-    await client.query(
-      `insert into public.stock_movements (store_id, ingredient_id, batch_id, delta, reason, kitchen_ticket_item_id)
-       values ($1,$2,$3,$4,'consumption',$5)`,
-      [storeId, line.ingredient_id, batchId, -consumeQuantity, kitchenTicketItemId],
-    )
-    if (batchId) {
-      await client.query('update public.ingredient_batches set remaining_quantity = remaining_quantity - $1 where id=$2 and store_id=$3', [consumeQuantity, batchId, storeId])
-    }
-    await client.query(
-      `update public.ingredients set current_stock = current_stock - $1, updated_at = now() where store_id=$2 and id=$3`,
-      [consumeQuantity, storeId, line.ingredient_id],
-    )
+    // Service is never blocked: consumption may take aggregate stock negative. Batches supply what
+    // they can in physical picking order (earliest expiry first); any quantity they cannot cover is
+    // recorded as an allocation with basis 'estimated_ingredient_cost' and no batch.
+    const sources = await loadBatchSources(client, storeId, ingredientId)
+    const plan = planStockOut(sources, quantityMicro, ingredient.costPerUnitCents)
+    await commitStockOut(client, storeId, ingredientId, plan, quantityMicro, { reason: 'consumption', kitchenTicketItemId })
   }
 }
 

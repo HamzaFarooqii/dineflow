@@ -43,6 +43,10 @@ no `lib/floor.ts` import in `RegisterScreen.tsx`), so gating to `floor` does not
 | Reads (`GET .../ingredients`, `/batches`, `/movements`, `/summary`) | Terminal session | `inventory` | — | storeId match |
 | Writes (create/update/deactivate/reactivate ingredient, receive batch, record wastage) | Terminal session | `inventory` | **Preferred:** `manager_approval_token`, verified live via `consumeManagerApproval` against a PIN checked moments ago by the server. **Legacy fallback (documented gap, see below):** client-supplied `manager_id` + `manager_approved_at` — existence-checked only, never proves a PIN was entered for *this* action. | storeId match |
 | Owner/manager web writes | `requireStoreManager` | owner/manager | n/a (the signed-in user is both actor and authority) | `store_memberships` |
+| **Wastage** `POST .../ingredients/:id/wastage` (Day 2) | Terminal session, or `requireStoreManager` | `inventory` | Terminal: manager approval at **every** quantity as before. If the entry's attributed cost is **at or above** the store's `wastage_approval_threshold_cents` it must carry a server-verified `manager_approval_token` bound to `inventory.wastage.record` + the exact payload (incl. `operation_id`); the legacy `manager_id` fallback is rejected there (403 `verified_approval_required`). Web sessions are not threshold-gated. `operation_id` required: same payload replays (200), different payload → 409 `operation_conflict`. | storeId match |
+| `GET /pos/inventory/wastage-policy`, `GET /inventory/wastage-policy` | Terminal session / store member | `inventory` | — | storeId match |
+| `PUT /inventory/wastage-policy` | `requireStoreManager` only (no terminal route) | owner/manager | n/a | `store_memberships` |
+| `GET /inventory/cost-summary` (read-side cost contract; `docs/inventory-cost-contract.md`) | `requireReportAccess` | owner/manager | n/a | `store_memberships` |
 
 **Known, explicitly-flagged limitation:** inventory writes are online-only (no offline queue —
 `requireTerminalWriter` always does a live DB round-trip), so requiring `manager_approval_token`

@@ -2,7 +2,19 @@ import { Router, type Request, type Response } from 'express'
 import { db } from '../db.js'
 import { requireStoreMember, requireStoreManager, sendApiError, ApiError } from './auth.js'
 import { requireCashierCapability } from '../terminal-auth/routes.js'
-import { consumeManagerApproval } from '../terminal-auth/manager-approval.js'
+import { consumeManagerApproval, hashApprovalPayload } from '../terminal-auth/manager-approval.js'
+import type { Pool } from 'pg'
+import { microCentsToCents, microToString, toMicro, type AllocationPlan } from '../../../../packages/domain/src/stock-allocation.js'
+import {
+  allowedStockEffects, DEFAULT_WASTAGE_APPROVAL_THRESHOLD_CENTS, defaultStockEffect, isWastageCategory, MAX_WASTAGE_APPROVAL_THRESHOLD_CENTS,
+  WASTAGE_CATEGORIES, wastageApprovalPayload, wastageIdentityPayload, wastageRequiresVerifiedApproval,
+  type WastageCategory, type WastageOperationFields, type WastageStockEffect,
+} from '../../../../packages/domain/src/wastage-category.js'
+import {
+  commitStockOut, loadBatchSources, loadConsumptionReference, lockIngredient, planCostMicroCents, planStockOut,
+  type MovementColumns, type Queryable,
+} from '../lib/stock-allocation.js'
+import { costSummaryHandler } from '../lib/inventory-cost-contract.js'
 
 export const inventoryRouter = Router()
 export const terminalInventoryRouter = Router()
@@ -265,6 +277,10 @@ interface BatchRow {
   id: string; store_id: string; ingredient_id: string; quantity: string; remaining_quantity: string
   received_at: string; expires_at: string | null; cost_per_unit_cents: number; reference: string | null
   received_by_name: string | null
+  // What has been drawn from this batch by allocation snapshots (consumption + wastage that
+  // really deducted stock). Pre-Day-2 draw-downs have no allocation rows, so these can be lower
+  // than quantity - remaining_quantity; the UI says so rather than hiding the gap.
+  allocation_count: number; consumed_quantity: string; wasted_quantity: string; allocated_cost_cents: string
 }
 
 // received_by_name is read off the batch's own originating purchase movement (stock_movements
@@ -278,21 +294,51 @@ const BATCH_SELECT = `
     when p.full_name is not null and p.full_name <> '' then p.full_name || coalesce(' (' || sm.role || ')', '')
     when mgr.name is not null then mgr.name || ' (manager)'
     else null
-  end as received_by_name
+  end as received_by_name,
+  coalesce(draw.allocation_count, 0)::int as allocation_count,
+  coalesce(draw.consumed_quantity, 0)::text as consumed_quantity,
+  coalesce(draw.wasted_quantity, 0)::text as wasted_quantity,
+  coalesce(draw.allocated_cost_cents, 0)::text as allocated_cost_cents
   from public.ingredient_batches b
+  left join lateral (
+    select count(*) as allocation_count,
+           sum(a.quantity) filter (where sm2.reason = 'consumption') as consumed_quantity,
+           sum(a.quantity) filter (where sm2.reason = 'wastage') as wasted_quantity,
+           sum(a.cost_cents) as allocated_cost_cents
+    from public.stock_movement_allocations a
+    join public.stock_movements sm2 on sm2.store_id = a.store_id and sm2.id = a.stock_movement_id
+    where a.store_id = b.store_id and a.batch_id = b.id and sm2.stock_effect is distinct from 'already_consumed'
+  ) draw on true
   left join public.stock_movements m on m.store_id = b.store_id and m.batch_id = b.id and m.reason = 'purchase'
   left join public.profiles p on p.id = m.created_by_user_id
   left join public.store_memberships sm on sm.store_id = m.store_id and sm.user_id = m.created_by_user_id
   left join public.terminal_employees mgr on mgr.store_id = m.store_id and mgr.id = m.manager_id`
+interface MovementAllocationRow {
+  batch_id: string | null; quantity: string; unit_cost_cents: number; cost_cents: string; cost_basis: 'batch' | 'estimated_ingredient_cost'
+}
 interface StockMovementRow {
   id: string; store_id: string; ingredient_id: string; batch_id: string | null; delta: string; reason: string
   note: string | null; kitchen_ticket_item_id: string | null; created_at: string
   created_by_user_id: string | null; created_by_name: string | null
+  wastage_category: WastageCategory | null; stock_effect: WastageStockEffect | null
+  approval_method: string | null; approval_required: boolean | null; approval_threshold_cents: number | null
+  approved_by_name: string | null
+  // Cost visibility (null for purchases/legacy rows with nothing to show). known/estimated are
+  // exact decimal cents; cost_source says where they came from -- see docs/inventory-cost-contract.md.
+  cost_source: 'allocation_snapshot' | 'legacy_batch_derived' | 'unknown' | null
+  known_cost_cents: string | null; estimated_cost_cents: string | null
+  allocations: MovementAllocationRow[]
 }
 
 const MOVEMENT_SELECT = `
   m.id, m.store_id, m.ingredient_id, m.batch_id, m.delta::text as delta, m.reason, m.note,
   m.kitchen_ticket_item_id, m.created_at, m.created_by_user_id,
+  m.wastage_category, m.stock_effect, m.approval_method, m.approval_required, m.approval_threshold_cents,
+  mgr.name as approved_by_name,
+  cl.cost_source, cl.known_cost_cents::text as known_cost_cents, cl.estimated_cost_cents::text as estimated_cost_cents,
+  coalesce((select json_agg(json_build_object('batch_id', a.batch_id, 'quantity', a.quantity::text, 'unit_cost_cents', a.unit_cost_cents,
+                                              'cost_cents', a.cost_cents::text, 'cost_basis', a.cost_basis) order by a.sequence)
+            from public.stock_movement_allocations a where a.store_id = m.store_id and a.stock_movement_id = m.id), '[]'::json) as allocations,
   case
     when p.full_name is not null and p.full_name <> '' then p.full_name || coalesce(' (' || sm.role || ')', '')
     when mgr.name is not null then mgr.name || ' (manager)'
@@ -301,7 +347,8 @@ const MOVEMENT_SELECT = `
   from public.stock_movements m
   left join public.profiles p on p.id = m.created_by_user_id
   left join public.store_memberships sm on sm.store_id = m.store_id and sm.user_id = m.created_by_user_id
-  left join public.terminal_employees mgr on mgr.store_id = m.store_id and mgr.id = m.manager_id`
+  left join public.terminal_employees mgr on mgr.store_id = m.store_id and mgr.id = m.manager_id
+  left join public.stock_movement_cost_lines cl on cl.store_id = m.store_id and cl.movement_id = m.id`
 
 async function fetchMovementById(storeId: string, movementId: string): Promise<StockMovementRow> {
   const result = await db.query<StockMovementRow>(`select ${MOVEMENT_SELECT} where m.store_id = $1 and m.id = $2`, [storeId, movementId])
@@ -436,45 +483,185 @@ async function listMovements(req: Request, res: Response, terminal = false) {
 
 // --- Wastage entry ------------------------------------------------------------------------------
 //
-// Physical stock can never go negative, so a wastage entry that would push current_stock below
-// zero is a hard 422 rather than being allowed through — it's most likely a data-entry mistake.
+// stock_movements.reason stays 'wastage'; the structured category, the stock effect, the stable
+// operation id and the approval evidence are their own columns (202610020001). The free-text note
+// is preserved exactly as the caller sent it.
+//
+// Policies kept from before: explicit wastage beyond available aggregate stock is rejected (422),
+// and a terminal can never write without a manager. New in Day 2:
+//  * operation_id is required. Same id + same payload replays the original result (200, replayed);
+//    same id + different payload is a 409 operation_conflict. Nothing is written twice.
+//  * stock can span batches; each allocation snapshots the cost it was taken at.
+//  * returned dishes (stock_effect 'already_consumed') are recorded for cost visibility but never
+//    deduct stock a second time.
+//  * a terminal entry valued at/above the store threshold needs a server-verified approval token;
+//    the legacy client-supplied manager evidence is accepted only below it.
 
-export function assertWastageWithinStock(currentStock: number, quantity: number): void {
-  if (quantity > currentStock) {
-    throw new ApiError(422, 'validation_failed', `Cannot record wastage of ${quantity}: only ${currentStock} in stock.`)
+export function assertWastageWithinStock(currentStockMicro: bigint, quantityMicro: bigint): void {
+  if (quantityMicro > currentStockMicro) {
+    throw new ApiError(422, 'validation_failed', `Cannot record wastage of ${microToString(quantityMicro)}: only ${microToString(currentStockMicro)} in stock.`)
   }
 }
 
-// Batch association is a refinement on top of the ingredient-level accounting above, not a
-// replacement for it: current_stock (and assertWastageWithinStock) stays the source of truth for
-// "is this wastage even possible." A wastage entry is only tied to a specific batch when a single
-// batch can fully account for the wasted quantity -- splitting one entry across several batches
-// would mean inventing multi-batch accounting this schema was never designed for, so a quantity
-// that spans more than the best-matching batch's remaining stock is recorded at the ingredient
-// level only (batch_id stays null), exactly like every wastage entry worked before batch tracking
-// existed. Auto-selection is FEFO (soonest expiry first), falling back to FIFO (oldest received)
-// for batches with no expiry date -- the safest default for a restaurant trying to waste the
-// stock most at risk of spoiling first.
-export async function selectWastageBatch(client: import('pg').PoolClient, storeId: string, ingredientId: string, quantity: number, explicitBatchId: string | null): Promise<string | null> {
-  if (explicitBatchId !== null) {
-    const batch = await client.query<{ remaining_quantity: string }>(
-      'select remaining_quantity::text as remaining_quantity from public.ingredient_batches where id=$1 and store_id=$2 and ingredient_id=$3 for update',
-      [explicitBatchId, storeId, ingredientId],
-    )
-    if (!batch.rows[0]) throw new ApiError(422, 'validation_failed', 'The selected batch does not belong to this ingredient.')
-    const remaining = Number(batch.rows[0].remaining_quantity)
-    if (quantity > remaining) throw new ApiError(422, 'validation_failed', `Cannot waste ${quantity} from this batch: only ${remaining} remaining in it.`)
-    return explicitBatchId
+export interface WastageInput {
+  operationId: string
+  quantityMicro: bigint
+  category: WastageCategory
+  stockEffect: WastageStockEffect
+  note: string | null
+  batchId: string | null
+  kitchenTicketItemId: string | null
+}
+
+export function parseWastageInput(body: Record<string, unknown>): WastageInput {
+  const operationId = String(body.operation_id ?? '')
+  if (!UUID_RE.test(operationId)) throw new ApiError(422, 'validation_failed', 'A valid operation_id (UUID) is required so a retry cannot record this wastage twice.')
+  const rawQuantity = typeof body.quantity === 'string' ? body.quantity : positiveNumber(body.quantity, 'quantity')
+  let quantityMicro: bigint
+  try { quantityMicro = toMicro(rawQuantity) } catch { throw new ApiError(422, 'validation_failed', 'quantity must be a positive number.') }
+  if (quantityMicro <= 0n) throw new ApiError(422, 'validation_failed', 'quantity must be a positive number of at least 0.000001.')
+  if (!isWastageCategory(body.wastage_category)) {
+    throw new ApiError(422, 'validation_failed', `wastage_category must be one of: ${WASTAGE_CATEGORIES.join(', ')}.`)
   }
-  const candidate = await client.query<{ id: string; remaining_quantity: string }>(
-    `select id, remaining_quantity::text as remaining_quantity from public.ingredient_batches
-     where store_id=$1 and ingredient_id=$2 and remaining_quantity > 0
-     order by expires_at asc nulls last, received_at asc
-     limit 1 for update`,
-    [storeId, ingredientId],
+  const category = body.wastage_category
+  const stockEffect = body.stock_effect === undefined || body.stock_effect === null ? defaultStockEffect(category) : String(body.stock_effect)
+  if (!(allowedStockEffects(category) as readonly string[]).includes(stockEffect)) {
+    throw new ApiError(422, 'validation_failed', `Category "${category}" does not allow stock_effect "${stockEffect}".`)
+  }
+  const note = body.note !== undefined && body.note !== null && String(body.note).trim() !== '' ? nonEmptyText(body.note, 'note', 500) : null
+  if (note === null && (category === 'other' || category === 'discrepancy')) {
+    throw new ApiError(422, 'validation_failed', `A note is required for the "${category}" category.`)
+  }
+  const batchId = body.batch_id !== undefined && body.batch_id !== null ? String(body.batch_id) : null
+  if (batchId !== null && !UUID_RE.test(batchId)) throw new ApiError(422, 'validation_failed', 'A valid batch_id is required.')
+  const kitchenTicketItemId = body.kitchen_ticket_item_id !== undefined && body.kitchen_ticket_item_id !== null ? String(body.kitchen_ticket_item_id) : null
+  if (kitchenTicketItemId !== null && !UUID_RE.test(kitchenTicketItemId)) throw new ApiError(422, 'validation_failed', 'A valid kitchen_ticket_item_id is required.')
+  if (stockEffect === 'already_consumed') {
+    if (kitchenTicketItemId === null) throw new ApiError(422, 'validation_failed', 'Returned-dish wastage must reference the kitchen_ticket_item_id that was served, so its consumed ingredients are not deducted twice.')
+    if (batchId !== null) throw new ApiError(422, 'validation_failed', 'batch_id cannot be chosen for returned-dish wastage: it is priced from what the dish originally consumed.')
+  } else if (kitchenTicketItemId !== null) {
+    throw new ApiError(422, 'validation_failed', 'kitchen_ticket_item_id is only valid for returned-dish (already_consumed) wastage.')
+  }
+  return { operationId, quantityMicro, category, stockEffect: stockEffect as WastageStockEffect, note, batchId, kitchenTicketItemId }
+}
+
+function wastageFields(ingredientId: string, input: WastageInput): WastageOperationFields {
+  return {
+    ingredientId, quantity: microToString(input.quantityMicro), category: input.category, stockEffect: input.stockEffect,
+    note: input.note, batchId: input.batchId, kitchenTicketItemId: input.kitchenTicketItemId,
+  }
+}
+
+export const WASTAGE_APPROVAL_ACTION = 'inventory.wastage.record'
+
+export type WastageActor =
+  | { kind: 'web'; userId: string }
+  | {
+    kind: 'terminal'; employeeId: string; deviceId: string
+    approvalToken: string | null; legacyManagerId: string | null; legacyManagerApprovedAt: string | null
+  }
+
+export async function wastageApprovalThresholdCents(client: Queryable, storeId: string): Promise<number> {
+  const row = await client.query<{ wastage_approval_threshold_cents: number }>(
+    'select wastage_approval_threshold_cents from public.inventory_policies where store_id = $1', [storeId],
   )
-  if (!candidate.rows[0] || quantity > Number(candidate.rows[0].remaining_quantity)) return null
-  return candidate.rows[0].id
+  return row.rows[0]?.wastage_approval_threshold_cents ?? DEFAULT_WASTAGE_APPROVAL_THRESHOLD_CENTS
+}
+
+function money(microCents: bigint): string { return (microCentsToCents(microCents) / 100).toFixed(2) }
+
+/**
+ * Core of POST /inventory/ingredients/:id/wastage and the /pos equivalent. Runs on the CALLER's
+ * transaction (begin/commit belong to the caller), which is what lets the HTTP handler and the
+ * PGlite tests share it. `approvalPool` is only used to redeem a manager approval token.
+ */
+export async function recordWastageCore(
+  ctx: { client: Queryable; approvalPool: Pick<Pool, 'query'> },
+  storeId: string, ingredientId: string, input: WastageInput, actor: WastageActor,
+): Promise<{ movementId: string; replayed: boolean }> {
+  const { client } = ctx
+  const fields = wastageFields(ingredientId, input)
+  const payloadHash = hashApprovalPayload(wastageIdentityPayload(fields))
+
+  // Lock order: ingredient row first (also serialises concurrent identical operation ids on the
+  // same ingredient), then its batches in picking order, then inserts.
+  const ingredient = await lockIngredient(client, storeId, ingredientId)
+  if (!ingredient) throw new ApiError(404, 'ingredient_not_found', 'Ingredient not found in this store.')
+
+  const existing = await client.query<{ id: string; payload_hash: string | null }>(
+    'select id, payload_hash from public.stock_movements where store_id = $1 and operation_id = $2', [storeId, input.operationId],
+  )
+  if (existing.rows[0]) {
+    if (existing.rows[0].payload_hash === payloadHash) return { movementId: existing.rows[0].id, replayed: true }
+    throw new ApiError(409, 'operation_conflict', 'This operation_id was already used for a different wastage entry. Use a new operation_id for a new entry.')
+  }
+  if (!ingredient.active) throw new ApiError(404, 'ingredient_not_found', 'Ingredient not found in this store.')
+
+  let plan: AllocationPlan
+  const deduct = input.stockEffect === 'deduct'
+  if (deduct) {
+    assertWastageWithinStock(toMicro(ingredient.currentStock), input.quantityMicro)
+    const sources = await loadBatchSources(client, storeId, ingredientId, input.batchId)
+    if (input.batchId !== null) {
+      if (!sources.length) throw new ApiError(422, 'validation_failed', 'The selected batch does not belong to this ingredient or has nothing remaining.')
+      if (input.quantityMicro > sources[0].remainingMicro) {
+        throw new ApiError(422, 'validation_failed', `Cannot waste ${microToString(input.quantityMicro)} from this batch: only ${microToString(sources[0].remainingMicro)} remaining in it.`)
+      }
+    }
+    plan = planStockOut(sources, input.quantityMicro, ingredient.costPerUnitCents)
+  } else {
+    const reference = await loadConsumptionReference(client, storeId, ingredientId, input.kitchenTicketItemId as string)
+    if (!reference) throw new ApiError(422, 'validation_failed', 'That kitchen item did not consume this ingredient, so there is nothing to re-label as wastage.')
+    const reclassifiable = reference.consumedMicro - reference.reclassifiedMicro
+    if (input.quantityMicro > reclassifiable) {
+      throw new ApiError(422, 'validation_failed', `Only ${microToString(reclassifiable > 0n ? reclassifiable : 0n)} of what that item consumed is still available to record as returned-dish wastage.`)
+    }
+    plan = planStockOut(reference.sources, input.quantityMicro, ingredient.costPerUnitCents)
+  }
+
+  const thresholdCents = await wastageApprovalThresholdCents(client, storeId)
+  const costMicro = planCostMicroCents(plan)
+  const verifiedRequired = wastageRequiresVerifiedApproval(costMicro, thresholdCents)
+
+  let approval: Pick<MovementColumns, 'createdByUserId' | 'createdByEmployeeId' | 'managerId' | 'managerApprovedAt' | 'approvalMethod'>
+  if (actor.kind === 'web') {
+    // A signed-in owner/manager is their own authority (requireStoreManager already ran).
+    approval = { createdByUserId: actor.userId, approvalMethod: 'web_manager_session' }
+  } else if (actor.approvalToken) {
+    const managerId = await consumeManagerApproval(ctx.approvalPool as Pool, {
+      storeId, deviceId: actor.deviceId, action: WASTAGE_APPROVAL_ACTION, payload: wastageApprovalPayload(fields, input.operationId), token: actor.approvalToken,
+    })
+    approval = { createdByEmployeeId: actor.employeeId, managerId, managerApprovedAt: new Date().toISOString(), approvalMethod: 'terminal_verified_token' }
+  } else if (verifiedRequired) {
+    throw new ApiError(403, 'verified_approval_required',
+      `This wastage is valued at ${money(costMicro)}, at or above the store's approval threshold of ${(thresholdCents / 100).toFixed(2)}. A manager must enter their PIN so the server can verify it.`)
+  } else {
+    if (actor.legacyManagerId === null || actor.legacyManagerApprovedAt === null) throw new ApiError(422, 'validation_failed', 'A manager must approve this action from the terminal.')
+    const manager = await client.query(
+      "select 1 from public.terminal_employees where store_id=$1 and id=$2 and role='manager' and active=true", [storeId, actor.legacyManagerId],
+    )
+    if (!manager.rowCount) throw new ApiError(422, 'validation_failed', 'Manager approval references an employee who is not an active manager for this store.')
+    approval = { createdByEmployeeId: actor.employeeId, managerId: actor.legacyManagerId, managerApprovedAt: actor.legacyManagerApprovedAt, approvalMethod: 'terminal_legacy_evidence' }
+  }
+
+  const movementId = await commitStockOut(client, storeId, ingredientId, plan, input.quantityMicro, {
+    reason: 'wastage', note: input.note, kitchenTicketItemId: input.kitchenTicketItemId, ...approval,
+    wastageCategory: input.category, stockEffect: input.stockEffect, operationId: input.operationId, payloadHash,
+    approvalRequired: verifiedRequired, approvalThresholdCents: thresholdCents,
+  }, deduct)
+  return { movementId, replayed: false }
+}
+
+// Manager approval evidence a terminal may send: a verified token (preferred) or the legacy
+// manager_id + manager_approved_at pair (accepted below the approval threshold only).
+function terminalWastageActor(body: Record<string, unknown>, session: { employeeId: string; deviceId: string }): WastageActor {
+  const approvalToken = typeof body.manager_approval_token === 'string' && body.manager_approval_token ? body.manager_approval_token : null
+  const managerId = body.manager_id === null || body.manager_id === undefined ? null : String(body.manager_id)
+  const managerApprovedAt = body.manager_approved_at === null || body.manager_approved_at === undefined ? null : String(body.manager_approved_at)
+  if (managerId !== null && !UUID_RE.test(managerId)) throw new ApiError(422, 'validation_failed', 'A valid manager_id is required.')
+  if (managerApprovedAt !== null && Number.isNaN(Date.parse(managerApprovedAt))) throw new ApiError(422, 'validation_failed', 'A valid manager_approved_at is required.')
+  if ((managerId === null) !== (managerApprovedAt === null)) throw new ApiError(422, 'validation_failed', 'Manager approval evidence is incomplete.')
+  return { kind: 'terminal', employeeId: session.employeeId, deviceId: session.deviceId, approvalToken, legacyManagerId: managerId, legacyManagerApprovedAt: managerApprovedAt }
 }
 
 async function recordWastage(req: Request, res: Response, terminal = false) {
@@ -483,42 +670,65 @@ async function recordWastage(req: Request, res: Response, terminal = false) {
     const storeId = storeIdParam(req)
     const ingredientId = idParam(req)
     const body = req.body as Record<string, unknown>
-    const writer = await requireWriter(req, storeId, terminal, 'inventory.wastage.record',
-      { ingredient_id: ingredientId, quantity: body.quantity, note: body.note ?? null, batch_id: body.batch_id ?? null })
-    const quantity = positiveNumber(body.quantity, 'quantity')
-    const note = body.note !== undefined && body.note !== null ? nonEmptyText(body.note, 'note', 500) : null
-    const explicitBatchId = body.batch_id !== undefined && body.batch_id !== null ? String(body.batch_id) : null
-    if (explicitBatchId !== null && !UUID_RE.test(explicitBatchId)) throw new ApiError(422, 'validation_failed', 'A valid batch_id is required.')
+    let actor: WastageActor
+    if (terminal) {
+      const session = await requireCashierCapability(req, db, 'inventory')
+      if (session.storeId !== storeId) throw new ApiError(403, 'cross_store_reference', 'This terminal belongs to a different store.')
+      actor = terminalWastageActor(body, session)
+    } else {
+      actor = { kind: 'web', userId: await requireStoreManager(req, storeId) }
+    }
+    const input = parseWastageInput(body)
 
     await client.query('begin')
-    const ingredient = await client.query<{ current_stock: string }>(
-      'select current_stock::text as current_stock from public.ingredients where id = $1 and store_id = $2 and active = true for update',
-      [ingredientId, storeId],
-    )
-    if (!ingredient.rowCount) throw new ApiError(404, 'ingredient_not_found', 'Ingredient not found in this store.')
-    const currentStock = Number(ingredient.rows[0].current_stock)
-    assertWastageWithinStock(currentStock, quantity)
-    const batchId = await selectWastageBatch(client, storeId, ingredientId, quantity, explicitBatchId)
-
-    const movementInsert = await client.query<{ id: string }>(
-      `insert into public.stock_movements (store_id, ingredient_id, batch_id, delta, reason, note,
-                                            created_by_user_id, created_by_employee_id, manager_id, manager_approved_at)
-       values ($1,$2,$3,$4,'wastage',$5,$6,$7,$8,$9) returning id`,
-      [storeId, ingredientId, batchId, -quantity, note, writer.userId, writer.employeeId, writer.managerId, writer.managerApprovedAt],
-    )
-    if (batchId) {
-      await client.query('update public.ingredient_batches set remaining_quantity = remaining_quantity - $1 where id = $2 and store_id = $3', [quantity, batchId, storeId])
-    }
-    await client.query(`update public.ingredients set current_stock = current_stock - $1, updated_at = now() where id = $2 and store_id = $3`, [quantity, ingredientId, storeId])
+    const result = await recordWastageCore({ client, approvalPool: db }, storeId, ingredientId, input, actor)
     await client.query('commit')
-    res.status(201).json({
-      movement: await fetchMovementById(storeId, movementInsert.rows[0].id),
+    res.status(result.replayed ? 200 : 201).json({
+      movement: await fetchMovementById(storeId, result.movementId),
       ingredient: await fetchIngredientById(storeId, ingredientId),
+      replayed: result.replayed,
     })
   } catch (reason) {
     await client.query('rollback').catch(() => undefined)
-    sendApiError(res, reason)
+    // sendApiError maps a bare 23505 to a receipt-number message; the only unique index a wastage
+    // write can trip is the operation id (a same-id request that raced past the ingredient lock).
+    if (isUniqueViolation(reason)) sendApiError(res, new ApiError(409, 'operation_conflict', 'This operation_id was already used. Retry to receive the original result.'))
+    else sendApiError(res, reason)
   } finally { client.release() }
+}
+
+// --- Wastage approval policy ----------------------------------------------------------------------
+
+async function getWastagePolicy(req: Request, res: Response, terminal = false) {
+  try {
+    const storeId = storeIdParam(req)
+    if (terminal) {
+      const session = await requireCashierCapability(req, db, 'inventory')
+      if (session.storeId !== storeId) throw new ApiError(403, 'cross_store_reference', 'This terminal belongs to a different store.')
+    } else {
+      await requireStoreMember(req, storeId)
+    }
+    const stored = await db.query<{ wastage_approval_threshold_cents: number }>('select wastage_approval_threshold_cents from public.inventory_policies where store_id = $1', [storeId])
+    res.json({
+      wastage_approval_threshold_cents: stored.rows[0]?.wastage_approval_threshold_cents ?? DEFAULT_WASTAGE_APPROVAL_THRESHOLD_CENTS,
+      is_default: !stored.rows[0],
+    })
+  } catch (reason) { sendApiError(res, reason) }
+}
+
+async function putWastagePolicy(req: Request, res: Response) {
+  try {
+    const storeId = storeIdParam(req)
+    const userId = await requireStoreManager(req, storeId)
+    const threshold = nonNegativeInt((req.body as Record<string, unknown>).wastage_approval_threshold_cents, 'wastage_approval_threshold_cents')
+    if (threshold > MAX_WASTAGE_APPROVAL_THRESHOLD_CENTS) throw new ApiError(422, 'validation_failed', `wastage_approval_threshold_cents cannot exceed ${MAX_WASTAGE_APPROVAL_THRESHOLD_CENTS}.`)
+    await db.query(
+      `insert into public.inventory_policies (store_id, wastage_approval_threshold_cents, updated_by_user_id) values ($1,$2,$3)
+       on conflict (store_id) do update set wastage_approval_threshold_cents = excluded.wastage_approval_threshold_cents, updated_at = now(), updated_by_user_id = excluded.updated_by_user_id`,
+      [storeId, threshold, userId],
+    )
+    res.json({ wastage_approval_threshold_cents: threshold, is_default: false })
+  } catch (reason) { sendApiError(res, reason) }
 }
 
 // Store-wide summary for the Inventory overview cards. Total-ingredient count, low-stock count,
@@ -560,6 +770,9 @@ inventoryRouter.post('/ingredients/:id/batches', (req, res) => recordBatch(req, 
 inventoryRouter.get('/ingredients/:id/batches', (req, res) => listBatches(req, res))
 inventoryRouter.get('/ingredients/:id/movements', (req, res) => listMovements(req, res))
 inventoryRouter.post('/ingredients/:id/wastage', (req, res) => recordWastage(req, res))
+inventoryRouter.get('/wastage-policy', (req, res) => getWastagePolicy(req, res))
+inventoryRouter.put('/wastage-policy', (req, res) => putWastagePolicy(req, res))
+inventoryRouter.get('/cost-summary', (req, res) => costSummaryHandler(req, res))
 inventoryRouter.get('/summary', (req, res) => getExpiringBatchCount(req, res))
 
 terminalInventoryRouter.get('/ingredients', (req, res) => listIngredients(req, res, true))
@@ -571,4 +784,5 @@ terminalInventoryRouter.post('/ingredients/:id/batches', (req, res) => recordBat
 terminalInventoryRouter.get('/ingredients/:id/batches', (req, res) => listBatches(req, res, true))
 terminalInventoryRouter.get('/ingredients/:id/movements', (req, res) => listMovements(req, res, true))
 terminalInventoryRouter.post('/ingredients/:id/wastage', (req, res) => recordWastage(req, res, true))
+terminalInventoryRouter.get('/wastage-policy', (req, res) => getWastagePolicy(req, res, true))
 terminalInventoryRouter.get('/summary', (req, res) => getExpiringBatchCount(req, res, true))

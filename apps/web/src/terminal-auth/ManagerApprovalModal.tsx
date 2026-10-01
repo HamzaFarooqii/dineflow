@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { verifyOffline } from './policy'
 import type { TerminalCache } from './cache'
 import { SelectField } from '../components/SelectField'
+import { requestManagerApprovalToken } from '../lib/inventory'
 import { ChevronLeft } from '../components/icons'
 import './terminal-auth.css'
 
@@ -10,15 +11,23 @@ const MANAGER_APPROVAL_WINDOW = 3 * 86_400_000 // 72 hours, matching policy.ts's
 const LOCKOUT_AFTER_ATTEMPTS = 5
 const LOCKOUT_MS = 60_000
 
-export interface ManagerApprovalEvidence { managerId: string; managerName: string; approvedAt: string }
+export interface ManagerApprovalEvidence {
+  managerId: string; managerName: string; approvedAt: string
+  /** Present only after the SERVER verified the PIN for one exact action + payload (Day 1 manager approvals). */
+  approvalToken?: string
+}
+
+/** When set, the PIN is verified by the server (not the offline cache) and bound to this exact action and payload. */
+export interface OnlineApprovalBinding { action: string; payload: unknown }
 
 // Elegant, focus-trapped overlay reusing the CashierLogin PIN keypad style so a manager can
 // authorize a discount above the cashier's 20% independent authority (FEAT-AUTH-02), entirely offline.
-export function ManagerApprovalModal({ cache, title = 'Authorize this discount', reason, actionLabel = 'Approve discount', onApprove, onClose }: {
+export function ManagerApprovalModal({ cache, title = 'Authorize this discount', reason, actionLabel = 'Approve discount', onlineApproval, onApprove, onClose }: {
   cache: TerminalCache
   title?: string
   reason: string
   actionLabel?: string
+  onlineApproval?: OnlineApprovalBinding
   onApprove: (evidence: ManagerApprovalEvidence) => void
   onClose: () => void
 }) {
@@ -70,6 +79,14 @@ export function ManagerApprovalModal({ cache, title = 'Authorize this discount',
     if (!employee || locked || busy) return
     setBusy(true); setError('')
     try {
+      if (onlineApproval) {
+        // Server-verified path: the server checks the PIN against that manager's own stored
+        // verifier, applies its own five-attempt lockout, and returns a single-use token bound to
+        // this action and payload. Nothing about the PIN is cached or compared in the browser.
+        const { token } = await requestManagerApprovalToken(employee.id, pin, onlineApproval.action, onlineApproval.payload)
+        onApprove({ managerId: employee.id, managerName: employee.name, approvedAt: new Date().toISOString(), approvalToken: token })
+        return
+      }
       const ok = await verifyOffline(pin, employee)
       if (!ok) {
         const nextAttempts = attempts + 1
@@ -79,7 +96,7 @@ export function ManagerApprovalModal({ cache, title = 'Authorize this discount',
         return
       }
       onApprove({ managerId: employee.id, managerName: employee.name, approvedAt: new Date().toISOString() })
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'PIN could not be verified.') }
+    } catch (reason) { setPin(''); setError(reason instanceof Error ? reason.message : 'PIN could not be verified.') }
     finally { setBusy(false) }
   }
 

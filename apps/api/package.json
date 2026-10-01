@@ -10,6 +10,7 @@
     "test:browser": "tsx test/browser-check.ts",
     "test:browser:core-loop": "tsx test/core-loop-browser-check.ts",
     "test:browser:qr": "tsx test/qr-ordering-browser-check.ts",
+    "test:browser:inventory-wastage": "tsx test/inventory-wastage-browser-check.ts",
     "test:orders": "node --test --import tsx src/routes/*.test.ts"
   },
   "dependencies": {
