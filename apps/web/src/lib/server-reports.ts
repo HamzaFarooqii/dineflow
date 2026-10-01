@@ -151,12 +151,31 @@ export interface ShiftRow {
   device_id: string
   clocked_in_at: string
   clocked_out_at: string | null
+  open_duration_minutes: number | null
+  potentially_missed_clock_out: boolean
 }
 
 export async function fetchShifts(storeId: string, from: string, toExclusive: string): Promise<ShiftRow[]> {
   const params = new URLSearchParams({ store_id: storeId, from, to: toExclusive })
   const result = await request<{ shifts: ShiftRow[] }>(`/shifts?${params.toString()}`)
   return result.shifts
+}
+
+export interface EmployeeTipRow {
+  employeeId: string | null
+  employeeName: string
+  employeeRole: string | null
+  orderCount: number
+  grossTipCents: number
+  refundedTipCents: number
+  netTipCents: number
+}
+
+export interface EmployeeTipReport { tips: EmployeeTipRow[]; definition: string }
+
+export function fetchEmployeeTips(storeId: string, from: string, toExclusive: string): Promise<EmployeeTipReport> {
+  const params = new URLSearchParams({ store_id: storeId, from, to: toExclusive })
+  return request<EmployeeTipReport>(`/shifts/tips?${params.toString()}`)
 }
 
 export interface BreakRow { id: string; shift_id: string; employee_id: string; paid: boolean; started_at: string; ended_at: string | null }

@@ -20,6 +20,19 @@ function storeIdParam(req: Request): string {
 
 interface ShiftRow { id: string; employee_id: string; device_id: string; clocked_in_at: string; clocked_out_at: string | null }
 
+// A 16-hour threshold tolerates long/double shifts without silently treating ordinary overtime
+// as an error. Reaching the threshold only raises a manager-visible warning; it never mutates or
+// closes the shift. Server time is authoritative so a terminal with a bad clock cannot hide it.
+export const POTENTIAL_MISSED_CLOCK_OUT_MINUTES = 16 * 60
+
+export function isPotentiallyMissedClockOut(
+  clockedInAt: string,
+  serverNow: string,
+  thresholdMinutes = POTENTIAL_MISSED_CLOCK_OUT_MINUTES,
+): boolean {
+  return Math.max(0, Math.floor((Date.parse(serverNow) - Date.parse(clockedInAt)) / 60_000)) >= thresholdMinutes
+}
+
 // POST /pos/shifts/clock-in — the shifts_one_open_per_employee partial unique index is the real
 // guard against a double clock-in; this check exists only to turn that constraint violation into
 // a clear error message rather than a raw 23505 leaking to the client.
@@ -86,14 +99,19 @@ async function listShifts(req: Request, res: Response) {
     }
     const result = await db.query(
       `select s.id, s.employee_id, e.name as employee_name, e.role as employee_role, s.device_id,
-              s.clocked_in_at::text as clocked_in_at, s.clocked_out_at::text as clocked_out_at
+              s.clocked_in_at::text as clocked_in_at, s.clocked_out_at::text as clocked_out_at,
+              case when s.clocked_out_at is null then greatest(0, floor(extract(epoch from (statement_timestamp() - s.clocked_in_at)) / 60))::integer else null end as open_duration_minutes,
+              (s.clocked_out_at is null and statement_timestamp() - s.clocked_in_at >= ($4::integer * interval '1 minute')) as potentially_missed_clock_out
        from public.shifts s
        join public.terminal_employees e on e.store_id = s.store_id and e.id = s.employee_id
-       where s.store_id = $1 and ($2::timestamptz is null or s.clocked_in_at >= $2) and ($3::timestamptz is null or s.clocked_in_at < $3)
+       where s.store_id = $1 and (
+         (($2::timestamptz is null or s.clocked_in_at >= $2) and ($3::timestamptz is null or s.clocked_in_at < $3))
+         or s.clocked_out_at is null
+       )
        order by s.clocked_in_at desc`,
-      [storeId, from, to],
+      [storeId, from, to, POTENTIAL_MISSED_CLOCK_OUT_MINUTES],
     )
-    res.json({ shifts: result.rows })
+    res.json({ shifts: result.rows, missed_clock_out_threshold_minutes: POTENTIAL_MISSED_CLOCK_OUT_MINUTES })
   } catch (reason) { sendApiError(res, reason) }
 }
 

@@ -461,6 +461,9 @@ h2 .panel-icon {
 .report-table .num{font-family:var(--mise-font-mono);font-variant-numeric:tabular-nums}
 .report-role{text-transform:capitalize}
 
+.report-table td>small{display:block;margin-top:4px;color:var(--mise-ink-muted);font:500 10px/1.35 var(--mise-font-mono)}
+.report-table td .status-badge+.status-badge{margin-top:5px;margin-left:5px}
+.report-data-panel .form-notice.warning{margin:0 16px 12px}
 @media(max-width:760px){
   .report-toolbar{align-items:stretch;flex-direction:column}
   .report-toolbar .day-picker{min-width:0}
