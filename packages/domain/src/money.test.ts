@@ -17,6 +17,12 @@ test('parses only whole cents and formats currency', () => {
   assert.throws(() => parseCents('18.501'))
   assert.throws(() => parseCents('-1'))
 })
+// Day 2 (profitability): a net loss or a refund-heavy period legitimately produces negative cents
+// (net merchandise revenue, gross profit) -- formatCents must format that honestly, not throw.
+test('formatCents formats a negative amount instead of throwing', () => {
+  assert.equal(formatCents(-1850), '-$18.50')
+  assert.equal(formatCents(0), '$0.00')
+})
 test('discounted line matches the PRD worked example: 2x199 at 10% discount and 5% tax', () => {
   const line = calculateDiscountedLine(199, 2, 500, { kind: 'percent', bps: 1_000 })
   assert.deepEqual(line, { subtotalCents: 398, discountAppliedCents: 40, taxableCents: 358, taxCents: 18, totalCents: 376 })

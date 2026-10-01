@@ -24,8 +24,9 @@ import { configuredApiUrl, loadCatalog } from '../lib/catalog'
 import { classifySyncState, type SyncState } from '../lib/order-sync-core'
 import {
   fetchCustomerReport, fetchDailySummary, fetchFoodCostReport, fetchInventoryReport, fetchKitchenPerformanceReport, fetchOrdersPage, fetchOversold, fetchShifts,
-  fetchBreaks, downloadTimekeepingCsv, correctShift, correctBreak,
+  fetchBreaks, downloadTimekeepingCsv, correctShift, correctBreak, fetchProfitabilityReport,
   type CustomerReport, type FoodCostReport, type InventoryReport, type KitchenPerformanceReport, type ServerOversoldProduct, type ShiftRow, type BreakRow,
+  type ProfitabilityReport, type ProfitabilityDay,
 } from '../lib/server-reports'
 import { fetchFloorPlan, type FloorPlan } from '../lib/floor'
 import { fetchKitchenTickets, type KitchenTicket } from '../lib/kitchen'
@@ -775,7 +776,7 @@ function DailySalesReport({ tabs }: { tabs?: ReactNode }) {
   )
 }
 
-type ReportTab = 'sales' | 'guests' | 'food-cost' | 'kitchen' | 'inventory' | 'hours'
+type ReportTab = 'sales' | 'guests' | 'profitability' | 'food-cost' | 'kitchen' | 'inventory' | 'hours'
 
 interface HoursWorkedRow {
   employeeId: string
@@ -982,6 +983,47 @@ function durationLabel(seconds: number | null): string {
   return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s`
 }
 
+function marginLabel(bps: number | null): string {
+  return bps === null ? '—' : `${(bps / 100).toFixed(1)}%`
+}
+
+function ProfitabilityReportView({ report, currency }: { report: ProfitabilityReport; currency: string }) {
+  const t = report.totals
+  return <>
+    <div className="metric-grid report-kpi-grid">
+      <MetricCard label="Net merchandise revenue" value={<Money cents={t.netMerchandiseRevenueCents} currency={currency} />} detail="Gross sales, less discounts and merchandise refunds" featured />
+      <MetricCard label="Estimated cost of goods" value={<Money cents={t.estimatedCostOfGoodsCents} currency={currency} />} detail={report.actualCostAvailable ? 'From actual batch cost where available' : `Recipe estimate — ${t.costCoverageBps === null ? 'no sales' : `${(t.costCoverageBps / 100).toFixed(0)}% of revenue costed`}`} />
+      <MetricCard label="Gross profit" value={<Money cents={t.grossProfitCents} currency={currency} />} detail={`${marginLabel(t.grossMarginBps)} margin`} className={t.grossProfitCents < 0 ? 'rejected' : ''} />
+      <MetricCard label="Wastage-adjusted profit" value={<Money cents={t.wastageAdjustedGrossProfitCents} currency={currency} />} detail="Gross profit less ingredient wastage value" className={t.wastageAdjustedGrossProfitCents < 0 ? 'rejected' : ''} />
+    </div>
+    <section className="dashboard-panel report-data-panel">
+      <div className="panel-header"><div><h2><Wallet aria-hidden="true" size={16} className="panel-icon" />Reconciliation</h2><small>{report.actualCostAvailable ? 'Cost of goods uses actual batch cost where available, recipe estimate otherwise' : 'Cost of goods is an estimate from current recipes — actual batch cost is not yet available'}</small></div></div>
+      <div className="profitability-reference-grid">
+        <div><span>Gross merchandise sales</span><strong><Money cents={t.grossMerchandiseSalesCents} currency={currency} /></strong></div>
+        <div><span>Discounts</span><strong><Money cents={-t.discountCents} currency={currency} /></strong></div>
+        <div><span>Merchandise refunds</span><strong><Money cents={-t.merchandiseRefundsCents} currency={currency} /></strong></div>
+        <div><span>Wastage value</span><strong><Money cents={-t.wastageValueCents} currency={currency} /></strong></div>
+      </div>
+      <p className="empty-panel-copy">Tax <Money cents={t.taxCents} currency={currency} />, tips <Money cents={t.tipsCents} currency={currency} />, and service charge <Money cents={t.serviceChargeCents} currency={currency} /> are shown for reference only — none are included in gross profit or margin above.</p>
+    </section>
+    <section className="dashboard-panel report-data-panel">
+      <div className="panel-header"><div><h2><Calendar aria-hidden="true" size={16} className="panel-icon" />Daily trend</h2><small>Revenue by sale date; refunds reduce the day the refund itself happened, not the original sale's day</small></div></div>
+      <div className="table-wrapper"><table className="dashboard-table report-table"><thead><tr><th>Date</th><th className="num">Gross sales</th><th className="num">Discounts</th><th className="num">Refunds</th><th className="num">Net revenue</th><th className="num">Cost of goods</th><th className="num">Gross profit</th><th className="num">Margin</th></tr></thead><tbody>
+        {report.days.map((day: ProfitabilityDay) => <tr key={day.date}>
+          <td>{new Date(`${day.date}T00:00:00Z`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</td>
+          <td className="num"><Money cents={day.grossMerchandiseSalesCents} currency={currency} /></td>
+          <td className="num"><Money cents={-day.discountCents} currency={currency} /></td>
+          <td className="num"><Money cents={-day.merchandiseRefundsCents} currency={currency} /></td>
+          <td className={`num ${day.netMerchandiseRevenueCents < 0 ? 'report-negative' : ''}`}><Money cents={day.netMerchandiseRevenueCents} currency={currency} /></td>
+          <td className="num"><Money cents={day.estimatedCostOfGoodsCents} currency={currency} /></td>
+          <td className={`num ${day.grossProfitCents < 0 ? 'report-negative' : ''}`}><strong><Money cents={day.grossProfitCents} currency={currency} /></strong></td>
+          <td className="num">{marginLabel(day.grossMarginBps)}</td>
+        </tr>)}
+      </tbody></table></div>
+    </section>
+  </>
+}
+
 function FoodCostReportView({ report, currency }: { report: FoodCostReport; currency: string }) {
   return <>
     <div className="metric-grid report-kpi-grid">
@@ -1024,6 +1066,7 @@ export function ReportsScreen() {
   const { state, error } = useFinancialReport()
   const [customerReport, setCustomerReport] = useState<CustomerReport>()
   const [inventoryReport, setInventoryReport] = useState<InventoryReport>()
+  const [profitabilityReport, setProfitabilityReport] = useState<ProfitabilityReport>()
   const [foodCostReport, setFoodCostReport] = useState<FoodCostReport>()
   const [kitchenReport, setKitchenReport] = useState<KitchenPerformanceReport>()
   const [hoursRows, setHoursRows] = useState<HoursWorkedRow[]>()
@@ -1046,11 +1089,13 @@ export function ReportsScreen() {
       ? fetchCustomerReport(state.storeId, from, to).then(result => { if (active) setCustomerReport(result) })
       : tab === 'inventory'
         ? fetchInventoryReport(state.storeId, from, to).then(result => { if (active) setInventoryReport(result) })
-        : tab === 'food-cost'
-          ? fetchFoodCostReport(state.storeId, from, to).then(result => { if (active) setFoodCostReport(result) })
-          : tab === 'kitchen'
-            ? fetchKitchenPerformanceReport(state.storeId, from, to).then(result => { if (active) setKitchenReport(result) })
-            : Promise.all([
+        : tab === 'profitability'
+          ? fetchProfitabilityReport(state.storeId, from, to).then(result => { if (active) setProfitabilityReport(result) })
+          : tab === 'food-cost'
+            ? fetchFoodCostReport(state.storeId, from, to).then(result => { if (active) setFoodCostReport(result) })
+            : tab === 'kitchen'
+              ? fetchKitchenPerformanceReport(state.storeId, from, to).then(result => { if (active) setKitchenReport(result) })
+              : Promise.all([
                 fetchShifts(state.storeId, calendarDayBoundsUtc(from, state.config.timezone).startUtc, calendarDayBoundsUtc(to, state.config.timezone).endUtc),
                 fetchBreaks(state.storeId, calendarDayBoundsUtc(from, state.config.timezone).startUtc, calendarDayBoundsUtc(to, state.config.timezone).endUtc),
               ]).then(([shifts, breaks]) => { if (active) setHoursRows(groupHoursWorked(shifts, breaks)) })
@@ -1061,6 +1106,7 @@ export function ReportsScreen() {
 
   const tabs: { id: ReportTab; label: string }[] = [
     { id: 'sales', label: 'Sales' }, { id: 'guests', label: 'Guests & loyalty' },
+    { id: 'profitability', label: 'Profitability' },
     { id: 'food-cost', label: 'Food cost' }, { id: 'kitchen', label: 'Kitchen' },
     { id: 'inventory', label: 'Inventory' }, { id: 'hours', label: 'Hours worked' },
   ]
@@ -1071,6 +1117,7 @@ export function ReportsScreen() {
   if (tab === 'sales') return <DailySalesReport tabs={tabControls} />
   const selectedReportReady = tab === 'guests' ? Boolean(customerReport)
     : tab === 'inventory' ? Boolean(inventoryReport)
+      : tab === 'profitability' ? Boolean(profitabilityReport)
       : tab === 'food-cost' ? Boolean(foodCostReport)
         : tab === 'kitchen' ? Boolean(kitchenReport)
           : Boolean(hoursRows)
@@ -1086,6 +1133,7 @@ export function ReportsScreen() {
     {state && !operationalLoading && !operationalError && !selectedReportReady && <div className="report-loading" role="status"><RefreshCw aria-hidden="true" size={18} />Preparing {selectedLabel.toLowerCase()} report...</div>}
     {state && tab === 'guests' && !operationalLoading && !operationalError && customerReport && <GuestReport report={customerReport} currency={state.config.currency} />}
     {state && tab === 'inventory' && !operationalLoading && !operationalError && inventoryReport && <InventoryReportView report={inventoryReport} currency={state.config.currency} />}
+    {state && tab === 'profitability' && !operationalLoading && !operationalError && profitabilityReport && <ProfitabilityReportView report={profitabilityReport} currency={state.config.currency} />}
     {state && tab === 'food-cost' && !operationalLoading && !operationalError && foodCostReport && <FoodCostReportView report={foodCostReport} currency={state.config.currency} />}
     {state && tab === 'kitchen' && !operationalLoading && !operationalError && kitchenReport && <KitchenPerformanceView report={kitchenReport} />}
     {state && tab === 'hours' && !operationalLoading && !operationalError && hoursRows && <HoursReport rows={hoursRows} storeId={state.storeId} from={from} to={to} onCorrected={() => setOperationalReload(value => value + 1)} />}
